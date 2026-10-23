@@ -410,3 +410,31 @@ select {
     flex-direction: column;
   }
 }
+
+/* Preference capture: preserve the existing visual design and spacing. */
+.planner-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.preference-options { display: grid; gap: 0.9rem; margin-bottom: 1.2rem; }
+.field-error { color: #8c3524; font-size: 0.85rem; }
+.field [aria-invalid="true"] { border-color: #a34531; }
+.field--split > label { font-size: 0.86rem; font-weight: 600; }
+.preview-btn { width: 100%; margin-top: 0.7rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 999px; color: var(--sea); background: #fff; cursor: pointer; }
+.preview-btn:disabled { opacity: 0.7; cursor: wait; }
+.preview-btn:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.save-confirmation { border-color: var(--lagoon); overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Additive step navigation; retain the original palette and card layout. */
+.step-progress { display: flex; gap: 0.5rem; list-style: none; padding: 0; margin: 1.25rem 0; }
+.step-progress li { flex: 1; font-size: 0.75rem; color: var(--muted); }
+.step-progress span { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: #fff; border: 1px solid var(--line); margin-bottom: 0.3rem; }
+.step-progress [aria-current="step"] { color: var(--sea); font-weight: 700; }
+.step-progress [aria-current="step"] span { background: var(--sea); color: white; }
+.step-heading { margin-bottom: 1rem; font-size: 1.1rem; }
+.step-heading:focus-visible, .back-btn:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+.step-actions { display: flex; gap: 0.65rem; margin: 1rem 0; }
+.back-btn { border: 1px solid var(--line); border-radius: 999px; padding: 0.75rem 1.2rem; background: #fff; color: var(--sea); cursor: pointer; }
+.back-btn:disabled { opacity: 0.7; cursor: wait; }
+.trip-review dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 0.65rem; overflow-wrap: anywhere; }
+.trip-review dt { font-weight: 600; }
+.trip-review dd { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .spinner, .skeleton { animation: none; } }

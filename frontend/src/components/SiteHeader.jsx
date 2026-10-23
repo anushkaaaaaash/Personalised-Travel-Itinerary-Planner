@@ -11,8 +11,8 @@ function SiteHeader() {
         </div>
       </div>
       <p className="site-header__lede">
-        Tell us where you want to go. We will shape a day-by-day trip around your dates,
-        budget, and interests.
+        Tell us where you want to go. Capture your dates, budget, and interests,
+        or explore a clearly labelled sample preview.
       </p>
     </header>
   );

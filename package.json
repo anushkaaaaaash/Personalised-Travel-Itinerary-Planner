@@ -12,7 +12,9 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "build": "npm run build --workspace=frontend",
-    "start": "npm run start --workspace=backend"
+    "start": "npm run start --workspace=backend",
+    "test:validation": "node --test shared/test/*.test.mjs",
+    "test": "npm run test:validation && npm run test --workspace=frontend && npm run test --workspace=backend"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
