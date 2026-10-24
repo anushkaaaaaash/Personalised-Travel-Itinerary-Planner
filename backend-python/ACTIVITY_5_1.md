@@ -16,7 +16,7 @@ The API validates complete preference/itinerary snapshots on both writes and rea
 | `PUT /api/saved-itineraries/{id}` | Replace the snapshot with its expected `version` |
 | `DELETE /api/saved-itineraries/{id}` | Permanently delete with JSON `{ "version": 1 }` |
 
-All endpoints require a verified user session. Writes require JSON and a bounded body. Error responses do not expose database details. The UI distinguishes Save new from Update selected, confirms mutations, rejects stale load responses, and supports checking an uncertain create by its client UUID instead of blindly creating another copy. A confirmed 404 offers an explicit retry of the original snapshot with the same UUID; uncertain/auth/server failures do not unlock retry. Pending-save checks and retries preserve newer editor work and the current selection, including when the original request commits late. Delete has no in-app recovery.
+All endpoints require a verified user session. Writes require JSON and a bounded body. Error responses do not expose database details. The UI distinguishes Save new from Update selected, confirms mutations, rejects stale load responses, and supports checking an uncertain create by its client UUID instead of blindly creating another copy. A confirmed 404 offers an explicit retry of the original snapshot with the same UUID; uncertain/auth/server failures do not unlock retry. Pending-save checks and retries preserve newer editor work and the current selection, including when the original request commits late. An initial allowlisted pre-storage validation rejection releases the pending operation so users can correct the plan and explicitly save again. A validation rejection during a retry of an uncertain operation does not release that original identity. Delete has no in-app recovery.
 
 ## Local setup
 
@@ -35,7 +35,7 @@ Run the two commands in separate terminals. Auth configuration is process-enviro
 
 ## Verification and limits
 
-The final source passed 539 Python tests, 307 JavaScript tests (27 shared, 199 frontend, 81 legacy backend) and the Vite production build. Unit/integration tests use mocks rather than real credentials. Additional authorized live tests used two synthetic QA accounts: both created, listed, retrieved and updated their own records; stale writes failed; cross-account read/edit/delete failed through both the API and direct RLS; unauthenticated access failed. Seven existing preference records matched their pre-test fingerprint.
+The final source passed 539 Python tests, 312 JavaScript tests (27 shared, 204 frontend, 81 legacy backend) and the Vite production build. Unit/integration tests use mocks rather than real credentials. Additional authorized live tests used two synthetic QA accounts: both created, listed, retrieved and updated their own records; stale writes failed; cross-account read/edit/delete failed through both the API and direct RLS; unauthenticated access failed. Seven existing preference records matched their pre-test fingerprint.
 
 User-assisted browser testing verified load, edit/update, delete confirmation and Cancel, followed by separately authorized owner deletion. The backend logged one successful deletion for that synthetic record and a read-only database check confirmed it absent. Another QA record and both QA accounts were retained. Private identifiers, account credentials, exports and audit logs are intentionally excluded from this repository.
 

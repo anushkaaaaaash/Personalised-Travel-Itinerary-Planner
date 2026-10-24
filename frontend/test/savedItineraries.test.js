@@ -130,3 +130,48 @@ test('logout/disposal and wrong-operation results cannot revive pending recovery
  assert.deepEqual(recovery.reconcile(id,await loading,{checked:true}),{ignored:true});
  assert.equal(recovery.view(),null);assert.throws(()=>recovery.retry());
 });
+
+for(const status of [400,413,422])test(`initial pre-storage ${status} rejection permits corrected explicit new save`,async()=>{
+ const recovery=createPendingSaveRecovery(),record=snapshot('Saved test',p,plan()),calls=[];
+ const code=status===413?'REQUEST_TOO_LARGE':'VALIDATION_ERROR';
+ const nextId='42345678-1234-1234-1234-123456789abc';
+ const op=createSavedOperation(()=>{},(input,options)=>savedRequest(input,{...options,fetchImpl:async(url,options)=>{
+  calls.push(JSON.parse(options.body));
+  if(calls.length===1)return {status,json:async()=>({error:{code,message:'PRIVATE_RAW_VALIDATION'}})};
+  return {status:200,json:async()=>({...detail(),id:nextId})};
+ }}));
+ recovery.begin(id,record);
+ const before=JSON.stringify(record),failure=await op.run({action:'create',id,record});
+ assert.equal(failure.code,code);assert.ok(!failure.error.includes('PRIVATE_RAW_VALIDATION'));
+ assert.deepEqual(recovery.reconcile(id,failure,{initial:true}),{rejected:true});
+ assert.equal(recovery.view(),null);assert.equal(JSON.stringify(record),before);assert.equal(calls.length,1);
+ record.itinerary.days[0].activities[0].notes='Shorter corrected note';
+ recovery.begin(nextId,record); // a new operation only after the user's correction and explicit save
+ recovery.reconcile(nextId,await op.run({action:'create',id:nextId,record}),{initial:true});
+ assert.equal(recovery.view(),null);assert.equal(calls.length,2);
+ assert.equal(calls[1].id,nextId);assert.equal(calls[1].itinerary.days[0].activities[0].notes,'Shorter corrected note');
+});
+
+test('validation failure on retry after uncertainty retains the original operation',async()=>{
+ const recovery=createPendingSaveRecovery(),record=snapshot('Saved test',p,plan());
+ recovery.begin(id,record);
+ recovery.reconcile(id,{error:'timeout'},{initial:true});
+ recovery.reconcile(id,{error:'not found',status:404},{checked:true});
+ const retry=recovery.retry();assert.equal(retry.id,id);
+ const op=createSavedOperation(()=>{},(input,options)=>savedRequest(input,{...options,fetchImpl:async()=>({status:400,json:async()=>({error:{code:'VALIDATION_ERROR'}})})}));
+ const failure=await op.run(retry);
+ assert.deepEqual(recovery.reconcile(id,failure),{resolved:false});
+ assert.equal(recovery.view().id,id);assert.equal(recovery.view().retryAllowed,false);
+ assert.throws(()=>recovery.begin('42345678-1234-1234-1234-123456789abc',record));
+ recovery.reconcile(id,{result:detail()},{checked:true});assert.equal(recovery.view(),null);
+});
+
+test('unknown codes or incompatible statuses cannot masquerade as initial validation rejection',async()=>{
+ for(const [status,code] of [[400,'PRIVATE_KEY'],[400,undefined],[500,'VALIDATION_ERROR'],[413,'VALIDATION_ERROR']]) {
+  const recovery=createPendingSaveRecovery();recovery.begin(id,snapshot('Saved test',p,plan()));
+  const op=createSavedOperation(()=>{},(input,options)=>savedRequest(input,{...options,fetchImpl:async()=>({status,json:async()=>({error:{code,message:'PRIVATE'}})})}));
+  const failure=await op.run({action:'create',id,record:snapshot('Saved test',p,plan())});
+  assert.ok(!JSON.stringify(failure).includes('PRIVATE'));
+  recovery.reconcile(id,failure,{initial:true});assert.equal(recovery.view().id,id);
+ }
+});

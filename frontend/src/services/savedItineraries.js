@@ -74,7 +74,8 @@ export function createSavedOperation(onState, request = savedRequest) {
         if (disposed || active!==controller || controller.signal.aborted) return {ignored:true};
         const message=error instanceof PlannerRequestError ? error.message : failure(502);
         onState({busy:false,error:message});
-        return {error:message,...(error instanceof PlannerRequestError && error.status ? {status:error.status} : {})};
+        return {error:message,...(error instanceof PlannerRequestError && error.status ? {status:error.status} : {}),
+          ...(error instanceof PlannerRequestError && error.code ? {code:error.code} : {})};
       } finally { if(active===controller)active=null; }
     },
     dispose(){disposed=true;active?.abort();active=null;},
@@ -92,12 +93,19 @@ export function createPendingSaveRecovery() {
       if(pending || !uuid(id))throw invalid();
       pending={id,record:clone(record),absent:false};
     },
-    reconcile(id,outcome,{checked=false}={}) {
+    reconcile(id,outcome,{checked=false,initial=false}={}) {
       if(!pending || pending.id!==id || outcome.ignored)return {ignored:true};
       if(outcome.result) {
         if(outcome.result.id!==id)throw invalid();
         pending=null;
         return {resolved:true};
+      }
+      // Only an initial, explicit pre-storage rejection proves this operation did not save.
+      // A retry after uncertainty must keep its identity: the earlier request may commit late.
+      if(initial && (([400,422].includes(outcome.status) && outcome.code==='VALIDATION_ERROR')
+        || (outcome.status===413 && outcome.code==='REQUEST_TOO_LARGE'))) {
+        pending=null;
+        return {rejected:true};
       }
       pending.absent=checked && outcome.status===404;
       return {resolved:false};

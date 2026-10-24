@@ -1,9 +1,10 @@
 import { sessionFetch } from './session.js';
 /** Cancellable, duplicate-safe read/generation request. Never writes preferences. */
 export class PlannerRequestError extends Error {
-  constructor(message, { status } = {}) {
+  constructor(message, { status, code } = {}) {
     super(message);
     if (Number.isInteger(status) && status >= 400 && status <= 599) this.status = status;
+    if (['VALIDATION_ERROR','REQUEST_TOO_LARGE'].includes(code)) this.code = code;
   }
 }
 export function createReadRequest({ request, onStateChange }) {
@@ -34,7 +35,7 @@ export function createReadRequest({ request, onStateChange }) {
   };
 }
 
-const DIAGNOSTIC_CODES = new Set(['AI_INVALID_RESPONSE', 'AI_OUTPUT_TRUNCATED', 'AI_RATE_LIMITED', 'REFINEMENT_PACE_CONFLICT', 'REFINEMENT_FIXED_CONFLICT']);
+const DIAGNOSTIC_CODES = new Set(['AI_INVALID_RESPONSE', 'AI_OUTPUT_TRUNCATED', 'AI_RATE_LIMITED', 'REFINEMENT_PACE_CONFLICT', 'REFINEMENT_FIXED_CONFLICT', 'VALIDATION_ERROR', 'REQUEST_TOO_LARGE']);
 const DIAGNOSTIC_REASONS = new Set(['FORMAT_SCHEMA', 'PREFERENCE_MISMATCH', 'DATE_COVERAGE', 'PACE', 'BUDGET', 'TIMELINE', 'VIBE_MISMATCH', 'FIXED_COMMITMENT']);
 // Only these enums cross the transport boundary. Never pass through server messages,
 // provider output, arbitrary fields, or unknown codes/reasons to the UI.
@@ -63,7 +64,7 @@ export async function requestJson(path, { method = 'GET', payload, fetchImpl = s
       let diagnostic = { kind: 'http' };
       try { diagnostic = safeDiagnostic(await response.json()); } catch { /* Unknown error body stays masked. */ }
       if (controller.signal.aborted) throw new Error('Canceled');
-      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status });
+      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status, code: diagnostic.code });
     }
     let body;
     try { body = await response.json(); }

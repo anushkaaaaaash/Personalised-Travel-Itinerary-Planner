@@ -58,8 +58,10 @@ export default function SavedItineraries({ signedIn=false, preferences, itinerar
     if(action==='create'||retrying)setPending(recovery.current.view());
     const outcome=await operation.current.run(request || {action,id,record:confirm.record,expectedVersion:selected?.version});
     if(outcome.ignored)return;
-    if(action==='create'||retrying){recovery.current.reconcile(id,outcome);setPending(recovery.current.view());}
+    let resolution;
+    if(action==='create'||retrying){resolution=recovery.current.reconcile(id,outcome,{initial:action==='create'});setPending(recovery.current.view());}
     setConfirm(null);
+    if(resolution?.rejected){setNotice('The save was rejected before storage. Your local plan is retained. Correct the plan or shorten its text, then explicitly choose Save new again.');return;}
     if(!outcome.result){setNotice(action==='create'||retrying?'Save outcome uncertain. Use Check pending save before creating another copy.':'Your local plan is retained. Reload the saved record before another update or delete.');return;}
     if(retrying){setPage(null);setNotice('The original snapshot is saved. Your current editor and selected record were not changed. Load saved history to open it.');return;}
     if(action==='delete'){setSelected(null);setPage(null);setNotice('Saved record deleted. The open local plan was retained.');}
