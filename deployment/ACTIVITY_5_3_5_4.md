@@ -14,6 +14,8 @@ CI performs offline Python/JS tests, deterministic lockfile installation, a host
 
 ## Required deployment configuration (broader Activity 5.4 is queued)
 
+Render must use `PYTHON_VERSION=3.13.7`, matching the locally verified Python interpreter. Render supports a fully qualified released version through this environment variable ([official runtime documentation](https://render.com/docs/python-version)); do not rely on its changing default. CI also checks the current Python 3.13 patch. A future runtime upgrade requires testing before changing this pin.
+
 Provider settings use typed Pydantic models and `SecretStr`. Environment/process values win over the separate project's legacy local fallback file. `uvicorn --env-file backend-python/.env.local` explicitly loads local auth settings into the process; existing process variables win according to dotenv behavior. Staging/production use process environment only, with `APP_MODE=production` and `APP_ENV=staging` or `production`. No actual environment files are committed or modified by this change.
 
 | Configuration | Application |
