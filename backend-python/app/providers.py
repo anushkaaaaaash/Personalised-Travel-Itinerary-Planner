@@ -16,24 +16,24 @@ class LLMProvider(ABC):
 
 
 def read_configuration():
-    env_file = Path(__file__).resolve().parents[2] / 'backend' / '.env'
-    return {**dotenv_values(env_file, interpolate=False), **os.environ}
+    from .configuration import private_backend_values
+    return private_backend_values()
 
 
 def create_provider(configuration=None, transport=None, *, for_refinement=False) -> LLMProvider:
     # No key reads or provider calls at module import / application startup.
     from .recommendations import RecommendationError
     try:
-        values = (configuration or read_configuration)()
-        selected = values.get('AI_PROVIDER', 'groq')
+        from .configuration import ProviderSettings
+        values = ProviderSettings.model_validate((configuration or read_configuration)())
+        selected = values.AI_PROVIDER
         if selected == 'groq':
             from .groq import GroqProvider, DEFAULT_MODEL
-            return GroqProvider(values.get('GROQ_API_KEY', ''),
-                ('openai/gpt-oss-120b' if for_refinement else values.get('GROQ_MODEL', DEFAULT_MODEL)), transport=transport)
+            return GroqProvider(values.GROQ_API_KEY.get_secret_value(),
+                values.GROQ_REFINEMENT_MODEL if for_refinement else values.GROQ_MODEL, transport=transport)
         if selected == 'gemini':
             from .gemini import GeminiProvider, DEFAULT_MODEL
-            return GeminiProvider(values.get('GEMINI_API_KEY', ''),
-                values.get('GEMINI_MODEL', DEFAULT_MODEL), transport=transport)
+            return GeminiProvider(values.GEMINI_API_KEY.get_secret_value(),values.GEMINI_MODEL, transport=transport)
     except RecommendationError:
         raise
     except Exception:

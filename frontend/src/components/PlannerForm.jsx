@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { PLANNER_STEPS, FINAL_STEP } from '../utils/plannerSteps.js';
 import { CURRENCIES, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 
-function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {} }) {
+function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {} }) {
   const headingRef = useRef(null);
   const previousStep = useRef(step);
   useEffect(() => {
@@ -159,16 +159,16 @@ function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBac
             <dt>Travel style</dt><dd>{form.travelStyle || 'No specific preference'}</dd>
             <dt>Mobility preferences</dt><dd>{form.mobilityConcerns || 'Not specified'}</dd>
           </dl>
-          <p className="hint">Use Back to edit. Saving stores these preferences only; it does not generate an itinerary.</p>
+          <p className="hint">{allowPreferenceSave ? 'Use Back to edit. Saving stores these preferences only; it does not generate an itinerary.' : 'Use Back to edit. Generate and review a plan, then explicitly save it in My saved full itineraries.'}</p>
         </section>}
         <div className="step-actions">
           {step > 0 && <button className="back-btn" type="button" onClick={onBack} disabled={loading}>Back</button>}
           {step < FINAL_STEP && <button className="generate-btn" type="submit" disabled={loading}>Next: {PLANNER_STEPS[step + 1].title}</button>}
         </div>
         {step === FINAL_STEP && <>
-        <button className="generate-btn" type="button" onClick={onSave} disabled={loading || saved || recommendationLoading || itineraryLoading}>
+        {allowPreferenceSave && <button className="generate-btn" type="button" onClick={onSave} disabled={loading || saved || recommendationLoading || itineraryLoading}>
           {loading ? 'Saving preferences…' : saved ? 'Preferences saved' : 'Save trip preferences'}
-        </button>
+        </button>}
         <button className="generate-btn" type="button" onClick={onRecommendations} disabled={loading || recommendationLoading || itineraryLoading}>
           {recommendationLoading ? 'Generating AI recommendations…' : 'Generate AI recommendations (does not save)'}
         </button>

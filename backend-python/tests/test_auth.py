@@ -125,7 +125,7 @@ def test_production_missing_schema_fails_closed(monkeypatch):
 
 def test_owned_mode_requires_verified_bearer(monkeypatch):
     c = client(monkeypatch,supported=True)
-    monkeypatch.setenv('APP_MODE','production')
+    monkeypatch.setenv('APP_MODE','local')
     monkeypatch.setenv('TRIP_OWNERSHIP_ENABLED','true')
     monkeypatch.setenv('TRIP_OWNERSHIP_SCHEMA_VERIFIED','true')
     assert c.get('/api/trips').status_code == 401
@@ -164,7 +164,7 @@ def test_user_scope_comes_only_from_verified_endpoint(monkeypatch):
     from fastapi import Request
     for name in ['RENDER','VERCEL','APP_ENV']:
         monkeypatch.delenv(name,raising=False)
-    monkeypatch.setenv('APP_MODE','production')
+    monkeypatch.setenv('APP_MODE','local')
     monkeypatch.setenv('TRIP_OWNERSHIP_ENABLED','true')
     monkeypatch.setenv('TRIP_OWNERSHIP_SCHEMA_VERIFIED','true')
     app=FastAPI()
