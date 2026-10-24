@@ -34,10 +34,12 @@ def trip_row(p: TripPreferences):
     }
 
 def read_configuration():
+    from .auth import production_mode
+    if production_mode():raise StorageNotConfigured()
     # Read only on an explicit save. Tests replace this function; never print values.
     # Reuse the separate copy's existing private backend/.env, not the original project.
-    env_file = Path(__file__).resolve().parents[2] / 'backend' / '.env'
-    values = {**dotenv_values(env_file, interpolate=False), **os.environ}
+    from .configuration import private_backend_values
+    values = private_backend_values()
     return values.get('SUPABASE_URL', ''), values.get('SUPABASE_SECRET_KEY', '')
 
 class SupabaseTripStore:

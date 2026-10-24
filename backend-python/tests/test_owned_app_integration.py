@@ -9,7 +9,7 @@ A='12345678-1234-1234-1234-123456789abc'
 B='22345678-1234-1234-1234-123456789abc'
 
 def test_owned_app_all_trip_routes_bound_to_verified_user(monkeypatch,payload):
-    monkeypatch.setenv('APP_MODE','production')
+    monkeypatch.setenv('APP_MODE','local')
     monkeypatch.setenv('TRIP_OWNERSHIP_ENABLED','true')
     monkeypatch.setenv('TRIP_OWNERSHIP_SCHEMA_VERIFIED','true')
     calls=[]

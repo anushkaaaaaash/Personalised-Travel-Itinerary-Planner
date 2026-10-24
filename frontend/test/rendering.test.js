@@ -64,6 +64,13 @@ test('initial page shows only first step, with no save or sample action', () => 
   assert.ok(html.includes('aria-current="step"'));
 });
 
+test('saved-only deployment hides legacy history and preference save while keeping full plans',()=>{
+  const html=render(PlannerPage,{legacyEnabled:false,signedIn:true});
+  assert.ok(!html.includes('Saved trip history'));assert.ok(html.includes('My saved full itineraries'));
+  const review=render(PlannerForm,{...formHandlers,form:createInitialForm(),step:2,allowPreferenceSave:false});
+  assert.ok(!review.includes('>Save trip preferences<'));assert.ok(review.includes('Generate AI day-by-day itinerary'));
+});
+
 test('preferences step retains controlled defaults and offers Back/Next only', () => {
   const html = render(PlannerForm, { ...formHandlers, form: createInitialForm(), step: 1 });
   assert.ok(html.includes('value="balanced" selected=""'));

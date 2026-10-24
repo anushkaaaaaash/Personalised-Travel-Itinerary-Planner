@@ -1,0 +1,36 @@
+name: Verify planner
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: python -m pip install -r backend-python/requirements.txt
+      - run: python -m pytest backend-python/tests -q
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run build
+        env:
+          APP_ENV: production
+          VITE_API_BASE_URL: https://api.example.test/api
+      - run: python deployment/check_public_assets.py frontend/dist
+      - name: Reject tracked private environment files
+        run: |
+          python - <<'PY'
+          import subprocess
+          names=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          bad=[p for p in names if p.rsplit('/',1)[-1].startswith('.env') and not p.endswith('.example')]
+          if bad:raise SystemExit('Private environment files tracked: '+', '.join(bad))
+          PY

@@ -20,7 +20,7 @@ import { createTripSubmission } from '../services/tripSubmission.js';
 import { buildPreviewItinerary } from '../utils/buildPreviewItinerary.js';
 import { buildTripPayload, createInitialForm } from '../utils/tripPreferences.js';
 
-function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
+function PlannerPage({ ownershipEnabled = false, signedIn = false, legacyEnabled = true }) {
   const reducedMotion = useReducedMotion();
   const [confirmedCoordinates, setConfirmedCoordinates] = useState([]);
   const [imported, setImported] = useState(null);
@@ -130,6 +130,7 @@ function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
   }
 
   function handleSave() {
+    if (!legacyEnabled) return;
     if (generationRef.current?.isBusy() || recommendationsRef.current?.isBusy() || step !== FINAL_STEP || submission.loading || submission.savedTrip || submissionRef.current?.isBusy()) return;
     const payload = validatedPayload();
     if (!payload) return;
@@ -185,6 +186,7 @@ function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
   }
 
   function handleHistory(offset) {
+    if (!legacyEnabled) return;
     if (submissionRef.current?.isBusy()) return;
     detailRef.current?.reset();
     void historyRef.current?.submit({ offset, ownershipEnabled });
@@ -215,7 +217,7 @@ function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
     <motion.div className="page" initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reducedMotion ? 0 : 0.2 }}>
       <SiteHeader />
       <main className="layout">
-        <PlannerForm
+        <PlannerForm allowPreferenceSave={legacyEnabled}
           form={form}
           onChange={handleChange}
           onToggleInterest={handleToggleInterest}
@@ -246,7 +248,7 @@ function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
           generated={Boolean(generation.result)}
         />
         <SavedItineraries signedIn={signedIn} preferences={buildTripPayload(form).valid ? buildTripPayload(form).value : null} itinerary={generation.result} plannerBusy={submission.loading || generation.loading || refinement.loading || optimization.loading} onLoad={record => { clearPreviousResult(); setForm({ ...createInitialForm(), ...record.preferences }); setGeneration({ loading: false, error: '', result: record.itinerary }); setEdited(false); setStep(FINAL_STEP); }} />
-        <TripHistory onCancelHistory={() => historyRef.current?.reset()} ownershipEnabled={ownershipEnabled} history={history} detail={detail} saving={submission.loading} onLoad={handleHistory} onSelect={(id) => { if (!submissionRef.current?.isBusy()) void detailRef.current?.submit(id); }} onPrefill={handlePrefill} onClose={() => detailRef.current?.reset()} onCancel={() => detailRef.current?.reset()} />
+        {legacyEnabled && <TripHistory onCancelHistory={() => historyRef.current?.reset()} ownershipEnabled={ownershipEnabled} history={history} detail={detail} saving={submission.loading} onLoad={handleHistory} onSelect={(id) => { if (!submissionRef.current?.isBusy()) void detailRef.current?.submit(id); }} onPrefill={handlePrefill} onClose={() => detailRef.current?.reset()} onCancel={() => detailRef.current?.reset()} />}
         </div>
       </main>
     </motion.div>

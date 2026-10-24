@@ -62,7 +62,8 @@ def auth_error(exc):
 
 def read_auth_configuration():
     # Environment only: never open private .env files at import or during tests.
-    return os.getenv('SUPABASE_URL', ''), os.getenv('SUPABASE_PUBLISHABLE_KEY') or os.getenv('SUPABASE_ANON_KEY', '')
+    from .configuration import public_auth_values
+    return public_auth_values()
 
 
 def ownership_enabled():
@@ -70,8 +71,8 @@ def ownership_enabled():
 
 
 def production_mode():
-    return (os.getenv('APP_MODE', 'local').lower() == 'production' or bool(os.getenv('RENDER'))
-            or bool(os.getenv('VERCEL')) or os.getenv('APP_ENV', '').lower() in {'production', 'staging'})
+    from .configuration import hosted_environment
+    return hosted_environment()
 
 
 class SupabaseAuthService:
@@ -193,10 +194,14 @@ class AccessBoundary:
         self.app, self.auth_service = app, auth_service
         self.ownership_supported = ownership_supported
         self.local = LocalOnlyBoundary(app)
+        from .production_security import ProductionAccess
+        self.production = ProductionAccess(app,auth_service)
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
+        if production_mode():
+            return await self.production(scope,receive,send)
         protected = ownership_enabled() or production_mode()
         if not protected:
             if os.getenv('APP_MODE', 'local').lower() != 'local':
@@ -222,7 +227,7 @@ def build_auth_router(service):
 
     @router.get('/config')
     async def config():
-        return {'enabled': service.configured(), 'mode': 'production' if production_mode() else 'local', 'ownership_enabled': ownership_enabled()}
+        return {'enabled': service.configured(), 'mode': 'production' if production_mode() else 'local', 'ownership_enabled': ownership_enabled(), 'saved_only': production_mode()}
 
     @router.post('/register', response_model=AuthResult)
     async def register(credentials: Credentials):
