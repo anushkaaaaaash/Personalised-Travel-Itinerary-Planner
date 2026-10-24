@@ -26,3 +26,20 @@ Thumbs.db
 # Misc
 *.tsbuildinfo
 .cache/
+
+# Python runtime and local/private artifacts
+backend-python.venv/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.env
+.env.*
+!.env.example
+**/Untitled
+backups/
+*.bak
+travel-itinerary*.json
+refinement-test-context.json
+isolated-120b-*.json

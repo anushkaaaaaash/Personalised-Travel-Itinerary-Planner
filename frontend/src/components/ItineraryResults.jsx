@@ -2,7 +2,7 @@ function money(symbol, amount) {
   return `${symbol}${Number(amount).toLocaleString()}`;
 }
 
-function ItineraryResults({ itinerary, loading, error, savedTrip }) {
+function ItineraryResults({ itinerary, loading, error, savedTrip, generated = false }) {
   if (loading) {
     return (
       <section className="card results" aria-live="polite" aria-busy="true">
@@ -35,7 +35,7 @@ function ItineraryResults({ itinerary, loading, error, savedTrip }) {
     <article className="card save-confirmation" role="status">
       <h2>Trip preferences saved</h2>
       <p>Confirmed trip ID: <strong>{savedTrip.id}</strong></p>
-      <p className="hint">Your preferences were saved by the backend. An itinerary has not been generated.</p>
+      <p className="hint">Your preferences were saved by the backend. {generated ? 'AI generation is separate and is not stored with this record.' : 'An itinerary has not been generated.'}</p>
     </article>
   ) : null;
 
@@ -65,7 +65,7 @@ function ItineraryResults({ itinerary, loading, error, savedTrip }) {
         <p>{itinerary.summary}</p>
         <p className="hint">
           This sample uses fixed activities and budget percentages, not live recommendations.
-          Showing it does not save your trip or apply dietary needs and travel pace. AI generation is not connected.
+          Showing it does not save your trip or apply dietary needs and travel pace. Use Generate AI day-by-day itinerary for a separate AI request.
         </p>
         {itinerary.truncated && <p className="hint">Showing the first 14 of {itinerary.totalDays} days only.</p>}
       </article>

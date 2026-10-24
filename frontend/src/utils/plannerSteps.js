@@ -2,7 +2,7 @@ import { buildTripPayload } from './tripPreferences.js';
 
 export const PLANNER_STEPS = Object.freeze([
   Object.freeze({ title: 'Trip details', fields: Object.freeze(['destination', 'departureCity', 'startDate', 'endDate']) }),
-  Object.freeze({ title: 'Travel preferences', fields: Object.freeze(['travelers', 'budget', 'currency', 'interests', 'dietaryNeeds', 'travelPace']) }),
+  Object.freeze({ title: 'Travel preferences', fields: Object.freeze(['travelers', 'budget', 'currency', 'interests', 'dietaryNeeds', 'travelPace', 'travelStyle', 'mobilityConcerns']) }),
   Object.freeze({ title: 'Review & save', fields: Object.freeze([]) }),
 ]);
 export const FINAL_STEP = PLANNER_STEPS.length - 1;

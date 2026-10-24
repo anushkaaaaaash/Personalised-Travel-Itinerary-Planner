@@ -12,6 +12,8 @@ export function createInitialForm() {
     interests: ['culture', 'food'],
     dietaryNeeds: '',
     travelPace: 'balanced',
+    travelStyle: '',
+    mobilityConcerns: '',
   };
 }
 

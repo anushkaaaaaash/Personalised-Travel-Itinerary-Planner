@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateTripPreferences, isRealIsoDate, PREFERENCE_FIELDS } from '../tripPreferences.mjs';
+import { validateTripPreferences, isRealIsoDate, REQUIRED_PREFERENCE_FIELDS } from '../tripPreferences.mjs';
 
 const valid = () => ({
   destination: ' Kyoto, Japan ', departureCity: ' Mumbai ',
@@ -15,7 +15,7 @@ test('normalizes cities without mutating the complete payload', () => {
   assert.equal(result.valid, true);
   assert.equal(result.value.destination, 'Kyoto, Japan');
   assert.equal(result.value.departureCity, 'Mumbai');
-  assert.deepEqual(Object.keys(result.value).sort(), [...PREFERENCE_FIELDS].sort());
+  assert.deepEqual(Object.keys(result.value).sort(), [...REQUIRED_PREFERENCE_FIELDS].sort());
   assert.equal(result.value.dietaryNeeds, '');
   assert.equal(result.value.travelPace, 'balanced');
   assert.notEqual(result.value.interests, input.interests);
@@ -27,7 +27,7 @@ test('real date validation includes leap years, year boundaries, and strict form
   for (const value of ['2027-02-29', '1900-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '0000-01-01', '2026-1-01', '2026-01-1', '2026-01-01T00:00:00Z', '', null, 20260101]) assert.equal(isRealIsoDate(value), false, String(value));
 });
 
-for (const field of PREFERENCE_FIELDS) {
+for (const field of REQUIRED_PREFERENCE_FIELDS) {
   test(`requires ${field}`, () => {
     const input = valid(); delete input[field];
     assert.ok(validateTripPreferences(input).errors[field]);
@@ -80,4 +80,32 @@ test('rejects non-object requests and unknown/prototype properties without echoi
   const accessor = valid();
   Object.defineProperty(accessor, 'destination', { get() { throw Error('must not execute'); } });
   assert.equal(validateTripPreferences(accessor).valid, false);
+});
+
+test('optional prompt preferences retain legacy shape when absent', () => {
+  const value = validateTripPreferences(valid()).value;
+  assert.equal(Object.hasOwn(value, 'travelStyle'), false);
+  assert.equal(Object.hasOwn(value, 'mobilityConcerns'), false);
+});
+
+test('validates travel style options and trims optional mobility preferences', () => {
+  for (const travelStyle of ['', 'budget', 'comfort', 'luxury']) {
+    const result = validateTripPreferences({ ...valid(), travelStyle, mobilityConcerns: '  Avoid stairs  ' });
+    assert.equal(result.valid, true);
+    assert.equal(result.value.travelStyle, travelStyle);
+    assert.equal(result.value.mobilityConcerns, 'Avoid stairs');
+  }
+  assert.equal(validateTripPreferences({ ...valid(), mobilityConcerns: 'x'.repeat(500) }).valid, true);
+});
+
+test('rejects invalid optional prompt fields without echoing contents', () => {
+  for (const [field, values] of Object.entries({
+    travelStyle: ['unknown', null, false, [], {}],
+    mobilityConcerns: [null, false, [], {}, 42, 'x'.repeat(501), 'private\nsecret', '\u0000', '\u007f'],
+  })) for (const value of values) {
+    const result = validateTripPreferences({ ...valid(), [field]: value });
+    assert.equal(result.valid, false);
+    assert.ok(result.errors[field]);
+    assert.equal(JSON.stringify(result).includes('private'), false);
+  }
 });

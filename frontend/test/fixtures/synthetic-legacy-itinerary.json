@@ -1,0 +1,161 @@
+{
+  "status": "planned",
+  "destination": "Example Harbor",
+  "currency": "USD",
+  "travelStyle": "",
+  "travelPace": "balanced",
+  "explanation": "Synthetic legacy fixture deliberately retains declared counts two, two and three; no real travel details.",
+  "days": [
+    {
+      "date": "2099-04-01",
+      "morning": "Synthetic morning plan for tests only.",
+      "afternoon": "Synthetic afternoon plan for tests only.",
+      "evening": "Synthetic rest period for tests only.",
+      "dining": "Synthetic dining placeholder; no real venue.",
+      "dietaryNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "mobilityNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "transitAndRest": "Synthetic transfer and break placeholder.",
+      "mainActivityCount": 2,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 100,
+        "meals": 50,
+        "localTransport": 20,
+        "activities": 30,
+        "departureTravel": 100
+      },
+      "activities": [
+        {
+          "id": "fixture-1-1",
+          "title": "Synthetic activity 1",
+          "startTime": "10:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        },
+        {
+          "id": "fixture-1-2",
+          "title": "Synthetic activity 2",
+          "startTime": "12:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        }
+      ]
+    },
+    {
+      "date": "2099-04-02",
+      "morning": "Synthetic morning plan for tests only.",
+      "afternoon": "Synthetic afternoon plan for tests only.",
+      "evening": "Synthetic rest period for tests only.",
+      "dining": "Synthetic dining placeholder; no real venue.",
+      "dietaryNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "mobilityNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "transitAndRest": "Synthetic transfer and break placeholder.",
+      "mainActivityCount": 2,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 100,
+        "meals": 50,
+        "localTransport": 20,
+        "activities": 30,
+        "departureTravel": 100
+      },
+      "activities": [
+        {
+          "id": "fixture-2-1",
+          "title": "Synthetic activity 1",
+          "startTime": "10:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        },
+        {
+          "id": "fixture-2-2",
+          "title": "Synthetic activity 2",
+          "startTime": "12:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        }
+      ]
+    },
+    {
+      "date": "2099-04-03",
+      "morning": "Synthetic morning plan for tests only.",
+      "afternoon": "Synthetic afternoon plan for tests only.",
+      "evening": "Synthetic rest period for tests only.",
+      "dining": "Synthetic dining placeholder; no real venue.",
+      "dietaryNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "mobilityNotes": "Unspecified in this synthetic fixture; verify directly.",
+      "transitAndRest": "Synthetic transfer and break placeholder.",
+      "mainActivityCount": 3,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 100,
+        "meals": 50,
+        "localTransport": 20,
+        "activities": 30,
+        "departureTravel": 100
+      },
+      "activities": [
+        {
+          "id": "fixture-3-1",
+          "title": "Synthetic activity 1",
+          "startTime": "10:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        },
+        {
+          "id": "fixture-3-2",
+          "title": "Synthetic activity 2",
+          "startTime": "12:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        },
+        {
+          "id": "fixture-3-3",
+          "title": "Synthetic activity 3",
+          "startTime": "14:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test data; not a recommendation.",
+          "latitude": -12.345,
+          "longitude": 45.678,
+          "fixedTime": false
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "Synthetic fixture only; no prices, locations or access facts verified."
+  ],
+  "vibe": "relaxed",
+  "source": "ai",
+  "provider": "fixture-provider",
+  "model": "fixture-model",
+  "saved": false,
+  "estimatedTotalGroupCost": 900,
+  "remainingBudget": 3900,
+  "userEdited": false,
+  "notice": "Synthetic export-format test fixture, not a real itinerary."
+}

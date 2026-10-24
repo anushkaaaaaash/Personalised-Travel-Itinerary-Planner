@@ -1,0 +1,870 @@
+{
+  "preferences": {
+    "destination": "Goa",
+    "departureCity": "Mumbai",
+    "startDate": "2026-10-24",
+    "endDate": "2026-10-29",
+    "travelers": 2,
+    "budget": 2500,
+    "currency": "INR",
+    "interests": [
+      "culture",
+      "food"
+    ],
+    "dietaryNeeds": "",
+    "travelPace": "balanced"
+  },
+  "previous": {
+    "status": "planned",
+    "destination": "Goa",
+    "currency": "INR",
+    "travelStyle": "",
+    "travelPace": "balanced",
+    "explanation": "Estimated only",
+    "warnings": [
+      "Unverified prices and coordinates."
+    ],
+    "source": "ai",
+    "provider": "fixture",
+    "model": "fixture",
+    "saved": false,
+    "estimatedTotalGroupCost": 240,
+    "remainingBudget": 2260,
+    "days": [
+      {
+        "date": "2026-10-24",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      },
+      {
+        "date": "2026-10-25",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      },
+      {
+        "date": "2026-10-26",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      },
+      {
+        "date": "2026-10-27",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      },
+      {
+        "date": "2026-10-28",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      },
+      {
+        "date": "2026-10-29",
+        "morning": "Museum",
+        "afternoon": "Walk",
+        "evening": "Rest",
+        "dining": "Restaurant",
+        "dietaryNotes": "None supplied",
+        "mobilityNotes": "None supplied",
+        "transitAndRest": "Rest",
+        "mainActivityCount": 2,
+        "interestTags": [
+          "culture"
+        ],
+        "activities": [
+          {
+            "id": "1",
+            "title": "Stop 1",
+            "startTime": "09:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 1",
+            "latitude": 0,
+            "longitude": 0,
+            "fixedTime": false
+          },
+          {
+            "id": "2",
+            "title": "Stop 2",
+            "startTime": "11:00",
+            "durationMinutes": 30,
+            "notes": "Keep notes 2",
+            "latitude": 0,
+            "longitude": 0.01,
+            "fixedTime": false
+          }
+        ],
+        "costs": {
+          "accommodation": 0,
+          "meals": 10,
+          "localTransport": 10,
+          "activities": 10,
+          "departureTravel": 10
+        }
+      }
+    ]
+  },
+  "response": {
+    "itinerary": {
+      "status": "planned",
+      "destination": "Goa",
+      "currency": "INR",
+      "travelStyle": "",
+      "travelPace": "balanced",
+      "explanation": "Estimated only",
+      "days": [
+        {
+          "date": "2026-10-24",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-25",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-26",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-27",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-28",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        },
+        {
+          "date": "2026-10-29",
+          "morning": "Museum",
+          "afternoon": "Walk",
+          "evening": "Rest",
+          "dining": "Restaurant",
+          "dietaryNotes": "None supplied",
+          "mobilityNotes": "None supplied",
+          "transitAndRest": "Rest",
+          "mainActivityCount": 2,
+          "interestTags": [
+            "culture"
+          ],
+          "costs": {
+            "accommodation": 0.0,
+            "meals": 10.0,
+            "localTransport": 10.0,
+            "activities": 10.0,
+            "departureTravel": 10.0
+          },
+          "activities": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ]
+        }
+      ],
+      "warnings": [
+        "Unverified prices and coordinates."
+      ],
+      "vibe": null,
+      "source": "ai",
+      "provider": "fixture",
+      "model": "fixture",
+      "saved": false,
+      "estimatedTotalGroupCost": 240.0,
+      "remainingBudget": 2260.0
+    },
+    "routeSummary": {
+      "basis": "Unverified supplied coordinates; straight-line Haversine distances, not road routes. Estimated walking at 4 km/h plus 10 minutes per transfer; no live directions, opening hours, terrain or accessibility verification. Planning window 09:00\u201320:00; relaxed/balanced/fast rest breaks 30/20/10 minutes and day limits 6/8/10 hours.",
+      "warnings": [
+        "Planning estimates only; not verified directions or a guarantee of feasibility on the ground."
+      ],
+      "days": [
+        {
+          "date": "2026-10-24",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        },
+        {
+          "date": "2026-10-25",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        },
+        {
+          "date": "2026-10-26",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        },
+        {
+          "date": "2026-10-27",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        },
+        {
+          "date": "2026-10-28",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        },
+        {
+          "date": "2026-10-29",
+          "status": "optimized",
+          "orderedStops": [
+            {
+              "id": "1",
+              "title": "Stop 1",
+              "startTime": "09:00",
+              "durationMinutes": 30,
+              "notes": "Keep notes 1",
+              "latitude": 0.0,
+              "longitude": 0.0,
+              "fixedTime": false
+            },
+            {
+              "id": "2",
+              "title": "Stop 2",
+              "startTime": "10:17",
+              "durationMinutes": 30,
+              "notes": "Keep notes 2",
+              "latitude": 0.0,
+              "longitude": 0.01,
+              "fixedTime": false
+            }
+          ],
+          "legs": [
+            {
+              "fromId": "1",
+              "toId": "2",
+              "distanceKm": 1.112,
+              "estimatedMinutes": 27
+            }
+          ],
+          "beforeDistanceKm": 1.112,
+          "afterDistanceKm": 1.112,
+          "totalDistanceKm": 1.112,
+          "timingChanges": [
+            {
+              "id": "2",
+              "from": "11:00",
+              "to": "10:17"
+            }
+          ],
+          "warnings": [
+            "No feasible shorter order found; original stop order retained.",
+            "Use the structured activity schedule for updated times; prose day-part descriptions remain the original overview."
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -2,9 +2,37 @@
 
 A Personalised Travel Itinerary Planner is an AI-powered application that helps users plan trips based on their travel preferences, budget, interests, and duration. It generates customised travel itineraries, recommends destinations and attractions, and helps users organise their trips efficiently.
 
-This separate working copy includes the existing React (Vite) planner, strict preference validation, and a Node.js (Express) submission API. **Activity 3.1 is not yet verified end to end:** the Supabase adapter maps to the confirmed existing `trips` schema, but a real save must still be checked locally using your own backend configuration. Without that configuration, the API returns a safe `503`; it never pretends a trip was saved. Itinerary previews are local samples, not AI-generated plans.
+The current planner uses React/Vite with the FastAPI backend in `backend-python/`.
+Epics 3 and 4 include validated preference capture and history, dynamic prompts,
+categorized AI recommendations, editable daily timelines, estimated route ordering,
+and whole-trip/single-day feedback refinement. The original Express backend is
+preserved for reference; root `npm run dev` still starts that legacy backend.
 
-See [ACTIVITY_3_1.md](ACTIVITY_3_1.md) for scope, verification, and the remaining database step.
+Groq refinement uses `openai/gpt-oss-120b`; generation/recommendations use the configured
+Groq model (default `openai/gpt-oss-20b`). The backend enforces structured constraints,
+but AI narrative, costs, opening hours and accessibility remain unverified estimates.
+Itineraries are not saved automatically. Local mode is for one trusted operator;
+auth schemas are implemented, but production accounts/ownership migration are not activated.
+
+See [current completion and validation](EPICS_3_4_COMPLETION.md) and
+[FastAPI setup](backend-python/README.md). Earlier Activity documents describe historical
+checkpoints and may contain superseded installation/publication restrictions.
+
+## Current Windows startup
+
+From this repository root, using the existing `backend-python.venv` environment:
+
+```powershell
+.\backend-python.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend-python --host 127.0.0.1 --port 5000
+```
+
+In a second terminal run `npm run dev --workspace=frontend` and open
+`http://localhost:5173/`. Keep `VITE_API_BASE_URL=/api` in local frontend configuration.
+Do not run Express and FastAPI on the same port. Environment templates contain no
+usable credentials; local configuration is excluded from Git. SQL and deployment
+files marked `REVIEW_ONLY` are drafts, not applied migrations or deployed services.
+
+## Historical Express setup and project reference
 
 ## Project structure
 

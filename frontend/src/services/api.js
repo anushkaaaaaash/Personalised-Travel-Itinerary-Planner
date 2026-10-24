@@ -1,3 +1,4 @@
+import { sessionFetch } from './session.js';
 import { validateTripPreferences } from '../../../shared/tripPreferences.mjs';
 
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
@@ -32,7 +33,7 @@ function statusError(status) {
 
 /** Save preference data only; this endpoint does not generate an itinerary. */
 export async function createTrip(payload, {
-  fetchImpl = globalThis.fetch,
+  fetchImpl = sessionFetch,
   baseUrl = API_BASE_URL,
   signal,
   timeoutMs = 15000,

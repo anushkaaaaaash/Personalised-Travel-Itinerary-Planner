@@ -1,0 +1,110 @@
+"""Local FastAPI replacement; leave the Express server stopped while using port 5000."""
+from fastapi import FastAPI, Request, APIRouter
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from .models import TripPreferences, PromptResponse
+from .prompts import build_itinerary_prompt
+from .storage import SupabaseTripStore
+
+from .recommendations import RecommendationService, RecommendationResponse, RecommendationError
+from .ai_services import ConfiguredRecommendationService
+from .trip_routes import build_trip_router
+from .itineraries import build_itinerary_router
+from .optimizer import build_optimizer_router
+from .auth import SupabaseAuthService, build_auth_router, AccessBoundary
+from .cors import configured_frontend_origins
+from .privacy import NoStoreBoundary
+from fastapi.middleware.cors import CORSMiddleware
+
+LIMIT = 16 * 1024
+
+def error_response(status, code, message, fields=None, reason=None):
+    from .diagnostics import safe_reason
+    error = {'code': code, 'message': message}
+    if safe_reason(reason):
+        error['reason'] = safe_reason(reason)
+    if fields:
+        error['fields'] = fields
+    return JSONResponse(status_code=status, content={'error': error})
+
+class JsonBoundary:
+    """Bound streamed bodies too, before FastAPI parses JSON. No body logging."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http' or scope['method'] != 'POST':
+            return await self.app(scope, receive, send)
+        headers = dict(scope['headers'])
+        media = headers.get(b'content-type', b'').split(b';')[0].strip().lower()
+        if media != b'application/json':
+            return await error_response(415, 'UNSUPPORTED_MEDIA_TYPE', 'Send preferences as JSON.')(scope, receive, send)
+        body_limit = 128 * 1024 if scope.get('path') in {'/api/itineraries/refine','/api/itineraries/optimize'} else LIMIT
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message['type'] == 'http.disconnect':
+                return
+            body.extend(message.get('body', b''))
+            if len(body) > body_limit:
+                return await error_response(413, 'REQUEST_TOO_LARGE', 'Trip preferences are too large.')(scope, receive, send)
+            if not message.get('more_body', False):
+                break
+        async def replay():
+            return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
+        await self.app(scope, replay, send)
+
+def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None):
+    app = FastAPI(title='Travel planner API', version='0.4.0')
+    storage = store if store is not None else SupabaseTripStore()
+    app.add_middleware(JsonBoundary)
+    authentication = auth_service if auth_service is not None else SupabaseAuthService()
+    app.add_middleware(AccessBoundary, auth_service=authentication, ownership_supported=callable(getattr(storage, 'for_user', None)))
+    app.add_middleware(CORSMiddleware, allow_origins=configured_frontend_origins(),
+        allow_credentials=False, allow_methods=['GET','POST','OPTIONS'],
+        allow_headers=['Authorization','Content-Type'])
+    app.add_middleware(NoStoreBoundary)
+    app.include_router(build_auth_router(authentication))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc):
+        # Pydantic's default details include raw submitted values: never echo those.
+        fields = {}
+        auth_request = request.url.path.startswith('/api/auth/')
+        for item in exc.errors():
+            location = item.get('loc', ())
+            field = str(location[1]) if len(location) > 1 and location[1] in (set(TripPreferences.model_fields) | ({'email','password'} if auth_request else set())) else 'form'
+            fields[field] = 'Check this preference.'
+        return error_response(400, 'VALIDATION_ERROR', ('Check the email and password fields.' if auth_request else 'Check the trip preferences and try again.'), fields)
+
+    recommendations = recommendation_service if recommendation_service is not None else ConfiguredRecommendationService()
+    router = APIRouter(prefix='/api', tags=['Recommendations'])
+
+    @router.post('/recommendations', response_model=RecommendationResponse)
+    async def recommend(preferences: TripPreferences):
+        # No save or trip listing here. Provider access must be configured explicitly.
+        try:
+            return await recommendations.recommend(preferences)
+        except RecommendationError as exc:
+            return error_response(exc.status, exc.code, exc.public_message, reason=exc.reason)
+        except Exception:
+            return error_response(502, 'AI_PROVIDER_FAILED', 'Recommendations could not be confirmed.')
+
+    app.include_router(router)
+
+    @app.get('/api/health')
+    async def health():
+        return {'status': 'ok', 'backend': 'fastapi'}
+
+    app.include_router(build_trip_router(storage))
+    app.include_router(build_itinerary_router(itinerary_service))
+    app.include_router(build_optimizer_router())
+
+    @app.post('/api/prompts/itinerary', response_model=PromptResponse)
+    async def preview_prompt(preferences: TripPreferences):
+        # Activity 3.2 only: no save, no AI call, no credentials or cost.
+        return build_itinerary_prompt(preferences)
+
+    return app
+
+app = create_app()

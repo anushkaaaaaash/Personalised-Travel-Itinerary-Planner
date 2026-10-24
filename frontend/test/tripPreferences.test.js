@@ -100,3 +100,14 @@ test('accepts finite decimal and exponent values supported by numeric controls',
     assert.equal(result.value.budget, expected);
   }
 });
+
+test('new optional controls have safe empty defaults and validated payload values', () => {
+  assert.equal(createInitialForm().travelStyle, '');
+  assert.equal(createInitialForm().mobilityConcerns, '');
+  const result = buildTripPayload({ ...validForm(), travelStyle: 'comfort', mobilityConcerns: '  Step-free access  ' });
+  assert.equal(result.valid, true);
+  assert.equal(result.value.travelStyle, 'comfort');
+  assert.equal(result.value.mobilityConcerns, 'Step-free access');
+  assert.ok(buildTripPayload({ ...validForm(), travelStyle: 'unknown' }).errors.travelStyle);
+  assert.ok(buildTripPayload({ ...validForm(), mobilityConcerns: 'x'.repeat(501) }).errors.mobilityConcerns);
+});

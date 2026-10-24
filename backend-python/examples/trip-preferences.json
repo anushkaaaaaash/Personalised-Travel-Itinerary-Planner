@@ -1,0 +1,14 @@
+{
+  "destination": "Goa",
+  "departureCity": "Mumbai",
+  "startDate": "2026-11-01",
+  "endDate": "2026-11-03",
+  "travelers": 2,
+  "budget": 30000,
+  "currency": "INR",
+  "interests": ["culture", "food"],
+  "dietaryNeeds": "vegetarian",
+  "travelPace": "balanced",
+  "travelStyle": "comfort",
+  "mobilityConcerns": "Avoid stairs where practical"
+}

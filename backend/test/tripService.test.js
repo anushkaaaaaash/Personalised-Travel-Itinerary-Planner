@@ -138,3 +138,16 @@ for (const id of [
     });
   });
 }
+
+test('optional prompt preferences are saved only inside existing TEXT preferences', async () => {
+  const fake = fakeClient({ data: { id: 42 }, error: null });
+  await createTripService({ getSupabase: () => fake.client })(preferences({
+    travelStyle: 'comfort', mobilityConcerns: '  Avoid stairs  ',
+  }));
+  const row = fake.calls[1][1];
+  assert.equal(Object.hasOwn(row, 'travelStyle'), false);
+  assert.equal(Object.hasOwn(row, 'mobilityConcerns'), false);
+  const details = JSON.parse(row.preferences);
+  assert.equal(details.travelStyle, 'comfort');
+  assert.equal(details.mobilityConcerns, 'Avoid stairs');
+});

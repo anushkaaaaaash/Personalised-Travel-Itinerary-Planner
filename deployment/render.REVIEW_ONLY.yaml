@@ -1,0 +1,28 @@
+# TEMPLATE ONLY. Do not submit/deploy until auth/RLS and live checks are approved.
+services:
+  - type: web
+    name: travel-planner-api
+    runtime: python
+    rootDir: backend-python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_MODE
+        value: production
+      - key: TRIP_OWNERSHIP_ENABLED
+        value: "false"
+      - key: TRIP_OWNERSHIP_SCHEMA_VERIFIED
+        value: "false"
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { PLANNER_STEPS, FINAL_STEP } from '../utils/plannerSteps.js';
 import { CURRENCIES, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 
-function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, step = 0, loading, saved = false, errors = {} }) {
+function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {} }) {
   const headingRef = useRef(null);
   const previousStep = useRef(step);
   useEffect(() => {
@@ -76,7 +76,7 @@ function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBac
           </label>
 
           <div className="field field--split">
-            <label htmlFor="trip-budget">Budget</label>
+            <label htmlFor="trip-budget">Total budget (whole group, entire trip)</label>
             <div className="budget-row">
               <select name="currency" value={form.currency} onChange={onChange} aria-label="Currency" {...feedback('currency')}>
                 {CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
@@ -126,6 +126,23 @@ function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBac
             </select>
             {errorFor('travelPace')}
           </label>
+          <label className="field">
+            <span>Travel style (optional)</span>
+            <select name="travelStyle" value={form.travelStyle ?? ''} onChange={onChange} {...feedback('travelStyle')}>
+              <option value="">No specific preference</option>
+              <option value="budget">Budget</option>
+              <option value="comfort">Comfort</option>
+              <option value="luxury">Luxury</option>
+            </select>
+            {errorFor('travelStyle')}
+          </label>
+          <label className="field">
+            <span>Mobility preferences (optional)</span>
+            <input name="mobilityConcerns" value={form.mobilityConcerns ?? ''} onChange={onChange}
+              maxLength={500} placeholder="For example: avoid stairs" {...feedback('mobilityConcerns')} />
+            <small>Share practical access preferences only; no medical details needed.</small>
+            {errorFor('mobilityConcerns')}
+          </label>
         </div>
 
         </>}
@@ -135,10 +152,12 @@ function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBac
             <dt>Departure city</dt><dd>{form.departureCity}</dd>
             <dt>Dates</dt><dd>{form.startDate} to {form.endDate}</dd>
             <dt>Travelers</dt><dd>{form.travelers}</dd>
-            <dt>Budget</dt><dd>{form.currency} {form.budget}</dd>
+            <dt>Total budget (whole group, entire trip)</dt><dd>{form.currency} {form.budget}</dd>
             <dt>Interests</dt><dd>{form.interests.length ? form.interests.map((id) => INTEREST_OPTIONS.find((item) => item.id === id)?.label || id).join(', ') : 'None selected'}</dd>
             <dt>Dietary needs</dt><dd>{form.dietaryNeeds || 'No specific preference'}</dd>
             <dt>Travel pace</dt><dd>{form.travelPace}</dd>
+            <dt>Travel style</dt><dd>{form.travelStyle || 'No specific preference'}</dd>
+            <dt>Mobility preferences</dt><dd>{form.mobilityConcerns || 'Not specified'}</dd>
           </dl>
           <p className="hint">Use Back to edit. Saving stores these preferences only; it does not generate an itinerary.</p>
         </section>}
@@ -147,9 +166,16 @@ function PlannerForm({ form, onChange, onToggleInterest, onSubmit, onSave, onBac
           {step < FINAL_STEP && <button className="generate-btn" type="submit" disabled={loading}>Next: {PLANNER_STEPS[step + 1].title}</button>}
         </div>
         {step === FINAL_STEP && <>
-        <button className="generate-btn" type="button" onClick={onSave} disabled={loading || saved}>
+        <button className="generate-btn" type="button" onClick={onSave} disabled={loading || saved || recommendationLoading || itineraryLoading}>
           {loading ? 'Saving preferences…' : saved ? 'Preferences saved' : 'Save trip preferences'}
         </button>
+        <button className="generate-btn" type="button" onClick={onRecommendations} disabled={loading || recommendationLoading || itineraryLoading}>
+          {recommendationLoading ? 'Generating AI recommendations…' : 'Generate AI recommendations (does not save)'}
+        </button>
+        <button className="generate-btn" type="button" onClick={onGenerateItinerary} disabled={loading || recommendationLoading || itineraryLoading}>
+          {itineraryLoading ? 'Generating AI day plan…' : 'Generate AI day-by-day itinerary (does not save)'}
+        </button>
+        <p className="hint">AI generation supports 1–14 days and sends these preferences to the configured AI provider. Saving is separate.</p>
         <button className="preview-btn" type="button" onClick={onPreview} disabled={loading}>
           Show sample preview (does not save)
         </button>

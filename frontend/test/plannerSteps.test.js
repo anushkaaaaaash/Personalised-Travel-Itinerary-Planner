@@ -59,3 +59,13 @@ test('final review validates all steps and routes to earliest invalid field', ()
 test('date ordering is validated on trip-details step', () => {
   assert.ok(validatePlannerStep({ ...validForm(), endDate: '2028-02-27' }, 0).endDate);
 });
+
+test('optional style and mobility errors block their step and route back there', () => {
+  const form = { ...validForm(), travelStyle: 'unknown', mobilityConcerns: 'x'.repeat(501) };
+  assert.equal(nextPlannerStep(form, 0).step, 1);
+  const result = nextPlannerStep(form, 1);
+  assert.equal(result.step, 1);
+  assert.ok(result.errors.travelStyle);
+  assert.ok(result.errors.mobilityConcerns);
+  assert.equal(firstErrorStep(result.errors), 1);
+});

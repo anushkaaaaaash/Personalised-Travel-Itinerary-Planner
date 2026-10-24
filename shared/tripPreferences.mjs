@@ -12,10 +12,13 @@ export const INTEREST_OPTIONS = Object.freeze([
 export const CURRENCIES = Object.freeze(['USD', 'EUR', 'INR']);
 export const DIETARY_NEEDS = Object.freeze(['', 'vegetarian', 'vegan', 'jain', 'halal']);
 export const TRAVEL_PACES = Object.freeze(['relaxed', 'balanced', 'fast']);
-export const PREFERENCE_FIELDS = Object.freeze([
+export const TRAVEL_STYLES = Object.freeze(['', 'budget', 'comfort', 'luxury']);
+export const OPTIONAL_PREFERENCE_FIELDS = Object.freeze(['travelStyle', 'mobilityConcerns']);
+export const REQUIRED_PREFERENCE_FIELDS = Object.freeze([
   'destination', 'departureCity', 'startDate', 'endDate', 'travelers',
   'budget', 'currency', 'interests', 'dietaryNeeds', 'travelPace',
 ]);
+export const PREFERENCE_FIELDS = Object.freeze([...REQUIRED_PREFERENCE_FIELDS, ...OPTIONAL_PREFERENCE_FIELDS]);
 
 /** Strict calendar validation: Date's automatic overflow normalization is not used. */
 export function isRealIsoDate(value) {
@@ -46,7 +49,7 @@ export function validateTripPreferences(input) {
   if (keys.some((key) => !('value' in Object.getOwnPropertyDescriptor(input, key)))) {
     return { valid: false, errors: { form: 'Submit plain trip preference values.' } };
   }
-  for (const field of PREFERENCE_FIELDS) {
+  for (const field of REQUIRED_PREFERENCE_FIELDS) {
     if (!Object.hasOwn(input, field)) errors[field] = 'This preference is required.';
   }
 
@@ -87,6 +90,18 @@ export function validateTripPreferences(input) {
     || new Set(input.interests).size !== input.interests.length) {
     errors.interests = 'Choose unique interests from the listed options.';
   } else value.interests = [...input.interests];
+
+  // Optional additions preserve legacy payloads without injecting new keys.
+  if (Object.hasOwn(input, 'travelStyle')) {
+    if (!TRAVEL_STYLES.includes(input.travelStyle)) errors.travelStyle = 'Choose a listed travel style.';
+    else value.travelStyle = input.travelStyle;
+  }
+  if (Object.hasOwn(input, 'mobilityConcerns')) {
+    if (typeof input.mobilityConcerns !== 'string' || input.mobilityConcerns.trim().length > 500
+      || /[\u0000-\u001f\u007f]/.test(input.mobilityConcerns)) {
+      errors.mobilityConcerns = 'Use at most 500 characters without control characters.';
+    } else value.mobilityConcerns = input.mobilityConcerns.trim();
+  }
 
   return Object.keys(errors).length ? { valid: false, errors } : { valid: true, value };
 }

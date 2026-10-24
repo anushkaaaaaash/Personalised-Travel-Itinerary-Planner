@@ -44,6 +44,8 @@ function createTripService({ getSupabase = defaultGetSupabase } = {}) {
         interests: value.interests,
         dietaryNeeds: value.dietaryNeeds,
         travelPace: value.travelPace,
+        ...(Object.hasOwn(value, 'travelStyle') ? { travelStyle: value.travelStyle } : {}),
+        ...(Object.hasOwn(value, 'mobilityConcerns') ? { mobilityConcerns: value.mobilityConcerns } : {}),
       }),
     };
 
