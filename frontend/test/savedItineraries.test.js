@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { savedRequest, snapshot, createSavedOperation } from '../src/services/savedItineraries.js';
+import { savedRequest, snapshot, createSavedOperation, createPendingSaveRecovery } from '../src/services/savedItineraries.js';
 import { PlannerRequestError } from '../src/services/readRequest.js';
 import { createInitialForm } from '../src/utils/tripPreferences.js';
 const id='32345678-1234-1234-1234-123456789abc';
@@ -51,4 +51,82 @@ test('write failure retains local input and reports uncertainty',async()=>{
  const outcome=await op.run({action:'update',record:current});
  assert.match(outcome.error,/unconfirmed/);assert.equal(JSON.stringify(current),before);
  assert.equal(states.at(-1).busy,false);assert.ok(!outcome.error.includes('PRIVATE_NETWORK_DETAIL'));
+});
+
+test('uncertain create then confirmed 404 permits only explicit same-ID original-snapshot retry',async()=>{
+ const recovery=createPendingSaveRecovery(),record=snapshot('Saved test',p,plan());
+ const original=JSON.stringify(record),calls=[];
+ recovery.begin(id,record);
+ const request=(input,options)=>savedRequest(input,{...options,fetchImpl:async(url,options)=>{
+  calls.push({url,options});
+  if(calls.length===1)throw new Error('PRIVATE_NETWORK_FAILURE');
+  if(calls.length===2)return {status:404,json:async()=>({error:{message:'PRIVATE_DETAIL'}})};
+  assert.deepEqual(JSON.parse(options.body),{...JSON.parse(original),id});
+  return {status:200,json:async()=>detail()};
+ }});
+ const op=createSavedOperation(()=>{},request);
+ recovery.reconcile(id,await op.run({action:'create',id,record}));
+ assert.equal(recovery.view().retryAllowed,false);assert.throws(()=>recovery.retry());
+ // Edits made after the uncertain request must not alter its stored retry snapshot.
+ record.title='New local title';record.itinerary.days[0].activities[0].notes='New local note';
+ const edited=JSON.stringify(record);
+ const absent=await op.run({action:'load',id});assert.equal(absent.status,404);
+ recovery.reconcile(id,absent,{checked:true});
+ assert.equal(recovery.view().retryAllowed,true);assert.equal(calls.length,2);
+ const retry=recovery.retry();assert.equal(retry.id,id);assert.equal(JSON.stringify(retry.record),original);
+ assert.throws(()=>recovery.retry()); // double click cannot obtain a second retry
+ recovery.reconcile(id,await op.run(retry));
+ assert.equal(recovery.view(),null);assert.equal(calls.length,3);assert.equal(JSON.stringify(record),edited);
+});
+
+test('successful pending reconciliation resolves metadata only and preserves newer editor and selection',()=>{
+ const recovery=createPendingSaveRecovery(),record=snapshot('Saved test',p,plan());
+ recovery.begin(id,record);
+ const editor={...record,title:'Newer local work'},selected={id:'42345678-1234-1234-1234-123456789abc',version:8};
+ const before=JSON.stringify({editor,selected});
+ const result=recovery.reconcile(id,{result:detail()},{checked:true});
+ assert.deepEqual(result,{resolved:true});assert.equal(result.result,undefined);
+ assert.equal(JSON.stringify({editor,selected}),before);assert.equal(recovery.view(),null);
+});
+
+test('network, auth, server errors and ignored checks never authorize a retry',async()=>{
+ for(const status of [401,403,500,503,undefined]) {
+  const recovery=createPendingSaveRecovery();recovery.begin(id,snapshot('Saved test',p,plan()));
+  const op=createSavedOperation(()=>{},(input,options)=>savedRequest(input,{...options,fetchImpl:async()=>{
+   if(status===undefined)throw new Error('network');
+   return {status,json:async()=>({error:{message:'not found PRIVATE'}})};
+  }}));
+  recovery.reconcile(id,await op.run({action:'load',id}),{checked:true});
+  assert.equal(recovery.view().retryAllowed,false);assert.throws(()=>recovery.retry());
+  recovery.reconcile(id,{ignored:true,status:404},{checked:true});assert.equal(recovery.view().retryAllowed,false);
+ }
+});
+
+test('late first commit conflicts with same-ID retry and is reconciled without another insert',async()=>{
+ const recovery=createPendingSaveRecovery(),record=snapshot('Saved test',p,plan());
+ recovery.begin(id,record);recovery.reconcile(id,{error:'missing',status:404},{checked:true});
+ const calls=[];
+ const op=createSavedOperation(()=>{},(input,options)=>savedRequest(input,{...options,fetchImpl:async(url,options)=>{
+  calls.push(options.method);
+  if(options.method==='POST'){
+   assert.equal(JSON.parse(options.body).id,id);
+   return {status:409,json:async()=>({error:{message:'duplicate'}})};
+  }
+  return {status:200,json:async()=>detail()};
+ }}));
+ recovery.reconcile(id,await op.run(recovery.retry()));
+ assert.equal(recovery.view().retryAllowed,false);
+ recovery.reconcile(id,await op.run({action:'load',id}),{checked:true});
+ assert.equal(recovery.view(),null);assert.deepEqual(calls,['POST','GET']);
+});
+
+test('logout/disposal and wrong-operation results cannot revive pending recovery',async()=>{
+ const recovery=createPendingSaveRecovery();recovery.begin(id,snapshot('Saved test',p,plan()));
+ let finish;const op=createSavedOperation(()=>{},()=>new Promise(resolve=>finish=resolve));
+ const loading=op.run({action:'load',id});
+ assert.deepEqual(await op.run({action:'load',id}),{ignored:true});
+ assert.deepEqual(recovery.reconcile('42345678-1234-1234-1234-123456789abc',{status:404},{checked:true}),{ignored:true});
+ op.dispose();recovery.dispose();finish(detail());
+ assert.deepEqual(recovery.reconcile(id,await loading,{checked:true}),{ignored:true});
+ assert.equal(recovery.view(),null);assert.throws(()=>recovery.retry());
 });

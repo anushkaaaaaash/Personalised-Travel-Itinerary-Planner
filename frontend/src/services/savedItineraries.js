@@ -73,9 +73,40 @@ export function createSavedOperation(onState, request = savedRequest) {
       } catch(error) {
         if (disposed || active!==controller || controller.signal.aborted) return {ignored:true};
         const message=error instanceof PlannerRequestError ? error.message : failure(502);
-        onState({busy:false,error:message}); return {error:message};
+        onState({busy:false,error:message});
+        return {error:message,...(error instanceof PlannerRequestError && error.status ? {status:error.status} : {})};
       } finally { if(active===controller)active=null; }
     },
     dispose(){disposed=true;active?.abort();active=null;},
+  };
+}
+
+// Recovery keeps the original operation identity and snapshot, independent of the editor.
+// A confirmed absence permits a user-triggered retry, never a new UUID or automatic write.
+export function createPendingSaveRecovery() {
+  let pending=null;
+  const clone=value=>JSON.parse(JSON.stringify(value));
+  return {
+    view:()=>pending ? {id:pending.id,title:pending.record.title,retryAllowed:pending.absent} : null,
+    begin(id,record) {
+      if(pending || !uuid(id))throw invalid();
+      pending={id,record:clone(record),absent:false};
+    },
+    reconcile(id,outcome,{checked=false}={}) {
+      if(!pending || pending.id!==id || outcome.ignored)return {ignored:true};
+      if(outcome.result) {
+        if(outcome.result.id!==id)throw invalid();
+        pending=null;
+        return {resolved:true};
+      }
+      pending.absent=checked && outcome.status===404;
+      return {resolved:false};
+    },
+    retry() {
+      if(!pending?.absent)throw invalid();
+      pending.absent=false;
+      return {action:'create',id:pending.id,record:clone(pending.record)};
+    },
+    dispose(){pending=null;},
   };
 }

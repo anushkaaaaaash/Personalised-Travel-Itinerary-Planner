@@ -1,6 +1,11 @@
 import { sessionFetch } from './session.js';
 /** Cancellable, duplicate-safe read/generation request. Never writes preferences. */
-export class PlannerRequestError extends Error {}
+export class PlannerRequestError extends Error {
+  constructor(message, { status } = {}) {
+    super(message);
+    if (Number.isInteger(status) && status >= 400 && status <= 599) this.status = status;
+  }
+}
 export function createReadRequest({ request, onStateChange }) {
   let active = null;
   let disposed = false;
@@ -58,7 +63,7 @@ export async function requestJson(path, { method = 'GET', payload, fetchImpl = s
       let diagnostic = { kind: 'http' };
       try { diagnostic = safeDiagnostic(await response.json()); } catch { /* Unknown error body stays masked. */ }
       if (controller.signal.aborted) throw new Error('Canceled');
-      throw new PlannerRequestError(failure(response.status, diagnostic));
+      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status });
     }
     let body;
     try { body = await response.json(); }
