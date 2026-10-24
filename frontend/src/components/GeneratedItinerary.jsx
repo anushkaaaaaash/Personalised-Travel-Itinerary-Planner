@@ -2,14 +2,8 @@ import RouteSummary from './RouteSummary.jsx';
 import ItineraryEditor from './ItineraryEditor.jsx';
 import RefinementControls from './RefinementControls.jsx';
 import { COST_LABELS } from '../services/itineraries.js';
-export function downloadItinerary(result, documentImpl = document, urlImpl = URL) {
-  const blob = new Blob([JSON.stringify({ ...result, notice: 'AI-generated estimates, not bookings. Verify costs, hours, dietary suitability and accessibility. This file is not a saved database itinerary.' }, null, 2)], { type: 'application/json' });
-  const url = urlImpl.createObjectURL(blob);
-  const anchor = documentImpl.createElement('a');
-  anchor.href = url; anchor.download = 'travel-itinerary.json';
-  documentImpl.body.appendChild(anchor); anchor.click(); anchor.remove();
-  setTimeout(() => urlImpl.revokeObjectURL(url), 1000);
-}
+import ItinerarySharing from './ItinerarySharing.jsx';
+export { downloadItinerary } from '../services/itineraryExport.js';
 const money = (currency, value) => `${currency} ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 export default function GeneratedItinerary({ loading, error, result, onRetry, onCancel, onEditDay, edited = false, refinement = {}, onRefine, onCancelRefine, optimization = {}, onOptimize, onCancelOptimize, preferences, confirmedCoordinates = [], onConfirmCoordinate }) {
   if (loading) return <section className="card" aria-busy="true"><h2>Your AI day plan</h2><p role="status">Generating and validating your itinerary…</p><button className="preview-btn" onClick={onCancel}>Cancel generation</button></section>;
@@ -21,7 +15,7 @@ export default function GeneratedItinerary({ loading, error, result, onRetry, on
       <p className="hint">Unverified AI explanation — may contain claims inconsistent with the timeline:</p><p>{result.explanation}</p>{edited && <p role="status">Includes your unsaved local edits. Original AI costs have not been recalculated.</p>}<p className="hint">Provider: {result.provider} · Model: {result.model}. Estimates cover the whole group. Verify prices, opening hours, dietary suitability and accessibility directly.</p>
       <ul aria-label="Itinerary warnings">{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
       {result.status === 'infeasible' && <p>No day plan was accepted. Use Back to adjust your budget, dates or preferences, then generate again.</p>}
-      {result.status === 'planned' && <div className="step-actions export-actions"><button className="preview-btn" onClick={() => downloadItinerary({ ...result, userEdited: edited, ...(preferences ? { preferences } : {}) })}>Download itinerary JSON</button><button className="preview-btn" onClick={() => window.print()}>Print / save PDF</button></div>}
+      {result.status === 'planned' && <ItinerarySharing result={result} preferences={preferences} edited={edited}/>}
       <p className="hint">Export stays on your device. Generation and export do not save to your account. Use My saved full itineraries for explicit storage and confirmed saved revisions.</p>
     </article>
     {result.refinementSummary && <article className="card"><h3>Computed refinement checks</h3><p>Scope: {result.refinementSummary.scope === 'day' ? `Only ${result.refinementSummary.targetDate}` : 'Whole itinerary'}. Maximum main activities per day: {result.refinementSummary.maxMainActivitiesPerDay ?? 'No new limit requested'}.</p><ul>{result.days.filter(d => !result.refinementSummary.targetDate || d.date === result.refinementSummary.targetDate).map(d => <li key={d.date}>{d.date}: {d.mainActivityCount} main activities</li>)}</ul><p className="hint">These checks cover structured counts and requested limits, not the truth of narrative claims, venue accessibility, schedules or availability. Counts come from the structured day plan, not the AI explanation. For a requested hard limit, main activities are counted from explicit activity kinds. Unknown kinds do not satisfy a hard limit; kinds are not inferred from titles.</p></article>}

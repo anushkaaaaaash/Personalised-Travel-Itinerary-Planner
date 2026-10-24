@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { requestJson, PlannerRequestError } from '../services/readRequest.js';
 import { getSession, setSession, subscribeSession } from '../services/session.js';
-import PlannerPage from '../pages/PlannerPage.jsx';
+import PlannerRoutes from './PlannerRoutes.jsx';
 const failure = status => status === 503 ? 'Account access is not configured. Check the backend setup.' : status === 429 ? 'Too many attempts. Please wait before retrying.' : status === 504 ? 'Account request timed out. Please retry when ready.' : 'Account request failed. Check your details or confirm your email, then retry.';
 export default function AuthBoundary() {
   const [config, setConfig] = useState(null), [configError, setConfigError] = useState('');
@@ -56,6 +56,6 @@ export default function AuthBoundary() {
       {!config.enabled && <p className="hint">Account registration and sign-in are not configured.</p>}
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     </aside>
-    {allowed && <PlannerPage key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} />}
+    {allowed && <PlannerRoutes key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} />}
   </>;
 }

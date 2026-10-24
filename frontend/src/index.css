@@ -434,6 +434,8 @@ select {
 .history-preferences dd { margin: 0; }
 .day-notes { margin-top: 1rem; }
 .export-actions { flex-wrap: wrap; }
+.itinerary-sharing textarea { width: 100%; font: inherit; white-space: pre-wrap; }
+.itinerary-sharing button { display: inline-flex; align-items: center; gap: 0.4rem; }
 button:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
 @media print {
   body { background: white; }
