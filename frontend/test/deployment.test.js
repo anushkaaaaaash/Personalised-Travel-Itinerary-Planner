@@ -15,3 +15,13 @@ test('review-only SPA deployment handles direct detail links and root workspace 
   const config=JSON.parse(fs.readFileSync(new URL('../../deployment/vercel.REVIEW_ONLY.json',import.meta.url)));
   assert.equal(config.outputDirectory,'frontend/dist');assert.deepEqual(config.rewrites,[{source:'/(.*)',destination:'/index.html'}]);assert.equal(config.installCommand,'npm ci --ignore-scripts');
 });
+
+test('active frontend-root Vercel configuration serves SPA routes without backend services',()=>{
+  const config=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url)));
+  assert.deepEqual(config,{rewrites:[{source:'/(.*)',destination:'/index.html'}]});
+  const pattern=new RegExp(`^${config.rewrites[0].source}$`);
+  for(const path of ['/','/itineraries/00000000-0000-4000-8000-000000000001']) {
+    assert.ok(pattern.test(path));
+    assert.equal(config.rewrites[0].destination,'/index.html');
+  }
+});
