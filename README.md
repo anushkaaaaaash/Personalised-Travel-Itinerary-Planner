@@ -11,8 +11,7 @@ preserved for reference; root `npm run dev` still starts that legacy backend.
 Groq refinement uses `openai/gpt-oss-120b`; generation/recommendations use the configured
 Groq model (default `openai/gpt-oss-20b`). The backend enforces structured constraints,
 but AI narrative, costs, opening hours and accessibility remain unverified estimates.
-Itineraries are not saved automatically. Local mode is for one trusted operator;
-auth schemas are implemented, but production accounts/ownership migration are not activated.
+Itineraries are not saved automatically. Activity 5.1 adds explicit account-scoped full-itinerary CRUD in a separate table; legacy preference history remains project-wide in local mode. Public deployment is not configured. See [Activity 5.1 setup and verification](backend-python/ACTIVITY_5_1.md).
 
 See [current completion and validation](EPICS_3_4_COMPLETION.md) and
 [FastAPI setup](backend-python/README.md). Earlier Activity documents describe historical
@@ -30,7 +29,7 @@ In a second terminal run `npm run dev --workspace=frontend` and open
 `http://localhost:5173/`. Keep `VITE_API_BASE_URL=/api` in local frontend configuration.
 Do not run Express and FastAPI on the same port. Environment templates contain no
 usable credentials; local configuration is excluded from Git. SQL and deployment
-files marked `REVIEW_ONLY` are drafts, not applied migrations or deployed services.
+files marked `REVIEW_ONLY` require project-specific review and are never run automatically. The Activity 5.1 migration was manually applied in the configured QA project; deployment drafts remain unapplied. For full-itinerary authentication, use the explicit env-file startup in the Activity 5.1 guide.
 
 ## Historical Express setup and project reference
 

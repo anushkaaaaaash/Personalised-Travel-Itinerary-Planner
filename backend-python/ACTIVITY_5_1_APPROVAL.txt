@@ -1,0 +1,12 @@
+Activity 5.1 setup review checklist
+
+The configured development project was manually migrated with explicit approval and its resulting schema, RLS policies, grants and version trigger were inspected. Live synthetic QA was separately authorized. These facts do not mean this migration has run in another checkout or project.
+
+Before applying migrations/002_saved_itineraries_REVIEW_ONLY.sql elsewhere:
+1. Verify the intended Supabase project and that the new table/function do not already exist. Inspect default PUBLIC grants and inherited role privileges. The script revokes all direct anon/authenticated grants, then gives authenticated only CRUD. Unexpected PUBLIC/inherited privileges need review before execution; RLS does not restrict TRUNCATE.
+2. Approve creating only saved_itineraries, its index, four owner policies, and version trigger/function. Existing trips, policies and legacy ownership stay unchanged. Execute once transactionally and inspect an uncertain result before any retry.
+3. Verify columns, constraints, enabled/forced RLS, owner policies, effective grants and trigger definition. Only then enable SAVED_ITINERARIES_SCHEMA_VERIFIED.
+4. Configure an existing public publishable/anon key locally for authentication. Never use service credentials for user CRUD or expose them in the frontend. Keep local mode and legacy ownership disabled unless separately reviewed.
+5. Account creation, credential changes, live synthetic writes and permanent deletion each need their own authorization. Delete is permanent; confirm exact records before cleanup. Never assign unknown legacy records to a new user.
+
+See ACTIVITY_5_1.md for architecture, startup, verification evidence and limits. No automatic migration, account creation, test-data cleanup or deployment is part of startup.

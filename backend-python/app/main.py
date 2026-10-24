@@ -33,13 +33,13 @@ class JsonBoundary:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope['type'] != 'http' or scope['method'] != 'POST':
+        if scope['type'] != 'http' or scope['method'] not in {'POST','PUT','PATCH','DELETE'}:
             return await self.app(scope, receive, send)
         headers = dict(scope['headers'])
         media = headers.get(b'content-type', b'').split(b';')[0].strip().lower()
         if media != b'application/json':
             return await error_response(415, 'UNSUPPORTED_MEDIA_TYPE', 'Send preferences as JSON.')(scope, receive, send)
-        body_limit = 128 * 1024 if scope.get('path') in {'/api/itineraries/refine','/api/itineraries/optimize'} else LIMIT
+        body_limit = 128 * 1024 if (scope.get('path') in {'/api/itineraries/refine','/api/itineraries/optimize'} or scope.get('path','').startswith('/api/saved-itineraries')) else LIMIT
         body = bytearray()
         while True:
             message = await receive()
@@ -54,17 +54,19 @@ class JsonBoundary:
             return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
         await self.app(scope, replay, send)
 
-def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None):
+def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None):
     app = FastAPI(title='Travel planner API', version='0.4.0')
     storage = store if store is not None else SupabaseTripStore()
     app.add_middleware(JsonBoundary)
     authentication = auth_service if auth_service is not None else SupabaseAuthService()
     app.add_middleware(AccessBoundary, auth_service=authentication, ownership_supported=callable(getattr(storage, 'for_user', None)))
     app.add_middleware(CORSMiddleware, allow_origins=configured_frontend_origins(),
-        allow_credentials=False, allow_methods=['GET','POST','OPTIONS'],
+        allow_credentials=False, allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
         allow_headers=['Authorization','Content-Type'])
     app.add_middleware(NoStoreBoundary)
     app.include_router(build_auth_router(authentication))
+    from .saved_itineraries import build_saved_itinerary_router
+    app.include_router(build_saved_itinerary_router(authentication,saved_client_factory))
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc):
