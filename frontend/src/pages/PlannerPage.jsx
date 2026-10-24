@@ -8,6 +8,7 @@ import { optimizeItinerary } from '../services/routeOptimization.js';
 import ImportItinerary from '../components/ImportItinerary.jsx';
 import GeneratedItinerary from '../components/GeneratedItinerary.jsx';
 import TripHistory from '../components/TripHistory.jsx';
+import SavedItineraries from '../components/SavedItineraries.jsx';
 import { createReadRequest } from '../services/readRequest.js';
 import { generateItinerary, refineItinerary } from '../services/itineraries.js';
 import { listTrips, getTrip } from '../services/tripHistory.js';
@@ -19,7 +20,7 @@ import { createTripSubmission } from '../services/tripSubmission.js';
 import { buildPreviewItinerary } from '../utils/buildPreviewItinerary.js';
 import { buildTripPayload, createInitialForm } from '../utils/tripPreferences.js';
 
-function PlannerPage({ ownershipEnabled = false }) {
+function PlannerPage({ ownershipEnabled = false, signedIn = false }) {
   const reducedMotion = useReducedMotion();
   const [confirmedCoordinates, setConfirmedCoordinates] = useState([]);
   const [imported, setImported] = useState(null);
@@ -244,6 +245,7 @@ function PlannerPage({ ownershipEnabled = false }) {
           savedTrip={submission.savedTrip}
           generated={Boolean(generation.result)}
         />
+        <SavedItineraries signedIn={signedIn} preferences={buildTripPayload(form).valid ? buildTripPayload(form).value : null} itinerary={generation.result} plannerBusy={submission.loading || generation.loading || refinement.loading || optimization.loading} onLoad={record => { clearPreviousResult(); setForm({ ...createInitialForm(), ...record.preferences }); setGeneration({ loading: false, error: '', result: record.itinerary }); setEdited(false); setStep(FINAL_STEP); }} />
         <TripHistory onCancelHistory={() => historyRef.current?.reset()} ownershipEnabled={ownershipEnabled} history={history} detail={detail} saving={submission.loading} onLoad={handleHistory} onSelect={(id) => { if (!submissionRef.current?.isBusy()) void detailRef.current?.submit(id); }} onPrefill={handlePrefill} onClose={() => detailRef.current?.reset()} onCancel={() => detailRef.current?.reset()} />
         </div>
       </main>

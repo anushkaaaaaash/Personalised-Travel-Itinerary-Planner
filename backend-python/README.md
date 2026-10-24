@@ -1,3 +1,5 @@
+> Current Activity 5.1 full-itinerary storage, local authentication startup, and verification are documented in [ACTIVITY_5_1.md](ACTIVITY_5_1.md). The earlier checkpoints below are historical.
+
 # FastAPI preference capture + structured prompts
 
 This is an additive backend for the **separate FastAPI working copy**. The existing

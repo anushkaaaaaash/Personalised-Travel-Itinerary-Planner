@@ -150,7 +150,7 @@ test('real AI itinerary displays days, budget warnings and local export without 
   const { default: GeneratedItinerary } = await server.ssrLoadModule('/src/components/GeneratedItinerary.jsx');
   const result = { source: 'ai', saved: false, status: 'planned', destination: 'Kyoto <script>', provider: 'fixture', model: 'test', currency: 'USD', travelPace: 'balanced', explanation: 'Plan', warnings: ['Verify prices'], estimatedTotalGroupCost: 100, remainingBudget: 200, days: [{ date: '2028-01-01', mainActivityCount: 2, morning: '<img src=x>', afternoon: 'Garden', evening: 'Rest', dining: 'Dinner', transitAndRest: 'Breaks', dietaryNotes: 'Check menu', mobilityNotes: 'Check stairs', costs: { accommodation: 40, meals: 20, localTransport: 10, activities: 20, departureTravel: 10 } }] };
   const html = render(GeneratedItinerary, { result });
-  for (const text of ['AI-generated · not saved or booked', 'Day 1', 'Estimated whole-trip budget', 'USD 100', 'USD 200', 'Download itinerary JSON', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
+  for (const text of ['Planning copy · not booked', 'Day 1', 'Estimated whole-trip budget', 'USD 100', 'USD 200', 'Download itinerary JSON', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
   assert.ok(!html.includes('Trip preferences saved'));
   const failed = render(GeneratedItinerary, { result, error: 'Not configured' });
   assert.ok(!failed.includes('Day 1')); assert.ok(failed.includes('Retry itinerary generation'));

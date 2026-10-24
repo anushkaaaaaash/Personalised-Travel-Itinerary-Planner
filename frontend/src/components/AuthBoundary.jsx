@@ -50,12 +50,12 @@ export default function AuthBoundary() {
   const allowed = (config.mode === 'local' && !config.ownership_enabled) || (config.ownership_enabled && Boolean(session));
   return <>
     <aside className="account-shell card" aria-label="Account access"><h2>{config.mode === 'local' ? 'Private local planner' : 'Your planner account'}</h2>
-      <p className="hint">{config.mode === 'local' && !config.ownership_enabled ? 'Local mode is for one trusted operator. Saved trips may be project-wide; signing in does not imply ownership isolation.' : 'Account access is required. Sessions are kept in memory only.'}</p>
+      <p className="hint">{config.mode === 'local' && !config.ownership_enabled ? 'Local mode is for one trusted operator. Legacy preference-only history is project-wide. My saved full itineraries uses separate account-scoped storage. Public deployment is not configured.' : 'Account access is required. Sessions are kept in memory only.'}</p>
       {config.mode === 'production' && !config.ownership_enabled && <p role="alert">Planner access is blocked until owner-scoped storage is configured.</p>}
       {config.enabled && (session ? <div><p>Signed in as {session.user.email || 'your account'}</p><button className="preview-btn" onClick={logout} disabled={busy}>Sign out and clear planner</button></div> : <details open={config.mode === 'production' || config.ownership_enabled}><summary>Sign in or register</summary><form onSubmit={submit} className="account-form"><label className="field">Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label><label className="field">Password<input type="password" required minLength={8} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label><button className="generate-btn" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register account'}</button><button type="button" className="preview-btn" disabled={busy} onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setPassword(''); }}>{mode === 'login' ? 'Switch to registration' : 'Switch to sign in'}</button></form></details>)}
       {!config.enabled && <p className="hint">Account registration and sign-in are not configured.</p>}
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     </aside>
-    {allowed && <PlannerPage key={epoch} ownershipEnabled={config.ownership_enabled} />}
+    {allowed && <PlannerPage key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} />}
   </>;
 }
