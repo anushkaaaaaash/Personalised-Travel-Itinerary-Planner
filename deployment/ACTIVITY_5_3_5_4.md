@@ -14,6 +14,12 @@ CI performs offline Python/JS tests, deterministic lockfile installation, a host
 
 ## Required deployment configuration (broader Activity 5.4 is queued)
 
+### Vercel frontend-only project
+
+Use a single Vite project with Root Directory `frontend`, Node.js 24.x, and **Include source files outside of the Root Directory in the Build Step** enabled. Set Install Command to `cd .. && npm ci --ignore-scripts`, Build Command to `npm run build`, and Output Directory to `dist`. The root lockfile and workspace installation are required; frontend imports `shared/` and `deployment/frontend_config.mjs` outside its directory.
+
+`frontend/vercel.json` is the active SPA rewrite configuration for this layout, allowing direct `/itineraries/:id` navigation to load the app. It declares no backend services or API proxy. Set only the public `VITE_API_BASE_URL` to the verified Render HTTPS endpoint ending in `/api`; backend credentials belong exclusively on Render. Do not deploy the autodetected Express or FastAPI Services entries to Vercel. The older `deployment/vercel.REVIEW_ONLY.json` describes an alternative repository-root build and is not automatically loaded; do not mix its `frontend/dist` output setting with a frontend-root project. Cloud deployment and direct-route acceptance remain separate from local configuration tests.
+
 Render must use `PYTHON_VERSION=3.13.7`, matching the locally verified Python interpreter. Render supports a fully qualified released version through this environment variable ([official runtime documentation](https://render.com/docs/python-version)); do not rely on its changing default. CI also checks the current Python 3.13 patch. A future runtime upgrade requires testing before changing this pin.
 
 Provider settings use typed Pydantic models and `SecretStr`. Environment/process values win over the separate project's legacy local fallback file. `uvicorn --env-file backend-python/.env.local` explicitly loads local auth settings into the process; existing process variables win according to dotenv behavior. Staging/production use process environment only, with `APP_MODE=production` and `APP_ENV=staging` or `production`. No actual environment files are committed or modified by this change.
