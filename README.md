@@ -19,6 +19,8 @@ checkpoints and may contain superseded installation/publication restrictions.
 
 ## Current Windows startup
 
+Activity 5.2 adds private saved-itinerary detail pages and local summary/JSON/print exports. See [sharing, privacy and verification](ACTIVITY_5_2.md). The frontend requires Node 20 or newer.
+
 From this repository root, using the existing `backend-python.venv` environment:
 
 ```powershell

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { createInitialForm } from '../src/utils/tripPreferences.js';
 import { buildPreviewItinerary } from '../src/utils/buildPreviewItinerary.js';
+import { plan as sharePlan } from './shareFixture.js';
 
 let server;
 let PlannerPage;
@@ -26,6 +27,23 @@ before(async () => {
 after(async () => { await server?.close(); });
 const render = (component, props = {}) => renderToStaticMarkup(React.createElement(component, props));
 const formHandlers = { onChange() {}, onToggleInterest() {}, onSubmit() {}, onSave() {}, onBack() {}, onPreview() {} };
+
+test('detail URLs require sign-in even in local mode and keep a return path', async () => {
+  const { MemoryRouter } = await server.ssrLoadModule('react-router-dom');
+  const { default: PlannerRoutes } = await server.ssrLoadModule('/src/components/PlannerRoutes.jsx');
+  const html=renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:['/itineraries/32345678-1234-1234-1234-123456789abc']},React.createElement(PlannerRoutes,{signedIn:false,ownershipEnabled:false})));
+  assert.ok(html.includes('Sign in to open your saved itinerary'));
+  assert.ok(html.includes('stays selected after sign-in'));
+  assert.ok(!html.includes('Regenerate local plan'));
+});
+
+test('router matches private detail parameters and unknown pages',async()=>{
+  const { MemoryRouter } = await server.ssrLoadModule('react-router-dom');
+  const { default: PlannerRoutes } = await server.ssrLoadModule('/src/components/PlannerRoutes.jsx');
+  const renderPath=path=>renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:[path]},React.createElement(PlannerRoutes,{signedIn:true,ownershipEnabled:false})));
+  assert.ok(renderPath('/itineraries/32345678-1234-1234-1234-123456789abc').includes('Private saved itinerary'));
+  assert.ok(renderPath('/not-a-route').includes('Page not found'));
+});
 
 test('initial page shows only first step, with no save or sample action', () => {
   const html = render(PlannerPage).match(/<form[\s\S]*?<\/form>/)[0];
@@ -180,7 +198,7 @@ test('JSON export creates a local file, includes non-booking notice and revokes 
   const { downloadItinerary } = await server.ssrLoadModule('/src/components/GeneratedItinerary.jsx');
   let blob, clicked = false, removed = false, revoked = false;
   const anchor = { click() { clicked = true; }, remove() { removed = true; } };
-  downloadItinerary({ source: 'ai', saved: false, days: [] }, { createElement: () => anchor, body: { appendChild() {} } }, { createObjectURL(value) { blob = value; return 'blob:fixture'; }, revokeObjectURL(url) { assert.equal(url, 'blob:fixture'); revoked = true; } });
+  downloadItinerary(sharePlan(), { createElement: () => anchor, body: { appendChild() {} } }, { createObjectURL(value) { blob = value; return 'blob:fixture'; }, revokeObjectURL(url) { assert.equal(url, 'blob:fixture'); revoked = true; } });
   assert.equal(anchor.download, 'travel-itinerary.json'); assert.equal(clicked, true); assert.equal(removed, true);
   const contents = JSON.parse(await blob.text()); assert.equal(contents.saved, false); assert.match(contents.notice, /not bookings/);
   await new Promise(r => setTimeout(r, 1050)); assert.equal(revoked, true);

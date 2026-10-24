@@ -1,3 +1,4 @@
 import AuthBoundary from './components/AuthBoundary.jsx';
-function App() { return <AuthBoundary />; }
+import { BrowserRouter } from 'react-router-dom';
+function App() { return <BrowserRouter><AuthBoundary /></BrowserRouter>; }
 export default App;

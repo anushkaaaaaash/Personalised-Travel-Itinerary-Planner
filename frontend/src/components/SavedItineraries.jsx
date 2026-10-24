@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { createSavedOperation, createPendingSaveRecovery, snapshot } from '../services/savedItineraries.js';
 export default function SavedItineraries({ signedIn=false, preferences, itinerary, plannerBusy=false, onLoad }) {
   const [state,setState]=useState({busy:false,error:''}), [title,setTitle]=useState('');
@@ -79,7 +80,7 @@ export default function SavedItineraries({ signedIn=false, preferences, itinerar
       {pending && <button className="preview-btn" disabled={busy} onClick={checkPending}>Check pending save</button>}
       {pending?.retryAllowed && <button className="preview-btn" disabled={busy} onClick={()=>setConfirm({action:'retry',fingerprint})}>Retry original save</button>}</div>
       {confirm && <div role="group" aria-label="Confirm saved itinerary operation"><p>{confirm.action==='retry'?'Retry the original snapshot with its original save ID? Current editor changes will not be saved by this retry.':confirm.action==='delete'?'Delete this saved record from your account? This cannot be undone here. Your local plan stays open.':confirm.action==='update'?'Replace the selected saved revision with the current complete plan and preferences?':'Save this complete plan and preferences as a new record in your account?'}</p><button disabled={busy} onClick={commit}>Confirm {confirm.action}</button><button disabled={state.busy} onClick={()=>setConfirm(null)}>Cancel</button></div>}
-      {page && <><ul>{page.items.map(item=><li key={item.id}>{item.title} · revision {item.version} · {item.updatedAt} <button disabled={busy} onClick={()=>load(item.id)}>Load for editing</button></li>)}</ul>{!page.items.length && <p>No saved full itineraries on this page.</p>}<button disabled={busy || page.offset===0} onClick={()=>loadPage(Math.max(0,page.offset-20))}>Previous saved page</button><button disabled={busy || !page.hasMore} onClick={()=>loadPage(page.offset+20)}>Next saved page</button></>}
+      {page && <><ul>{page.items.map(item=><li key={item.id}>{item.title} · revision {item.version} · {item.updatedAt} <button disabled={busy} onClick={()=>load(item.id)}>Load for editing</button> <Link to={`/itineraries/${item.id}`} onClick={e=>{if(busy||!window.confirm('Open the saved detail page? Unsaved local planner changes will not follow.'))e.preventDefault();}}>View details and share</Link></li>)}</ul>{!page.items.length && <p>No saved full itineraries on this page.</p>}<button disabled={busy || page.offset===0} onClick={()=>loadPage(Math.max(0,page.offset-20))}>Previous saved page</button><button disabled={busy || !page.hasMore} onClick={()=>loadPage(page.offset+20)}>Next saved page</button></>}
     </>}
     {state.busy && <p role="status">Waiting for confirmed storage response…</p>}{state.error && <p role="alert">{state.error}</p>}{notice && <p role="status">{notice}</p>}
   </section>;
