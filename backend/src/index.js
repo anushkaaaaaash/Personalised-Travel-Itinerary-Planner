@@ -1,18 +1,8 @@
-const express = require('express');
-const cors = require('cors');
+const { createApp } = require('./app');
 const { env } = require('./config/env');
-const routes = require('./routes');
 
-const app = express();
+const app = createApp();
 
-app.use(
-  cors({
-    origin: env.clientOrigin,
-  })
-);
-app.use(express.json());
-app.use('/api', routes);
-
-app.listen(env.port, () => {
-  console.log(`Backend listening on http://localhost:${env.port}`);
+app.listen(env.port, env.host, () => {
+  console.log(`Backend listening on http://${env.host}:${env.port}`);
 });

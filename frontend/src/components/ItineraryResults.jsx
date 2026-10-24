@@ -2,15 +2,15 @@ function money(symbol, amount) {
   return `${symbol}${Number(amount).toLocaleString()}`;
 }
 
-function ItineraryResults({ itinerary, loading, error }) {
+function ItineraryResults({ itinerary, loading, error, savedTrip, generated = false }) {
   if (loading) {
     return (
       <section className="card results" aria-live="polite" aria-busy="true">
         <div className="loading">
           <span className="spinner" aria-hidden="true" />
           <div>
-            <h2>Charting your route</h2>
-            <p>Checking the planner service and assembling a day-by-day preview…</p>
+            <h2>Saving your preferences</h2>
+            <p>Waiting for the backend to confirm the saved trip ID…</p>
           </div>
         </div>
         <div className="skeleton-stack">
@@ -25,20 +25,29 @@ function ItineraryResults({ itinerary, loading, error }) {
   if (error) {
     return (
       <section className="card results results--error" role="alert">
-        <h2>Could not generate just yet</h2>
+        <h2>Trip preferences need attention</h2>
         <p>{error}</p>
       </section>
     );
   }
 
+  const confirmation = savedTrip ? (
+    <article className="card save-confirmation" role="status">
+      <h2>Trip preferences saved</h2>
+      <p>Confirmed trip ID: <strong>{savedTrip.id}</strong></p>
+      <p className="hint">Your preferences were saved by the backend. {generated ? 'AI generation is separate and is not stored with this record.' : 'An itinerary has not been generated.'}</p>
+    </article>
+  ) : null;
+
   if (!itinerary) {
     return (
-      <section className="card results results--empty">
-        <h2>Your itinerary will appear here</h2>
-        <p>
-          Fill in the form and press Generate Itinerary. We will map activities, pacing, and a
-          budget split for each day.
-        </p>
+      <section className="results-wrap">
+        {confirmation}
+        <article className="card results results--empty">
+          <h2>Your trip preferences</h2>
+          <p>Complete the form and choose Save trip preferences. A saved confirmation appears only after the backend returns a trip ID.</p>
+          <p className="hint">Show sample preview works without saving. Its activities and budget split are illustrative, not real recommendations or bookings.</p>
+        </article>
       </section>
     );
   }
@@ -47,20 +56,22 @@ function ItineraryResults({ itinerary, loading, error }) {
 
   return (
     <section className="results-wrap">
+      {confirmation}
       <article className="card results-hero">
-        <p className="eyebrow">Trip preview</p>
+        <p className="eyebrow">Sample preview · not generated or booked</p>
         <h2>
           {itinerary.departureCity} → {itinerary.destination}
         </h2>
         <p>{itinerary.summary}</p>
         <p className="hint">
-          This is a structured preview from your form. AI itinerary generation will use the
-          backend once that API is available.
+          This sample uses fixed activities and budget percentages, not live recommendations.
+          Showing it does not save your trip or apply dietary needs and travel pace. Use Generate AI day-by-day itinerary for a separate AI request.
         </p>
+        {itinerary.truncated && <p className="hint">Showing the first 14 of {itinerary.totalDays} days only.</p>}
       </article>
 
       <article className="card budget-card">
-        <h3>Estimated budget</h3>
+        <h3>Illustrative budget split</h3>
         <div className="budget-total">
           <strong>{money(estimatedBudget.symbol, estimatedBudget.total)}</strong>
           <span>

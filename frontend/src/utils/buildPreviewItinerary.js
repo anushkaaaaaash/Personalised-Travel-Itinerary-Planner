@@ -1,13 +1,4 @@
-const INTEREST_OPTIONS = [
-  { id: 'culture', label: 'Culture' },
-  { id: 'food', label: 'Food' },
-  { id: 'adventure', label: 'Adventure' },
-  { id: 'nature', label: 'Nature' },
-  { id: 'nightlife', label: 'Nightlife' },
-  { id: 'shopping', label: 'Shopping' },
-  { id: 'relaxation', label: 'Relaxation' },
-  { id: 'history', label: 'History' },
-];
+import { INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 
 const ACTIVITY_POOL = {
   culture: [
@@ -51,11 +42,12 @@ const FALLBACK_ACTIVITIES = [
 ];
 
 function toDate(value) {
-  return new Date(`${value}T12:00:00`);
+  return new Date(`${value}T12:00:00Z`);
 }
 
 function formatDayLabel(date) {
   return date.toLocaleDateString(undefined, {
+    timeZone: 'UTC',
     weekday: 'long',
     month: 'short',
     day: 'numeric',
@@ -110,9 +102,10 @@ export function buildPreviewItinerary(form) {
   const activities = Math.round(budget * 0.22);
   const transport = Math.max(0, budget - lodging - food - activities);
 
-  const itineraryDays = Array.from({ length: days }, (_, index) => {
+  const previewDayCount = Math.min(days, 14);
+  const itineraryDays = Array.from({ length: previewDayCount }, (_, index) => {
     const date = toDate(form.startDate);
-    date.setDate(date.getDate() + index);
+    date.setUTCDate(date.getUTCDate() + index);
 
     return {
       day: index + 1,
@@ -148,6 +141,8 @@ export function buildPreviewItinerary(form) {
       ],
     },
     days: itineraryDays,
-    source: 'preview',
+    totalDays: days,
+    truncated: days > previewDayCount,
+    source: 'sample',
   };
 }

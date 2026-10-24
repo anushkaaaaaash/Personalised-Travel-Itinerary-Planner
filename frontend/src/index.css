@@ -410,3 +410,72 @@ select {
     flex-direction: column;
   }
 }
+
+/* Preference capture: preserve the existing visual design and spacing. */
+.planner-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.preference-options { display: grid; gap: 0.9rem; margin-bottom: 1.2rem; }
+.field-error { color: #8c3524; font-size: 0.85rem; }
+.field [aria-invalid="true"] { border-color: #a34531; }
+.field--split > label { font-size: 0.86rem; font-weight: 600; }
+.preview-btn { width: 100%; margin-top: 0.7rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: 999px; color: var(--sea); background: #fff; cursor: pointer; }
+.preview-btn:disabled { opacity: 0.7; cursor: wait; }
+.preview-btn:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+.save-confirmation { border-color: var(--lagoon); overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Day plans and saved preferences extend the original card design. */
+.results-wrap > *, .day-card, .history-detail { min-width: 0; overflow-wrap: anywhere; }
+.generate-btn + .generate-btn { margin-top: 0.7rem; }
+.trip-history, .history-detail, .day-notes { display: grid; gap: 0.8rem; }
+.history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.8rem; }
+.history-list li { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid var(--line); }
+.history-preferences { margin: 0; display: grid; gap: 0.45rem; }
+.history-preferences dt, .slot-label { text-transform: capitalize; font-weight: 600; }
+.history-preferences dd { margin: 0; }
+.day-notes { margin-top: 1rem; }
+.export-actions { flex-wrap: wrap; }
+button:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+@media print {
+  body { background: white; }
+  .page { max-width: none; padding: 0; }
+  .site-header, .planner-form, .results-wrap[aria-label="Trip results"] > :not(.generated-itinerary), .export-actions { display: none !important; }
+  .layout, .day-grid { display: block; }
+  .card { box-shadow: none; background: white; break-inside: avoid; margin-bottom: 1rem; }
+  .generated-itinerary { display: block; }
+}
+.account-shell { max-width: 1083px; margin: 1rem auto 0; padding: 1.2rem; display: grid; gap: 0.6rem; }
+.account-form { display: grid; gap: 0.6rem; max-width: 400px; margin-top: 1rem; }
+.account-shell summary { cursor: pointer; }
+@media (max-width: 1120px) { .account-shell { margin-left: 1.15rem; margin-right: 1.15rem; } }
+@media print { .account-shell { display: none !important; } }
+.editor-slot { display: grid; gap: 0.55rem; padding: 0.8rem 0; border-bottom: 1px solid var(--line); }
+.editor-slot textarea { font: inherit; width: 100%; min-height: 5rem; resize: vertical; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.65rem; color: var(--ink); background: white; }
+.editor-slot .field > span { text-transform: capitalize; }
+@media print { .itinerary-editor { display: none !important; } }
+
+/* Additive step navigation; retain the original palette and card layout. */
+.step-progress { display: flex; gap: 0.5rem; list-style: none; padding: 0; margin: 1.25rem 0; }
+.step-progress li { flex: 1; font-size: 0.75rem; color: var(--muted); }
+.step-progress span { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border-radius: 50%; background: #fff; border: 1px solid var(--line); margin-bottom: 0.3rem; }
+.step-progress [aria-current="step"] { color: var(--sea); font-weight: 700; }
+.step-progress [aria-current="step"] span { background: var(--sea); color: white; }
+.step-heading { margin-bottom: 1rem; font-size: 1.1rem; }
+.step-heading:focus-visible, .back-btn:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; }
+.step-actions { display: flex; gap: 0.65rem; margin: 1rem 0; }
+.back-btn { border: 1px solid var(--line); border-radius: 999px; padding: 0.75rem 1.2rem; background: #fff; color: var(--sea); cursor: pointer; }
+.back-btn:disabled { opacity: 0.7; cursor: wait; }
+.trip-review dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 0.65rem; overflow-wrap: anywhere; }
+.trip-review dt { font-weight: 600; }
+.trip-review dd { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .spinner, .skeleton { animation: none; } }
+
+.refinement-controls { display: grid; gap: 0.8rem; }
+.refinement-controls textarea { font: inherit; width: 100%; min-height: 5rem; resize: vertical; border: 1px solid var(--line); border-radius: 0.6rem; padding: 0.65rem; }
+.timeline { margin-top: 1rem; border-left: 2px solid var(--lagoon); padding-left: 0.8rem; }
+@media print { .refinement-controls { display: none !important; } }
+
+.route-summary, .route-day { display: grid; gap: 0.7rem; }
+.route-stops { display: flex; flex-wrap: wrap; gap: 0.6rem; list-style: none; padding: 0; }
+.route-stops li { display: grid; gap: 0.35rem; padding: 0.8rem; border: 1px solid var(--line); border-radius: 0.8rem; max-width: 220px; }
+.route-stops li + li::before { content: "→"; color: var(--lagoon); }
+@media print { .route-summary button { display: none !important; } }

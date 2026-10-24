@@ -1,0 +1,168 @@
+{
+  "status": "planned",
+  "destination": "Example City",
+  "currency": "USD",
+  "travelStyle": "",
+  "travelPace": "balanced",
+  "explanation": "Synthetic unconfirmed-coordinate regression.",
+  "days": [
+    {
+      "date": "2099-01-01",
+      "morning": "Example morning",
+      "afternoon": "Example afternoon",
+      "evening": "Example evening",
+      "dining": "Example meal",
+      "dietaryNotes": "None",
+      "mobilityNotes": "None",
+      "transitAndRest": "Example rest",
+      "mainActivityCount": 2,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 10,
+        "meals": 10,
+        "localTransport": 10,
+        "activities": 10,
+        "departureTravel": 10
+      },
+      "activities": [
+        {
+          "id": "stop-1",
+          "title": "Example stop 1",
+          "startTime": "09:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.1,
+          "longitude": 44.2,
+          "fixedTime": false
+        },
+        {
+          "id": "stop-2",
+          "title": "Example stop 2",
+          "startTime": "11:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.1,
+          "longitude": 44.2,
+          "fixedTime": false
+        },
+        {
+          "id": "stop-3",
+          "title": "Example stop 3",
+          "startTime": "13:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": null,
+          "longitude": null,
+          "fixedTime": false
+        }
+      ]
+    },
+    {
+      "date": "2099-01-02",
+      "morning": "Example morning",
+      "afternoon": "Example afternoon",
+      "evening": "Example evening",
+      "dining": "Example meal",
+      "dietaryNotes": "None",
+      "mobilityNotes": "None",
+      "transitAndRest": "Example rest",
+      "mainActivityCount": 2,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 10,
+        "meals": 10,
+        "localTransport": 10,
+        "activities": 10,
+        "departureTravel": 10
+      },
+      "activities": [
+        {
+          "id": "stop-1",
+          "title": "Example stop 1",
+          "startTime": "09:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.3,
+          "longitude": 44.4,
+          "fixedTime": false
+        },
+        {
+          "id": "stop-2",
+          "title": "Example stop 2",
+          "startTime": "11:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.5,
+          "longitude": 44.6,
+          "fixedTime": false
+        }
+      ]
+    },
+    {
+      "date": "2099-01-03",
+      "morning": "Example morning",
+      "afternoon": "Example afternoon",
+      "evening": "Example evening",
+      "dining": "Example meal",
+      "dietaryNotes": "None",
+      "mobilityNotes": "None",
+      "transitAndRest": "Example rest",
+      "mainActivityCount": 2,
+      "interestTags": [
+        "culture"
+      ],
+      "costs": {
+        "accommodation": 10,
+        "meals": 10,
+        "localTransport": 10,
+        "activities": 10,
+        "departureTravel": 10
+      },
+      "activities": [
+        {
+          "id": "stop-1",
+          "title": "Example stop 1",
+          "startTime": "09:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.7,
+          "longitude": 44.8,
+          "fixedTime": false
+        },
+        {
+          "id": "stop-2",
+          "title": "Example stop 2",
+          "startTime": "11:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": null,
+          "longitude": null,
+          "fixedTime": false
+        },
+        {
+          "id": "stop-3",
+          "title": "Example stop 3",
+          "startTime": "13:00",
+          "durationMinutes": 30,
+          "notes": "Synthetic test activity",
+          "latitude": -12.9,
+          "longitude": 45.0,
+          "fixedTime": false
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "Synthetic locations are unconfirmed."
+  ],
+  "source": "ai",
+  "provider": "fixture",
+  "model": "fixture",
+  "saved": false,
+  "estimatedTotalGroupCost": 150,
+  "remainingBudget": 850
+}
