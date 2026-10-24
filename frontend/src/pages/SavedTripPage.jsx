@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, RefreshCw, Save } from 'lucide-react';
-import { createDetailController } from '../services/savedTripDetail.js';
+import { createDetailController, detailRefinementState, isAiAction } from '../services/savedTripDetail.js';
 import GeneratedItinerary from '../components/GeneratedItinerary.jsx';
 export default function SavedTripPage(){const {tripID}=useParams();return <SavedTripEditor key={tripID} tripID={tripID}/>;}
 export function SavedTripEditor({tripID}) {
@@ -22,6 +22,6 @@ export function SavedTripEditor({tripID}) {
       {confirm&&<div role="group" aria-label="Confirm detail operation"><p>{confirm==='generate'?'Request a new AI plan using the saved preferences? The current plan stays until a validated response arrives. Nothing is saved automatically.':confirm==='load'?'Reload the saved revision and discard current local edits?':'Replace this saved revision with the current plan and title? A conflict will keep your local edits.'}</p><button disabled={state.busy} onClick={commit}>Confirm {confirm}</button><button disabled={state.busy} onClick={()=>setConfirm(null)}>Cancel</button></div>}
     </>}
     </section>
-    {state.plan&&<GeneratedItinerary result={state.plan} preferences={state.record.preferences} edited={state.dirty} refinement={{loading:state.busy}} onCancelRefine={()=>controller.current?.cancel()} onRefine={input=>controller.current?.run('refine',input)} onEditDay={day=>edit({plan:{...state.plan,refinementSummary:null,days:state.plan.days.map(d=>d.date===day.date?day:d)}})}/>}
+    {state.plan&&<GeneratedItinerary result={state.plan} preferences={state.record.preferences} edited={state.dirty} refinement={detailRefinementState(state)} onCancelRefine={isAiAction(state.activeAction)?()=>controller.current?.cancel():undefined} onRefine={input=>controller.current?.run('refine',input)} onEditDay={day=>edit({plan:{...state.plan,refinementSummary:null,days:state.plan.days.map(d=>d.date===day.date?day:d)}})}/>}
   </motion.main>;
 }

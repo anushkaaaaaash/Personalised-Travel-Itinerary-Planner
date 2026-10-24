@@ -7,6 +7,7 @@ import { createServer } from 'vite';
 import { createInitialForm } from '../src/utils/tripPreferences.js';
 import { buildPreviewItinerary } from '../src/utils/buildPreviewItinerary.js';
 import { plan as sharePlan } from './shareFixture.js';
+import { detailRefinementState } from '../src/services/savedTripDetail.js';
 
 let server;
 let PlannerPage;
@@ -27,6 +28,14 @@ before(async () => {
 after(async () => { await server?.close(); });
 const render = (component, props = {}) => renderToStaticMarkup(React.createElement(component, props));
 const formHandlers = { onChange() {}, onToggleInterest() {}, onSubmit() {}, onSave() {}, onBack() {}, onPreview() {} };
+
+test('pending storage disables refinement without exposing AI cancellation',async()=>{
+  const {default: Controls}=await server.ssrLoadModule('/src/components/RefinementControls.jsx');
+  const html=render(Controls,{result:sharePlan(),state:detailRefinementState({busy:true,activeAction:'update'}),onCancel(){},onRefine(){}});
+  assert.ok(html.includes('Saving revision.'));assert.ok(html.includes('disabled=""'));assert.ok(!html.includes('Cancel regeneration'));
+  const ai=render(Controls,{result:sharePlan(),state:detailRefinementState({busy:true,activeAction:'refine'}),onCancel(){},onRefine(){}});
+  assert.ok(ai.includes('Cancel regeneration'));assert.ok(ai.includes('disabled=""'));
+});
 
 test('detail URLs require sign-in even in local mode and keep a return path', async () => {
   const { MemoryRouter } = await server.ssrLoadModule('react-router-dom');

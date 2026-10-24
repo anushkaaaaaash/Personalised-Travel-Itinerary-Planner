@@ -35,9 +35,24 @@ export function printDocument(result) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Travel itinerary summary</title><style>body{font:16px system-ui;margin:2rem}pre{white-space:pre-wrap;line-height:1.6}</style></head><body><h1>Travel itinerary summary</h1><pre>${escapeHtml(compactSummary(result))}</pre></body></html>`;
 }
 export function printSummary(result,documentImpl=document) {
-  const frame=documentImpl.createElement('iframe');frame.title='Printable itinerary summary';frame.style.display='none';
-  frame.srcdoc=printDocument(result);let timer;
-  const cleanup=()=>{clearTimeout(timer);frame.remove();};
-  frame.onload=()=>{try{frame.contentWindow.addEventListener('afterprint',cleanup,{once:true});frame.contentWindow.focus();frame.contentWindow.print();}catch{cleanup();}};
-  documentImpl.body.appendChild(frame);timer=setTimeout(cleanup,60000);
+  return new Promise((resolve,reject)=>{
+    let frame,loadTimer,cleanupTimer,settled=false,started=false,cleaned=false;
+    const cleanup=()=>{clearTimeout(loadTimer);clearTimeout(cleanupTimer);cleaned=true;try{frame?.remove();}catch{/* Best-effort detached-frame cleanup. */}};
+    const fail=()=>{if(settled)return;settled=true;cleanup();reject(new Error('Printing could not be started. Download the compact summary or try printing again.'));};
+    try{
+      frame=documentImpl.createElement('iframe');frame.title='Printable itinerary summary';frame.style.display='none';
+      frame.srcdoc=printDocument(result);
+      frame.onerror=fail;
+      frame.onload=()=>{
+        if(settled||started)return;started=true;clearTimeout(loadTimer);
+        try{
+          frame.contentWindow.addEventListener('afterprint',cleanup,{once:true});
+          frame.contentWindow.focus();frame.contentWindow.print();
+          settled=true;if(!cleaned)cleanupTimer=setTimeout(cleanup,60000);
+          resolve({requested:true});
+        }catch{fail();}
+      };
+      loadTimer=setTimeout(fail,10000);documentImpl.body.appendChild(frame);
+    }catch{fail();}
+  });
 }
