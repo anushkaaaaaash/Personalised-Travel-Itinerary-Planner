@@ -257,8 +257,8 @@ def test_specific_schema_detail_is_sanitized_and_actionable(caplog):
 
 def test_specific_error_detail_unknowns_oversize_and_invalid_json(caplog):
     from app.groq import provider_error_detail
-    assert provider_error_detail(b'x'*8193)=={'detail':'UNAVAILABLE'}
-    assert provider_error_detail(b'not-json')=={'detail':'UNAVAILABLE'}
+    assert provider_error_detail(b'x'*8193)=={'detail':'UNAVAILABLE','unavailableReason':'BODY_TOO_LARGE'}
+    assert provider_error_detail(b'not-json')=={'detail':'UNAVAILABLE','unavailableReason':'INVALID_JSON_OR_ENCODING'}
     result=provider_error_detail(json.dumps({'error':{'code':KEY,'type':KEY,'param':'schema.PRIVATE_FIELD',
         'message':'PRIVATE_BODY '+KEY}}).encode())
     assert result['code']==result['type']=='OTHER_OR_ABSENT'

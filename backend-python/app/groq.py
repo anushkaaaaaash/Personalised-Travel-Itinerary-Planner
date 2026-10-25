@@ -30,7 +30,7 @@ ERROR_CODES = frozenset({'invalid_request_error','invalid_json_schema','invalid_
 SCHEMA_TERMS = frozenset("schema json_schema response_format properties required additionalproperties anyof oneof allof enum const type string strings boolean booleans integer integers number numbers object objects array arrays null nullable true false items refs ref defs definition definitions reference references root depth nesting nested maximum minimum maxitems minitems maxlength minlength pattern format max_tokens max_completion_tokens reasoning_effort include_reasoning stream model parameter parameters argument arguments invalid unsupported support supported supports not allowed allow only must should be contain contains containing values value expected found received provided missing extra duplicate invalid_request_error reserved name names has have is are in of for the to and or with at least cannot can does do unknown unrecognized unexpected exceed exceeds exceeded limit limits size compile compilation parse parsing error errors failed failure validate validation length empty nonempty json function functions tool tools strict required_properties".split())
 PARAMETER_PARTS = frozenset({'response_format','json_schema','schema','properties','required','additionalProperties',
     'anyOf','oneOf','enum','const','type','items','$ref','$defs','DayCosts','NewMainActivity','status','days',
-    'explanation','warnings','vibe','verificationWarning','mainSlots','main_1','main_2','main_3','main_4','day_1','day_2','day_3',
+    'explanation','warnings','vibe','verificationWarning','additionalWarnings','mainSlots','main_1','main_2','main_3','main_4','day_1','day_2','day_3',
     'id','title','startTime','durationMinutes','notes','latitude','longitude','fixedTime','kind',
     'max_tokens','max_completion_tokens','reasoning_effort','include_reasoning','stream','model'})
 
@@ -51,12 +51,16 @@ def schema_message_paths(message):
 
 def provider_error_detail(body):
     """Bounded in-memory extraction; unknown values and all raw prose are discarded."""
-    if not isinstance(body,(bytes,bytearray)) or len(body)>8192:
-        return {'detail':'UNAVAILABLE'}
+    if not isinstance(body,(bytes,bytearray)):
+        return {'detail':'UNAVAILABLE','unavailableReason':'INVALID_BODY_TYPE'}
+    if len(body)>8192:
+        return {'detail':'UNAVAILABLE','unavailableReason':'BODY_TOO_LARGE'}
+    if not body:
+        return {'detail':'UNAVAILABLE','unavailableReason':'EMPTY_BODY'}
     try:
         data=json.loads(body)
         error=data.get('error') if type(data) is dict else None
-        if type(error) is not dict: return {'detail':'UNAVAILABLE'}
+        if type(error) is not dict: return {'detail':'UNAVAILABLE','unavailableReason':'ERROR_OBJECT_ABSENT'}
         result={}
         for name in ('code','type'):
             value=error.get(name)
@@ -71,14 +75,14 @@ def provider_error_detail(body):
         result['schemaTerms']=[word for word in tokens if word in SCHEMA_TERMS][:96]
         return result
     except (ValueError,TypeError,UnicodeError):
-        return {'detail':'UNAVAILABLE'}
+        return {'detail':'UNAVAILABLE','unavailableReason':'INVALID_JSON_OR_ENCODING'}
 
 
 async def read_error_detail(response):
     body=bytearray()
     async for chunk in response.aiter_bytes(chunk_size=4096):
         body.extend(chunk)
-        if len(body)>8192: return {'detail':'UNAVAILABLE'}
+        if len(body)>8192: return {'detail':'UNAVAILABLE','unavailableReason':'BODY_TOO_LARGE'}
     return provider_error_detail(body)
 
 
