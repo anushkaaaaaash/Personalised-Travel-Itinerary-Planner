@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { requestJson, PlannerRequestError } from '../services/readRequest.js';
 import { getSession, setSession, subscribeSession } from '../services/session.js';
 import PlannerRoutes from './PlannerRoutes.jsx';
-const failure = status => status === 503 ? 'Account access is not configured. Check the backend setup.' : status === 429 ? 'Too many attempts. Please wait before retrying.' : status === 504 ? 'Account request timed out. Please retry when ready.' : 'Account request failed. Check your details or confirm your email, then retry.';
+import { authFailure as failure } from '../services/authFeedback.js';
 export default function AuthBoundary() {
   const [config, setConfig] = useState(null), [configError, setConfigError] = useState('');
   const [session, updateSession] = useState(getSession), [epoch, setEpoch] = useState(0);
