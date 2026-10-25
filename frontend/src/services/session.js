@@ -12,6 +12,6 @@ export function subscribeSession(listener) { listeners.add(listener); return () 
 export async function sessionFetch(url, options = {}) {
   const current = session;
   const response = await globalThis.fetch(url, { ...options, headers: { ...options.headers, ...(current ? { Authorization: `Bearer ${current.access_token}` } : {}) } });
-  if (response.status === 401 && current === session) setSession(null);
+  if (response.status === 401 && current && current === session) setSession(null);
   return response;
 }

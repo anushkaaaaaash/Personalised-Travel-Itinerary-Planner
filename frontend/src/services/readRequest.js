@@ -1,10 +1,11 @@
 import { sessionFetch } from './session.js';
 /** Cancellable, duplicate-safe read/generation request. Never writes preferences. */
 export class PlannerRequestError extends Error {
-  constructor(message, { status, code } = {}) {
+  constructor(message, { status, code, retryAfterSeconds } = {}) {
     super(message);
     if (Number.isInteger(status) && status >= 400 && status <= 599) this.status = status;
     if (['VALIDATION_ERROR','REQUEST_TOO_LARGE'].includes(code)) this.code = code;
+    if (status === 429 && Number.isInteger(retryAfterSeconds) && retryAfterSeconds >= 1 && retryAfterSeconds <= 86400) this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 export function createReadRequest({ request, onStateChange }) {
@@ -64,7 +65,9 @@ export async function requestJson(path, { method = 'GET', payload, fetchImpl = s
       let diagnostic = { kind: 'http' };
       try { diagnostic = safeDiagnostic(await response.json()); } catch { /* Unknown error body stays masked. */ }
       if (controller.signal.aborted) throw new Error('Canceled');
-      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status, code: diagnostic.code });
+      const delay = response.status === 429 ? response.headers?.get?.('Retry-After') : null;
+      const retryAfterSeconds = typeof delay === 'string' && /^[0-9]{1,5}$/.test(delay) ? Number(delay) : undefined;
+      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status, code: diagnostic.code, retryAfterSeconds });
     }
     let body;
     try { body = await response.json(); }

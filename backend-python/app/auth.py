@@ -2,6 +2,8 @@
 import os
 import re
 import time
+import math
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 from uuid import UUID
 import httpx
@@ -51,13 +53,34 @@ class AuthResult(BaseModel):
 
 
 class AuthError(Exception):
-    def __init__(self, status=401, code='AUTH_REQUIRED', message='Sign in again to continue.'):
+    def __init__(self, status=401, code='AUTH_REQUIRED', message='Sign in again to continue.', *, retry_after=None):
         self.status, self.code, self.message = status, code, message
+        self.retry_after = retry_after if type(retry_after) is int and 1 <= retry_after <= 86400 else None
         super().__init__(code)
 
 
 def auth_error(exc):
-    return JSONResponse(status_code=exc.status, content={'error': {'code': exc.code, 'message': exc.message}}, headers={'Cache-Control': 'no-store'})
+    headers = {'Cache-Control': 'no-store'}
+    if exc.status == 429 and exc.retry_after is not None:
+        headers['Retry-After'] = str(exc.retry_after)
+    return JSONResponse(status_code=exc.status, content={'error': {'code': exc.code, 'message': exc.message}}, headers=headers)
+
+
+def safe_retry_after(value):
+    """Expose only a bounded delay, never arbitrary provider headers or error text."""
+    if not isinstance(value, str) or len(value) > 128:
+        return None
+    try:
+        if re.fullmatch(r'[0-9]{1,5}', value):
+            seconds = int(value)
+        else:
+            date = parsedate_to_datetime(value)
+            if date.tzinfo is None:
+                return None
+            seconds = math.ceil(date.timestamp() - time.time())
+        return seconds if 1 <= seconds <= 86400 else None
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
 def read_auth_configuration():
@@ -118,7 +141,8 @@ class SupabaseAuthService:
             async with httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False, transport=self.transport) as client:
                 async with client.stream(method, url + '/auth/v1/' + path, headers=headers, json=payload) as response:
                     if response.status_code == 429:
-                        raise AuthError(429, 'AUTH_RATE_LIMITED', 'Too many attempts. Please wait before trying again.')
+                        raise AuthError(429, 'AUTH_RATE_LIMITED', 'Too many attempts. Please wait before trying again.',
+                                        retry_after=safe_retry_after(response.headers.get('Retry-After')))
                     if response.status_code >= 500 or 300 <= response.status_code < 400:
                         raise AuthError(502, 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.')
                     if response.status_code >= 400:
