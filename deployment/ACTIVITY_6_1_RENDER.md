@@ -40,18 +40,18 @@ deployment's commit in Events before claiming a specific version is running.
 | Root/build | PASS | `backend-python`; `pip install -r requirements.txt` |
 | Start/port | PASS (adapted) | Production factory below binds `0.0.0.0` and Render's `$PORT`; Gunicorn example is not copied |
 | Environment configuration | PASS (functional) | Existing approved Groq/Supabase configuration; live auth/health and historical generation evidence. Private dashboard values not independently inspected |
-| Closest region | BLOCKED | Oregon confirmed; user proximity not established, no relocation authorized |
+| Region suitability | PASS for working course demo | Oregon confirmed; bounded latency evidence below supports usability, not a closest/optimal-region claim |
 | CI | PASS | Push/PR workflow runs Python, JavaScript, build, bundle and tracked-env checks; main CI passed before enabling auto-deploy |
 | CI-gated auto-deploy setting | PASS (user evidence) | User reports saved After CI Checks Pass; no autonomous dashboard verification |
 | Observed automatic deployment (additional confidence check) | Not observed; not an explicit course step | An approved eligible main change and matching automatic Render event would provide additional evidence, but no extra deployment is required solely for this audit |
-| Autoscaling | BLOCKED (excluded Free scope) | Not configured; Pro-or-higher feature. User explicitly said not to add paid/unavailable scaling |
+| Free-plan scaling scope | PASS for supplied steps / approved scope | Autoscaling is described as a platform capability, not a configuration step; Free cannot scale beyond one instance. No autoscaling implementation is claimed |
 | Current runtime commit identity | BLOCKED | Conflicting header evidence; health alone cannot identify the running SHA |
 
 PASS (adapted) establishes correct deployment for this actual application, not an
 assessor waiver of literal sample commands. BLOCKED means missing evidence or an
 approval/scope boundary, not a known application failure. No observed requirement
 currently has a demonstrated runtime FAIL. Core hosting and CI-gated configuration
-are supported by the evidence above; region, scaling scope and runtime-SHA limits
+are supported by the evidence above; region optimality, scaling scope and runtime-SHA limits
 remain explicit rather than an unqualified 100% claim.
 
 The supplied Activity 6.1 story mentions continuous deployment, but its steps ask
@@ -61,6 +61,34 @@ credentials and the user-confirmed saved CI-gated setting support the configurat
 requirement. Lack of an observed automatic event is a verification limit, not an
 additional mandatory course task. The earlier stricter completion wording was
 incorrect and is superseded here.
+
+## Oregon suitability and Free-plan scope
+
+The supplied Settings confirm Oregon. Three sequential public health requests
+from the connected Windows execution environment on 2026-10-25 returned 200 in
+894 ms, 440 ms and 1099 ms. One frontend HTTPS request returned 200 in 237 ms.
+These elapsed times include network/client overhead; they are not server-only
+latency, a load test, percentile statistics, or AI-generation timing. The first
+request's cold/warm state is unknown; the next two immediately followed it, but
+server telemetry was not inspected. No forced idle period or keep-alive loop was
+used. The execution network's geographic location was not independently verified.
+
+Historical user-run sign-in, saved-plan access and generation also demonstrate a
+usable deployment. The user's India context does not establish the distribution
+of all future users. Render offers Singapore among its regions, but no equivalent
+endpoint was benchmarked and no latency SLO was supplied. Oregon is therefore
+reasonable to retain for this working personal course demo; it is not certified
+as the nearest or lowest-latency region. No compatibility problem or measured
+requirement justifies relocation. If audience or performance requirements change,
+evaluate comparative latency and database/provider placement before approving migration.
+
+Render documents that Free web services cannot scale beyond one instance and may
+sleep after inactivity; autoscaling additionally requires Pro or higher. The
+supplied Activity 6.1 narrative describes automatic scaling, but its actionable
+steps do not require enabling it. The user expressly excluded paid/unavailable
+scaling. The supplied deployment steps and approved Free-demo scope are satisfied
+without autoscaling; this is not a claim that autoscaling is enabled or a guarantee
+of availability/capacity. No upgrade, extra instance or quota change is warranted.
 
 Retain Python 3.13.7 and the reviewed start command:
 
@@ -107,9 +135,9 @@ If any source/permission/plan change is required, stop for approval. Preserve th
 current successful service while investigating. No credentials, billing, data,
 origins or security policies change as part of this repository documentation PR.
 Do not withhold the core deployment/configuration result solely because the
-optional automatic-trigger test has not run. Autoscaling remains separately
-unfulfilled if assessed literally, but is excluded by the user's Free-only scope;
-no paid upgrade is implied. Region proximity and exact current runtime SHA remain
+optional automatic-trigger test has not run. Autoscaling is outside the supplied
+actionable steps and approved Free-only scope; no paid upgrade is implied.
+Region optimality and exact current runtime SHA remain
 unverified. No extra production deployment is justified by this documentation fix.
 
 ## References checked 2026-10-25
@@ -119,3 +147,4 @@ unverified. No extra production deployment is justified by this documentation fi
 - [Scaling availability](https://render.com/docs/scaling)
 - [Free instance limitations](https://render.com/docs/free)
 - [Root-directory scoping and build filters](https://render.com/docs/monorepo-support)
+- [Available regions and selection guidance](https://render.com/docs/regions)
