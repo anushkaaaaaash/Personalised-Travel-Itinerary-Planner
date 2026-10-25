@@ -12,9 +12,18 @@ On 2026-10-25, read-only public checks returned health 200, production auth enab
 saved-only mode, anonymous saved-itinerary access 401 and legacy history 404.
 Earlier user-run production generation acceptance is recorded in
 ACTIVITY_5_3_5_4.md. These checks do not expose environment values or independently
-prove the current dashboard checkout SHA, region, Git integration or auto-deploy
-setting. Current operational evidence is a public-Git-URL source with manual
-deployment; dashboard verification remains pending.
+prove the current dashboard checkout SHA. Subsequent user-supplied Render Settings
+show the existing repository, branch `main`, connected Git credentials, Python 3,
+Free compute, Oregon, the expected root/build/start command, `/api/health`,
+Auto-Deploy **Off**, and PR Previews **Off**. This supersedes the earlier inference
+that the service still lacked a Git-provider connection. No new OAuth connection
+is needed based on this evidence. Account identifiers and deploy-hook values are
+intentionally omitted.
+
+The pasted Settings header showed `df77aa4`, whereas earlier successful deployment
+evidence showed `0fc9804`. This discrepancy may be a stale header; neither a rollback
+nor the current runtime SHA is established by it. Verify the most recent successful
+deployment's commit in Events before claiming a specific version is running.
 
 | Course item | Existing implementation / remaining gap |
 |---|---|
@@ -26,7 +35,7 @@ deployment; dashboard verification remains pending.
 | Environment configuration | Existing approved Groq/Supabase public configuration; no custom JWT secret or service-role key needed for user operations |
 | Closest region | Previously selected Oregon; proximity to users not established, no relocation authorized |
 | CI | Existing push/PR workflow runs Python, JavaScript, build, bundle and tracked-env checks; no new workflow needed |
-| Continuous deployment | Not yet verified/enabled through a connected Git provider; operational approval required |
+| Continuous deployment | Git credentials connected; Auto-Deploy Off. Approval to enable After CI Checks Pass and successful automatic-deploy evidence remain pending |
 | Autoscaling | Not configured; Pro-or-higher feature, outside the approved Free demo scope |
 
 Retain Python 3.13.7 and the reviewed start command:
@@ -47,13 +56,10 @@ limits, not an always-on production availability promise.
 1. Open the **existing service → Settings**. Inspect source/repository/branch and
    Auto-Deploy, plus the most recent successful deployment commit. Share field
    names/nonsecret settings only; never reveal environment values or deploy-hook URLs.
-2. Render's official docs state that public-Git-URL services require manual deploys;
-   auto-deploy requires a connected Git provider. If this service still uses a
-   public URL, request approval for the exact GitHub integration/repository access
-   and any existing-service source change. Prefer access to this repository only.
-   Do not assume a toggle alone is sufficient, accept broader permissions, or
-   create a replacement service if reconnection is unavailable.
-3. After explicit approval and supported reconnection, select **After CI Checks
+2. Git credentials are already connected in the supplied Settings evidence. Do not
+   reconnect GitHub, grant new repository permissions, or create another service.
+   Request approval to change only Auto-Deploy from Off to After CI Checks Pass.
+3. After explicit approval, select **After CI Checks
    Pass**, keeping branch `main`, Free compute, root/build/start/env/origins unchanged.
    Approval must acknowledge that later main changes may deploy automatically.
 4. Verify a subsequently approved main commit has successful GitHub checks and a
