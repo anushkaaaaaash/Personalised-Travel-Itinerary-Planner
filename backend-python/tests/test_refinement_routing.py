@@ -53,7 +53,7 @@ def test_refinement_error_does_not_retry_or_mutate_previous(monkeypatch,payload,
     monkeypatch.setattr('app.providers.read_configuration',lambda:{'GROQ_API_KEY':'fake-offline-key-123'})
     response=TestClient(create_app(NoStorage())).post('/api/itineraries/refine',json=before)
     assert response.status_code==502
-    assert response.json()['error']['code']=='AI_PROVIDER_FAILED'
+    assert response.json()['error']['code']=='AI_SCHEMA_REJECTED'
     assert len(calls)==1 and calls[0]['model']=='openai/gpt-oss-120b'
     assert request.model_dump()==before
 

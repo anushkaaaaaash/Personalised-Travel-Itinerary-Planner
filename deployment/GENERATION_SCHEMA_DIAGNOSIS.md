@@ -1,0 +1,9 @@
+# Generation schema rejection: bounded correction
+
+The production failure reported Groq HTTP 400, code `json_validate_failed`, with sanitized terms including `properties`, `anyof`, and `enum`. This establishes provider-side output validation failure, not a database or authentication failure. The sanitized evidence did not include a field path or rejected value; it does not prove which field failed.
+
+Inspection of the submitted generation schema found a nullable enum union for `vibe`, although generation has no vibe input and the prompt requires null when unspecified. The request schema now fixes this context-owned field to null for generation, or a single requested enum value for ordinary refinement. The capped whole-refinement private contract remains unchanged. No output is repaired or invented: unexpected returned vibes are rejected, including unrequested generation vibes. Public response contracts and all existing semantic validators remain in force.
+
+Groq `json_validate_failed` now returns a distinct safe `AI_SCHEMA_REJECTED` code and frontend explanation. Raw provider messages/output remain excluded; allowlisted diagnostic paths can now name `vibe`. No automatic retry, provider downgrade or model switch was added. Generation remains 20B and refinement 120B by existing configuration, with the same 4096-token limit.
+
+Offline tests cover request schema immutability, null and requested vibes, rejected unsolicited vibes, actual serialized strict transport shape, single-call provider failure and safe frontend feedback. Mocked requests do not reproduce Groq's internal decoding behavior. Live resolution remains unverified until a separately authorized, bounded acceptance request after review/deployment. Do not describe this candidate correction as a proven production fix before that result.

@@ -52,6 +52,35 @@ def test_generation(payload, generated):
     assert len(provider.calls)==1
     assert 'WHOLE GROUP' in provider.calls[0][0][0]['content']
 
+def test_generation_vibe_schema_is_null_without_mutating_public_contract(payload, generated):
+    from app.itineraries import ItineraryPayload
+    original=ItineraryPayload.model_json_schema()
+    assert 'anyOf' in original['properties']['vibe']
+    provider=Provider(generated)
+    assert call(payload,provider).status_code==200
+    assert provider.calls[0][1]['properties']['vibe']=={'type':'null'}
+    assert ItineraryPayload.model_json_schema()==original
+
+@pytest.mark.parametrize('vibe',['relaxed','adventure','luxury','budget'])
+def test_generation_does_not_accept_unrequested_vibe(payload,generated,vibe):
+    generated['vibe']=vibe
+    response=call(payload,Provider(generated))
+    assert response.status_code==502
+    assert response.json()['error']['reason']=='VIBE_MISMATCH'
+
+@pytest.mark.parametrize('vibe',[None,'relaxed','adventure','luxury','budget'])
+def test_refinement_schema_matches_exact_requested_vibe(payload,generated,vibe):
+    from app.itineraries import RefinementRequest,validate_itinerary
+    from app.models import TripPreferences
+    preferences=TripPreferences.model_validate(payload)
+    previous=validate_itinerary(generated,preferences,'fixture','fixture')
+    request=RefinementRequest(preferences=preferences,previous=previous,feedback='Keep all original constraints',vibe=vibe)
+    result=copy.deepcopy(generated);result['vibe']=vibe
+    provider=Provider(result)
+    response=asyncio.run(ItineraryService(provider).refine(request))
+    assert response.vibe==vibe and len(provider.calls)==1
+    assert provider.calls[0][1]['properties']['vibe']==({'type':'null'} if vibe is None else {'type':'string','enum':[vibe]})
+
 def test_infeasible(payload, generated):
     generated.update(status='infeasible',days=[],explanation='Travel costs alone exceed the budget.')
     response=call(payload,Provider(generated))
