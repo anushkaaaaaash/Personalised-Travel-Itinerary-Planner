@@ -56,6 +56,7 @@ def test_private_valid_whole_contract_and_single_invocation(payload,generated):
     assert result['refinementSummary']['scope']=='whole'
     assert [d['mainActivityCount'] for d in result['days']]==[2]*len(generated['days'])
     schema=calls[0]['response_format']['json_schema']['schema']
+    assert schema['$defs']['NewMainActivity']['properties']['durationMinutes']['enum']==list(range(15,241))
     planned=schema['properties']['days']['anyOf'][0]
     assert set(planned['properties'])=={f'day_{i+1}' for i in range(len(generated['days']))}
     assert all(d['required']==list(d['properties']) and d['additionalProperties'] is False for d in planned['properties'].values())

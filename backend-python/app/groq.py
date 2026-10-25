@@ -105,14 +105,21 @@ def invalid_response():
 def strict_schema(schema):
     """Project to documented structural subset; retain full local validation.
 
-    Length/numeric constraints are not claimed as provider-enforced. Never mutate
-    the Pydantic schema; the service still enforces all original constraints.
+    The small integer duration domain is represented using supported enum values.
+    Other length/numeric constraints remain locally enforced. Never mutate the
+    Pydantic schema; the service still enforces all original constraints.
     """
     allowed = {'type', 'title', 'description', 'enum', 'anyOf', '$ref'}
-    def project(node):
+    def project(node, property_name=None):
         if not isinstance(node, dict):
             raise ValueError('Expected schema object')
         result = {key: value for key, value in node.items() if key in allowed}
+        if (property_name == 'durationMinutes' and node.get('type') == 'integer'
+                and node.get('minimum') == 15 and node.get('maximum') == 240):
+            # Do not rely on undocumented minimum/maximum support or prose alone.
+            # This is the exact accepted domain, not rounding or repairing output.
+            result['enum'] = [value for value in range(15, 241)
+                              if 'enum' not in node or value in node['enum']]
         if 'anyOf' in node:
             result['anyOf'] = [project(item) for item in node['anyOf']]
         if '$defs' in node:
@@ -121,7 +128,7 @@ def strict_schema(schema):
             result['items'] = project(node['items'])
         if node.get('type') == 'object':
             properties = node.get('properties', {})
-            result['properties'] = {key: project(value) for key,value in properties.items()}
+            result['properties'] = {key: project(value, key) for key,value in properties.items()}
             result['required'] = list(properties)
             result['additionalProperties'] = False
         return result

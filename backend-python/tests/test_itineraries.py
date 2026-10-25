@@ -441,7 +441,27 @@ def test_provider_sees_duration_contract_after_schema_projection(payload,generat
     duration=projected['$defs']['ItineraryActivity']['properties']['durationMinutes']
     assert '15 through 240' in duration['description']
     assert 'minimum' not in duration and 'maximum' not in duration
+    assert duration['enum'] == list(range(15, 241))
     assert '09:00 plus 90 minutes ends at 10:30' in messages[0]['content']
+
+
+@pytest.mark.parametrize('duration',[14,241,480,15.5,True,'60'])
+def test_provider_ignoring_duration_contract_is_rejected_not_repaired(payload,generated,duration):
+    generated['days'][0]['activities'][0]['durationMinutes']=duration
+    original=copy.deepcopy(generated)
+    provider=Provider(generated)
+    response=call(payload,provider)
+    assert response.status_code==502
+    assert response.json()['error']['reason']=='TIMELINE'
+    assert len(provider.calls)==1 and generated==original
+
+
+@pytest.mark.parametrize('duration',[15,240])
+def test_duration_boundary_output_is_accepted_unchanged(payload,generated,duration):
+    generated['days'][0]['activities'][0]['durationMinutes']=duration
+    response=call(payload,Provider(generated))
+    assert response.status_code==200
+    assert response.json()['days'][0]['activities'][0]['durationMinutes']==duration
 
 
 

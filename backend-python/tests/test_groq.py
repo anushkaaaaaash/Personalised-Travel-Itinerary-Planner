@@ -15,6 +15,46 @@ MESSAGES = [{'role':'system','content':'Return JSON'}, {'role':'user','content':
 SCHEMA = RecommendationPayload.model_json_schema()
 
 
+@pytest.mark.parametrize('model',['openai/gpt-oss-20b','openai/gpt-oss-120b'])
+def test_exact_duration_domain_reaches_wire_without_mutation_or_retry(model):
+    from copy import deepcopy
+    from app.itineraries import ItineraryPayload
+    schema=ItineraryPayload.model_json_schema()
+    original=deepcopy(schema)
+    projected=strict_schema(schema)
+    assert strict_schema(projected)==projected
+    calls=[]
+    def handler(request):
+        body=json.loads(request.content);calls.append(body)
+        assert body['model']==model and body['max_completion_tokens']==4096
+        contract=body['response_format']['json_schema']
+        assert contract['strict'] is True
+        duration=contract['schema']['$defs']['ItineraryActivity']['properties']['durationMinutes']
+        assert duration['type']=='integer' and duration['enum']==list(range(15,241))
+        assert 'minimum' not in duration and 'maximum' not in duration
+        return httpx.Response(200,json=envelope())
+    provider=GroqProvider(KEY,model=model,transport=httpx.MockTransport(handler))
+    assert asyncio.run(provider.generate(MESSAGES,projected))=='{}'
+    assert len(calls)==1 and schema==original
+
+
+@pytest.mark.parametrize('value',[14,241,480,15.5,True,'60'])
+def test_projected_duration_rejects_invalid_domain(value):
+    from app.itineraries import ItineraryPayload
+    from app.refinement_contract import check_shape
+    schema=strict_schema(ItineraryPayload.model_json_schema())
+    duration=schema['$defs']['ItineraryActivity']['properties']['durationMinutes']
+    with pytest.raises(ValueError):check_shape(value,duration,schema)
+
+
+@pytest.mark.parametrize('value',[15,16,239,240])
+def test_projected_duration_accepts_exact_boundaries(value):
+    from app.itineraries import ItineraryPayload
+    from app.refinement_contract import check_shape
+    schema=strict_schema(ItineraryPayload.model_json_schema())
+    check_shape(value,schema['$defs']['ItineraryActivity']['properties']['durationMinutes'],schema)
+
+
 def envelope(content='{}', reason='stop', **extra):
     return {'choices':[{'finish_reason':reason, 'message':{'role':'assistant','content':content, **extra}}]}
 
