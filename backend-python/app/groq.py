@@ -5,6 +5,7 @@ import re
 import httpx
 from .providers import LLMProvider
 from .recommendations import RecommendationError, ProviderRefusal
+from .schema_diagnostics import schema_names, missing_properties, TECHNICAL_PARTS
 
 DEFAULT_MODEL = 'openai/gpt-oss-20b'
 # Only verified production models with strict JSON Schema support.
@@ -35,7 +36,7 @@ PARAMETER_PARTS = frozenset({'response_format','json_schema','schema','propertie
     'max_tokens','max_completion_tokens','reasoning_effort','include_reasoning','stream','model'})
 
 
-def schema_message_paths(message):
+def schema_message_paths(message, allowed_parts=PARAMETER_PARTS):
     """Keep only closed-vocabulary dot/pointer paths, never arbitrary prose."""
     if type(message) is not str or len(message)>8192:
         return []
@@ -43,13 +44,13 @@ def schema_message_paths(message):
     for candidate in re.findall(r"(?:#?/|\$\.)?[$A-Za-z_][$A-Za-z_0-9]*(?:[./][$A-Za-z_][$A-Za-z_0-9]*)+", message):
         parts=re.findall(r'[$A-Za-z_][$A-Za-z_0-9]*', candidate)
         if parts and parts[0]=='$': parts=parts[1:]
-        if 1<len(parts)<=16 and all(part in PARAMETER_PARTS for part in parts):
+        if 1<len(parts)<=16 and all(part in allowed_parts for part in parts):
             if parts not in paths: paths.append(parts)
         if len(paths)==8: break
     return paths
 
 
-def provider_error_detail(body):
+def provider_error_detail(body, response_schema=None):
     """Bounded in-memory extraction; unknown values and all raw prose are discarded."""
     if not isinstance(body,(bytes,bytearray)):
         return {'detail':'UNAVAILABLE','unavailableReason':'INVALID_BODY_TYPE'}
@@ -65,11 +66,15 @@ def provider_error_detail(body):
         for name in ('code','type'):
             value=error.get(name)
             result[name]=value if type(value) is str and value in ERROR_CODES else 'OTHER_OR_ABSENT'
+        names, definitions = schema_names(response_schema) if response_schema is not None else (frozenset(), frozenset())
+        allowed_parts = (TECHNICAL_PARTS | names | definitions) if response_schema is not None else PARAMETER_PARTS
         param=error.get('param')
         parts=re.findall(r'[$A-Za-z_][$A-Za-z_0-9]*',param) if type(param) is str and len(param)<=500 else []
-        result['parameterPath']=[part if part in PARAMETER_PARTS else 'UNKNOWN' for part in parts[:16]]
+        result['parameterPath']=[part if part in allowed_parts else 'UNKNOWN' for part in parts[:16]]
         message=error.get('message')
-        result['schemaPaths']=schema_message_paths(message)
+        result['schemaPaths']=schema_message_paths(message, allowed_parts)
+        if response_schema is not None:
+            result['missingProperties']=missing_properties(message, names)
         # Each emitted token comes from the closed technical dictionary, not provider prose.
         tokens=re.findall(r'[A-Za-z_][A-Za-z_0-9-]*',message.lower()) if type(message) is str else []
         result['schemaTerms']=[word for word in tokens if word in SCHEMA_TERMS][:96]
@@ -78,12 +83,12 @@ def provider_error_detail(body):
         return {'detail':'UNAVAILABLE','unavailableReason':'INVALID_JSON_OR_ENCODING'}
 
 
-async def read_error_detail(response):
+async def read_error_detail(response, response_schema=None):
     body=bytearray()
     async for chunk in response.aiter_bytes(chunk_size=4096):
         body.extend(chunk)
         if len(body)>8192: return {'detail':'UNAVAILABLE','unavailableReason':'BODY_TOO_LARGE'}
-    return provider_error_detail(body)
+    return provider_error_detail(body, response_schema)
 
 
 def provider_diagnostic(event, status=None, detail=None):
@@ -170,7 +175,7 @@ class GroqProvider(LLMProvider):
                         headers={'Authorization': 'Bearer ' + self._api_key,
                                  'Content-Type': 'application/json'}, json=payload) as response:
                     if response.status_code != 200:
-                        detail = await read_error_detail(response)
+                        detail = await read_error_detail(response, schema)
                         provider_diagnostic('HTTP_FAILURE', response.status_code, detail)
                         if response.status_code == 400 and detail.get('code') == 'json_validate_failed':
                             raise RecommendationError('AI_SCHEMA_REJECTED', 502,
