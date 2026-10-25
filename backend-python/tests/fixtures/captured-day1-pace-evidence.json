@@ -1,0 +1,10 @@
+{
+  "provenance": "Actual durable diagnostic and redacted structure, not raw response replay; exact prose and main count were not retained",
+  "responseSha256": "4c9da92aee894d03254d49b9d34f54b0445bf5c12d88f977dc4163980e1e83d9",
+  "httpStatus": 200,
+  "requestedDays": 6,
+  "returnedDays": 6,
+  "privateShapeErrors": [],
+  "failure": {"stage": "private", "type": "PACE", "loc": ["days", 0, "activities"]},
+  "day1": {"totalEntries": 3, "knownAccommodationEntries": 1, "mainCountPossibleValues": [0, 1], "balancedRequiredRange": [2, 3]}
+}

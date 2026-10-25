@@ -243,6 +243,11 @@ class ItineraryService:
         response_schema['properties']['vibe'] = ({'type': 'null'} if expected_vibe is None
             else {'type': 'string', 'enum': [expected_vibe]})
         from .groq import GroqProvider
+        if context is None and isinstance(provider, GroqProvider):
+            from .generation_contract import GenerationContract
+            contract = GenerationContract(p)
+            response_schema = contract.schema
+            messages[0]['content'] = prompt.messages[0].content + contract.instructions
         if context is not None and context.targetDate is None and context.maxMainActivitiesPerDay is not None and isinstance(provider, GroqProvider):
             from .refinement_contract import RefinementContract
             contract = RefinementContract(context)
@@ -265,8 +270,12 @@ class ItineraryService:
         warning_contract = None
         if contract is None and isinstance(provider, GroqProvider):
             from .warning_contract import WarningContract
-            warning_contract = WarningContract(response_schema)
+            warning_contract = WarningContract(response_schema, generation=context is None)
             response_schema = warning_contract.schema
+            if context is None:
+                messages[0]['content'] = messages[0]['content'].replace(
+                    'Echo supplied vibe or null.',
+                    'Do not output vibe: no refinement vibe was requested; the server supplies that unset request metadata.')
             messages[0]['content'] += warning_contract.instructions
         try:
             raw = await asyncio.wait_for(provider.generate(messages, response_schema), self.timeout_seconds)
