@@ -54,6 +54,7 @@ const validationReasons = {
 };
 const clientValidationFailure = 'The server returned an itinerary, but it failed browser-side validation and could not be verified. No replacement was accepted.';
 const failure = (status, diagnostic = {}) => {
+  if (status === 502 && diagnostic.code === 'AI_PROVIDER_FAILED') return 'The AI provider could not complete this request. No plan was accepted or saved; no automatic retry was made.';
   if (status === 502 && diagnostic.code === 'AI_SCHEMA_REJECTED') return 'The AI provider rejected its generated output against the required schema. No plan was accepted or saved; no automatic retry was made.';
   if (diagnostic.kind === 'network') return 'The planner service could not be reached. Check the backend connection; no replacement was accepted.';
   if (diagnostic.kind === 'invalid_json') return 'The planner service returned unreadable JSON. No replacement was accepted.';

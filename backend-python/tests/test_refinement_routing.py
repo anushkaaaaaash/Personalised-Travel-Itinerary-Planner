@@ -17,8 +17,11 @@ def test_normal_endpoint_routes_refinement_only_to_120b(monkeypatch,payload,gene
     request=request_for(payload,generated,cap=None if scope=='uncapped' else 2,
         target=generated['days'][1]['date'] if scope=='day' else None)
     public=copy.deepcopy(generated); public['vibe']='relaxed'
+    public['warnings']={'verificationWarning':public['warnings'][0],'additionalWarnings':public['warnings'][1:]}
     response_body=proposal_for(request) if scope=='whole' else public
-    outputs=[response_body,generated,recommendations]
+    generation=copy.deepcopy(generated)
+    generation['warnings']={'verificationWarning':generation['warnings'][0],'additionalWarnings':generation['warnings'][1:]}
+    outputs=[response_body,generation,recommendations]
     def handler(req):
         body=json.loads(req.content); calls.append(body)
         return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(outputs[len(calls)-1])}}]})

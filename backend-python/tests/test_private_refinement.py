@@ -141,6 +141,7 @@ def test_private_fixed_support_preserved_and_unknown_rejected(payload,generated)
 def test_capped_target_day_uses_public_path_and_preserves_others(payload,generated):
     request=request_for(payload,generated,target=generated['days'][1]['date'])
     proposal=copy.deepcopy(generated); proposal['vibe']='relaxed'
+    proposal['warnings']={'verificationWarning':proposal['warnings'][0],'additionalWarnings':proposal['warnings'][1:]}
     proposal['days'][1]['morning']='Updated target visit'
     response,calls=invoke(request,proposal)
     assert response.status_code==200,response.text
@@ -295,6 +296,7 @@ def test_private_prompt_uses_requested_pace(payload,generated,pace,bounds):
 def test_uncapped_whole_refinement_still_uses_public_contract(payload,generated):
     request=request_for(payload,generated,cap=None)
     proposal=copy.deepcopy(generated); proposal['vibe']='relaxed'
+    proposal['warnings']={'verificationWarning':proposal['warnings'][0],'additionalWarnings':proposal['warnings'][1:]}
     response,calls=invoke(request,proposal)
     assert response.status_code==200,response.text
     assert len(calls)==1
