@@ -250,7 +250,9 @@ def test_specific_schema_detail_is_sanitized_and_actionable(caplog):
         'request':{'secret':KEY}}}
     with pytest.raises(RecommendationError): run(lambda request:httpx.Response(400,json=body))
     assert 'invalid_json_schema' in caplog.text
-    assert 'fixedTime' in caplog.text
+    # This test's outgoing schema has no fixedTime: global knowledge is not
+    # permission to echo a name absent from the active request schema.
+    assert 'fixedTime' not in caplog.text and 'UNKNOWN' in caplog.text
     assert '"enum", "values", "must", "be", "strings", "not", "boolean"' in caplog.text
     assert all(v not in caplog.text for v in ['PRIVATE_CITY','PRIVATE_TOKEN',KEY])
 
