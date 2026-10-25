@@ -237,6 +237,11 @@ class ItineraryService:
 
         contract = None
         response_schema = ItineraryPayload.model_json_schema()
+        # Vibe is request context, never a model choice. Avoid an unnecessary
+        # nullable enum union for generation (which has no requested vibe).
+        expected_vibe = context.vibe if context is not None else None
+        response_schema['properties']['vibe'] = ({'type': 'null'} if expected_vibe is None
+            else {'type': 'string', 'enum': [expected_vibe]})
         from .groq import GroqProvider
         if context is not None and context.targetDate is None and context.maxMainActivitiesPerDay is not None and isinstance(provider, GroqProvider):
             from .refinement_contract import RefinementContract
@@ -291,7 +296,7 @@ class ItineraryService:
             except Exception:
                 raise RecommendationError('AI_INVALID_RESPONSE', 502, 'The requested day could not be refined safely. Your previous itinerary is unchanged.', reason='FORMAT_SCHEMA') from None
         result = validate_itinerary(raw, p, provider.name, provider.model)
-        if context is not None and result.vibe != context.vibe:
+        if result.vibe != expected_vibe:
             raise RecommendationError('AI_INVALID_RESPONSE', 502, 'The AI did not preserve the requested vibe.', reason='VIBE_MISMATCH')
         if context is not None and result.status == 'planned':
             revised_days = {day.date: day for day in result.days}

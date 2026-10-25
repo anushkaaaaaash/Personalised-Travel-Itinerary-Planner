@@ -30,7 +30,7 @@ ERROR_CODES = frozenset({'invalid_request_error','invalid_json_schema','invalid_
 SCHEMA_TERMS = frozenset("schema json_schema response_format properties required additionalproperties anyof oneof allof enum const type string strings boolean booleans integer integers number numbers object objects array arrays null nullable true false items refs ref defs definition definitions reference references root depth nesting nested maximum minimum maxitems minitems maxlength minlength pattern format max_tokens max_completion_tokens reasoning_effort include_reasoning stream model parameter parameters argument arguments invalid unsupported support supported supports not allowed allow only must should be contain contains containing values value expected found received provided missing extra duplicate invalid_request_error reserved name names has have is are in of for the to and or with at least cannot can does do unknown unrecognized unexpected exceed exceeds exceeded limit limits size compile compilation parse parsing error errors failed failure validate validation length empty nonempty json function functions tool tools strict required_properties".split())
 PARAMETER_PARTS = frozenset({'response_format','json_schema','schema','properties','required','additionalProperties',
     'anyOf','oneOf','enum','const','type','items','$ref','$defs','DayCosts','NewMainActivity','status','days',
-    'explanation','warnings','verificationWarning','mainSlots','main_1','main_2','main_3','main_4','day_1','day_2','day_3',
+    'explanation','warnings','vibe','verificationWarning','mainSlots','main_1','main_2','main_3','main_4','day_1','day_2','day_3',
     'id','title','startTime','durationMinutes','notes','latitude','longitude','fixedTime','kind',
     'max_tokens','max_completion_tokens','reasoning_effort','include_reasoning','stream','model'})
 
@@ -159,7 +159,11 @@ class GroqProvider(LLMProvider):
                         headers={'Authorization': 'Bearer ' + self._api_key,
                                  'Content-Type': 'application/json'}, json=payload) as response:
                     if response.status_code != 200:
-                        provider_diagnostic('HTTP_FAILURE', response.status_code, await read_error_detail(response))
+                        detail = await read_error_detail(response)
+                        provider_diagnostic('HTTP_FAILURE', response.status_code, detail)
+                        if response.status_code == 400 and detail.get('code') == 'json_validate_failed':
+                            raise RecommendationError('AI_SCHEMA_REJECTED', 502,
+                                'The AI provider rejected its output against the required schema. No result was accepted and no automatic retry was made.')
                         # Provider error bodies may echo private input. Never expose them.
                         if response.status_code == 429:
                             raise RecommendationError('AI_RATE_LIMITED', 429,

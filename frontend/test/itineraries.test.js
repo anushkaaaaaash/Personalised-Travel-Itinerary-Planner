@@ -28,6 +28,14 @@ test('infeasible response has no invented days or totals', () => {
 test('AI configuration/network errors remain distinct from preference saving', async () => {
   await assert.rejects(generateItinerary(prefs, { fetchImpl: async () => ({ status: 503 }) }), /not configured.*unchanged/);
 });
+
+test('provider schema rejection is distinct and never echoes provider content or retries',async()=>{
+  let calls=0;
+  await assert.rejects(generateItinerary(prefs,{fetchImpl:async()=>{
+    calls++;return {status:502,json:async()=>({error:{code:'AI_SCHEMA_REJECTED',message:'PRIVATE_PROVIDER_OUTPUT'}})};
+  }}),error=>error.message.includes('provider rejected its generated output')&&!error.message.includes('PRIVATE_PROVIDER_OUTPUT'));
+  assert.equal(calls,1);
+});
 test('day refinement sends full previous context and preserves all other days', async () => {
   const previous = fixture(); const updated = fixture(); updated.days[0].morning = 'Revised museum visit'; updated.vibe = 'relaxed';
   let sent;

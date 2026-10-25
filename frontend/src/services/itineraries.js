@@ -54,6 +54,7 @@ const validationReasons = {
 };
 const clientValidationFailure = 'The server returned an itinerary, but it failed browser-side validation and could not be verified. No replacement was accepted.';
 const failure = (status, diagnostic = {}) => {
+  if (status === 502 && diagnostic.code === 'AI_SCHEMA_REJECTED') return 'The AI provider rejected its generated output against the required schema. No plan was accepted or saved; no automatic retry was made.';
   if (diagnostic.kind === 'network') return 'The planner service could not be reached. Check the backend connection; no replacement was accepted.';
   if (diagnostic.kind === 'invalid_json') return 'The planner service returned unreadable JSON. No replacement was accepted.';
   if (status === 400 && diagnostic.code === 'REFINEMENT_PACE_CONFLICT') return 'The activity limit conflicts with the selected travel pace. Choose a compatible limit or explicitly change the pace; your previous plan is unchanged.';

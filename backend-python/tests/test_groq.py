@@ -63,6 +63,34 @@ def test_request_shape_schema_and_logs(caplog):
     assert KEY not in caplog.text
     assert 'minLength' in json.dumps(SCHEMA)  # Not mutated.
 
+def test_output_schema_rejection_is_distinct_safe_and_single_call(caplog):
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(400,json={'error':{'code':'json_validate_failed','type':'invalid_request_error',
+            'message':'JSON does not validate with properties anyOf enum PRIVATE_OUTPUT', 'failed_generation':'PRIVATE_OUTPUT'}})
+    with pytest.raises(RecommendationError) as error:run(handler)
+    assert error.value.code=='AI_SCHEMA_REJECTED' and error.value.status==502
+    assert len(calls)==1 and 'PRIVATE_OUTPUT' not in str(error.value)+caplog.text
+    from app.groq import schema_message_paths
+    assert schema_message_paths('schema.properties.vibe.anyOf.enum PRIVATE_OUTPUT')==[['schema','properties','vibe','anyOf','enum']]
+
+@pytest.mark.parametrize('model',['openai/gpt-oss-20b','openai/gpt-oss-120b'])
+def test_null_vibe_contract_reaches_strict_wire_schema_without_retry(model):
+    from app.itineraries import ItineraryPayload
+    schema=ItineraryPayload.model_json_schema()
+    schema['properties']['vibe']={'type':'null'}
+    calls=[]
+    def handler(request):
+        body=json.loads(request.content);calls.append(body)
+        assert body['model']==model and body['max_completion_tokens']==4096
+        assert body['response_format']['json_schema']['strict'] is True
+        assert body['response_format']['json_schema']['schema']['properties']['vibe']=={'type':'null'}
+        return httpx.Response(200,json=envelope('{"vibe":null}'))
+    provider=GroqProvider(KEY,model=model,transport=httpx.MockTransport(handler))
+    assert asyncio.run(provider.generate(MESSAGES,schema))=='{"vibe":null}'
+    assert len(calls)==1
+
 
 @pytest.mark.parametrize('key,model',[('',DEFAULT_MODEL),('bad\nkey',DEFAULT_MODEL),(KEY,'https://evil.test'),(KEY,'llama-3.3-70b-versatile')])
 def test_invalid_configuration(key,model):
