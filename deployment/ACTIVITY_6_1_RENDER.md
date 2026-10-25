@@ -43,14 +43,24 @@ deployment's commit in Events before claiming a specific version is running.
 | Closest region | BLOCKED | Oregon confirmed; user proximity not established, no relocation authorized |
 | CI | PASS | Push/PR workflow runs Python, JavaScript, build, bundle and tracked-env checks; main CI passed before enabling auto-deploy |
 | CI-gated auto-deploy setting | PASS (user evidence) | User reports saved After CI Checks Pass; no autonomous dashboard verification |
-| Successful automatic deployment | BLOCKED | Requires an approved, eligible main change plus matching successful automatic Render event |
+| Observed automatic deployment (additional confidence check) | Not observed; not an explicit course step | An approved eligible main change and matching automatic Render event would provide additional evidence, but no extra deployment is required solely for this audit |
 | Autoscaling | BLOCKED (excluded Free scope) | Not configured; Pro-or-higher feature. User explicitly said not to add paid/unavailable scaling |
 | Current runtime commit identity | BLOCKED | Conflicting header evidence; health alone cannot identify the running SHA |
 
 PASS (adapted) establishes correct deployment for this actual application, not an
 assessor waiver of literal sample commands. BLOCKED means missing evidence or an
 approval/scope boundary, not a known application failure. No observed requirement
-currently has a demonstrated runtime FAIL; overall completion remains conditional.
+currently has a demonstrated runtime FAIL. Core hosting and CI-gated configuration
+are supported by the evidence above; region, scaling scope and runtime-SHA limits
+remain explicit rather than an unqualified 100% claim.
+
+The supplied Activity 6.1 story mentions continuous deployment, but its steps ask
+for service configuration, deployment and Live status. They do not explicitly
+require a separate push-triggered deployment demonstration. Connected Git
+credentials and the user-confirmed saved CI-gated setting support the configuration
+requirement. Lack of an observed automatic event is a verification limit, not an
+additional mandatory course task. The earlier stricter completion wording was
+incorrect and is superseded here.
 
 Retain Python 3.13.7 and the reviewed start command:
 
@@ -65,7 +75,7 @@ current request/cost quotas are in-process, not distributed. Do not enable scali
 without reviewing those limits. Render Free is a course demo with sleep/cold-start
 limits, not an always-on production availability promise.
 
-## Remaining operational verification
+## Optional additional operational verification
 
 1. Open the **existing service → Settings**. Inspect source/repository/branch and
    Auto-Deploy, plus the most recent successful deployment commit. Share field
@@ -80,7 +90,7 @@ limits, not an always-on production availability promise.
    merge of this PR must NOT be promised as an automatic-deployment test; additional
    configured Build Filters may further restrict eligible changes. Inspect those
    filters read-only before selecting a test change. Do not alter them without approval.
-4. Verify a subsequently approved main commit has successful GitHub checks and a
+4. If additional end-to-end evidence is requested, verify a subsequently approved main commit has successful GitHub checks and a
    corresponding successful automatic Render deployment of the same SHA. Do not
    create an empty commit just to trigger deployment or claim manual deployment
    proves continuous deployment. Confirm health/auth/access boundaries afterward.
@@ -96,9 +106,11 @@ an automation claim. A manual deployment is not evidence of CI-gated automation.
 If any source/permission/plan change is required, stop for approval. Preserve the
 current successful service while investigating. No credentials, billing, data,
 origins or security policies change as part of this repository documentation PR.
-Activity 6.1 remains partially complete until continuous deployment is verified
-or the course explicitly accepts manual deployment. Autoscaling is separately
-unfulfilled if the assessment requires it; no paid upgrade is implied.
+Do not withhold the core deployment/configuration result solely because the
+optional automatic-trigger test has not run. Autoscaling remains separately
+unfulfilled if assessed literally, but is excluded by the user's Free-only scope;
+no paid upgrade is implied. Region proximity and exact current runtime SHA remain
+unverified. No extra production deployment is justified by this documentation fix.
 
 ## References checked 2026-10-25
 
