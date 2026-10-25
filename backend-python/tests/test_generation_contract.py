@@ -16,6 +16,7 @@ from app.itineraries import ItineraryDay,ItineraryPayload,ItineraryService,valid
 from app.models import TripPreferences
 from app.generation_contract import GenerationContract,SCHEDULE_NOTICE
 from app.recommendations import RecommendationError
+from app.refinement_contract import check_shape
 from test_itineraries import generated,NoStorage
 from generation_fixture import private_proposal
 
@@ -23,6 +24,15 @@ from generation_fixture import private_proposal
 def wire(payload,generated):
     data=deepcopy(generated);data['warnings']={'verificationWarning':'Synthetic estimates require verification.','additionalWarnings':[]}
     return private_proposal(data,payload)
+
+def entries(day):
+    return sorted([*day['requiredMainActivities'].values(),*day['activities']],key=lambda a:a['sequence'])
+
+def regroup(day,ordered):
+    for i,entry in enumerate(ordered):entry['sequence']=i+1
+    required=[a for a in ordered if a['kind']=='main'][:2]
+    day['requiredMainActivities']={f'main_{i+1}':a for i,a in enumerate(required)}
+    day['activities']=[a for a in ordered if not any(a is main for main in required)]
 
 @pytest.mark.parametrize('times',[(('08:00',60,'meal'),('08:30',120,'main')),
     (('07:30',60,'meal'),('08:00',30,'transfer')),
@@ -52,6 +62,9 @@ def test_consistent_complete_array_contract_and_pace_policy(payload,pace,minimum
     assert (contract.minimum,contract.maximum)==(minimum,maximum)
     assert contract.schema['properties']['days']['type']=='array'
     assert contract.schema['$defs']['GenerationDay']['properties']['activities']['type']=='array'
+    required=contract.schema['$defs']['GenerationDay']['properties']['requiredMainActivities']
+    assert set(required['required'])=={f'main_{i+1}' for i in range(minimum)}
+    assert contract.schema['$defs']['RequiredMainProposal']['properties']['kind']['enum']==['main']
     assert 'arrival and departure' in contract.instructions
     assert 'return status infeasible' in contract.instructions
     assert 'days: []' in contract.instructions and 'Never omit days' in contract.instructions
@@ -62,16 +75,16 @@ def test_consistent_complete_array_contract_and_pace_policy(payload,pace,minimum
 def test_private_contract_rejects_without_repair(payload,wire,mutation):
     contract=GenerationContract(TripPreferences(**payload));day=wire['days'][0]
     if mutation=='blank_evening':day['evening']=' '
-    if mutation=='missing_main':day['activities'].pop()
+    if mutation=='missing_main':day['requiredMainActivities'].pop('main_2')
     if mutation=='zero_main':
-        for entry in day['activities']:entry['kind']='rest'
-    if mutation=='negative_gap':day['activities'][1]['gapBeforeMinutes']=-30
+        for entry in entries(day):entry['kind']='rest'
+    if mutation=='negative_gap':entries(day)[1]['gapBeforeMinutes']=-30
     if mutation=='midnight':day['dayStart']='23:45'
-    if mutation=='absolute_time':day['activities'][0]['startTime']='08:00'
-    if mutation=='fixed_time':day['activities'][0]['fixedTime']=True
+    if mutation=='absolute_time':entries(day)[0]['startTime']='08:00'
+    if mutation=='fixed_time':entries(day)[0]['fixedTime']=True
     if mutation=='extra_day':wire['days'].append(deepcopy(day))
     if mutation=='missing_day':wire['days'].pop()
-    if mutation=='duplicate_id':day['activities'][1]['id']=day['activities'][0]['id']
+    if mutation=='duplicate_id':entries(day)[1]['id']=entries(day)[0]['id']
     if mutation=='warning_blank':wire['warnings']['verificationWarning']=''
     if mutation=='too_many_warnings':wire['warnings']['additionalWarnings']=['Extra']*7
     original=deepcopy(wire)
@@ -97,33 +110,34 @@ def test_infeasible_never_fills_missing_activities(payload,wire):
 
 def test_breakfast_transfer_before_main_and_support_after_last_main(payload,wire):
     contract=GenerationContract(TripPreferences(**payload));day=wire['days'][0]
-    first,second=day['activities'];template=deepcopy(first);day['dayStart']='08:00'
+    first,second=entries(day);template=deepcopy(first);day['dayStart']='08:00'
     first['gapBeforeMinutes']=15;second['gapBeforeMinutes']=45
-    day['activities']=[{**template,'id':'meal','kind':'meal','durationMinutes':30,'gapBeforeMinutes':0},
+    ordered=[{**template,'id':'meal','kind':'meal','durationMinutes':30,'gapBeforeMinutes':0},
         {**template,'id':'transfer','kind':'transfer','durationMinutes':30,'gapBeforeMinutes':15},
         first,second,{**template,'id':'rest','kind':'rest','durationMinutes':30,'gapBeforeMinutes':0}]
-    day['activities']=[dict(reversed(list(entry.items()))) for entry in day['activities']]
+    regroup(day,[dict(reversed(list(entry.items()))) for entry in ordered])
     result=validate_itinerary(contract.decode(wire),TripPreferences(**payload),'fixture','fixture')
     assert [(a.kind,a.startTime) for a in result.days[0].activities]==[('meal','08:00'),('transfer','08:45'),('main','09:30'),('main','11:45'),('rest','12:45')]
 
 @pytest.mark.parametrize('pace',['relaxed','fast'])
 def test_other_paces_accept_complete_proposals(payload,wire,pace):
     p=TripPreferences(**{**payload,'travelPace':pace});contract=GenerationContract(p)
-    if pace=='fast':
-        for day in wire['days']:day['activities'].append({**day['activities'][1],'id':'third','gapBeforeMinutes':0})
+    for day in wire['days']:
+        if pace=='fast':day['requiredMainActivities']['main_3']={**entries(day)[1],'id':'third','gapBeforeMinutes':0,'sequence':3}
+        else:day['activities'].append(day['requiredMainActivities'].pop('main_2'))
     result=validate_itinerary(contract.decode(wire),p,'fixture','fixture')
     assert all(d.mainActivityCount==(3 if pace=='fast' else 2) for d in result.days)
 
 def test_zero_gaps_and_exact_midnight_end(payload,wire):
     for day in wire['days']:
         day['dayStart']='21:30'
-        for entry in day['activities']:entry['gapBeforeMinutes']=0
+        for entry in entries(day):entry['gapBeforeMinutes']=0
     result=validate_itinerary(GenerationContract(TripPreferences(**payload)).decode(wire),TripPreferences(**payload),'fixture','fixture')
     assert [(a.startTime,a.durationMinutes) for a in result.days[0].activities]==[('21:30',90),('23:00',60)]
 
 @pytest.mark.parametrize('mutation',['duration14','duration241','duration_bool','coordinate_pair'])
 def test_original_activity_boundaries_preserved(payload,wire,mutation):
-    entry=wire['days'][0]['activities'][0]
+    entry=entries(wire['days'][0])[0]
     if mutation=='coordinate_pair':entry['latitude']=12.0;entry['longitude']=None
     else:entry['durationMinutes']={'duration14':14,'duration241':241,'duration_bool':True}[mutation]
     with pytest.raises(RecommendationError):validate_itinerary(GenerationContract(TripPreferences(**payload)).decode(wire),TripPreferences(**payload),'fixture','fixture')
@@ -155,8 +169,8 @@ def test_flexible_arrays_do_not_relax_coverage_or_counts(payload,wire,mutation):
     if mutation=='duplicate':wire['days'][1]['date']=wire['days'][0]['date']
     if mutation=='unknown':wire['days'][0]['date']='2099-01-01'
     if mutation in ('nine_entries','too_many_main'):
-        first=deepcopy(wire['days'][0]['activities'][0])
-        wire['days'][0]['activities']=[{**first,'id':f'item-{i}','durationMinutes':15,'gapBeforeMinutes':0} for i in range(9 if mutation=='nine_entries' else 4)]
+        first=deepcopy(entries(wire['days'][0])[0])
+        regroup(wire['days'][0],[{**first,'id':f'item-{i}','durationMinutes':15,'gapBeforeMinutes':0} for i in range(9 if mutation=='nine_entries' else 4)])
     with pytest.raises(RecommendationError):GenerationContract(TripPreferences(**payload)).decode(wire)
 
 def test_prompt_field_manifest_matches_schema_and_strict_structure(payload):
@@ -174,6 +188,39 @@ def test_prompt_field_manifest_matches_schema_and_strict_structure(payload):
             elif isinstance(value,list):
                 for child in value:walk(child)
     walk(contract.shape)
+
+@pytest.mark.parametrize('main_count',[0,1])
+def test_actual_day1_insufficient_main_bounds_are_now_structural_rejections(payload,wire,main_count):
+    evidence=json.loads((Path(__file__).parent/'fixtures/captured-day1-pace-evidence.json').read_text())
+    assert main_count in evidence['day1']['mainCountPossibleValues']
+    contract=GenerationContract(TripPreferences(**payload));day=wire['days'][0]
+    template=deepcopy(entries(day)[0])
+    # Unknown prose/kinds use explicit synthetic substitutions. This never repairs
+    # or purports to replay the actual discarded model prose.
+    ordered=[{**template,'id':f'synthetic-{i}','kind':kind,'sequence':i+1,'durationMinutes':30,'gapBeforeMinutes':0}
+             for i,kind in enumerate(['accommodation','main' if main_count else 'meal','rest'])]
+    day['requiredMainActivities']={f'main_{i+1}':e for i,e in enumerate(a for a in ordered if a['kind']=='main')}
+    day['activities']=[a for a in ordered if a['kind']!='main']
+    before=deepcopy(wire)
+    with pytest.raises(ValueError):check_shape(wire,contract.shape,contract.shape)
+    with pytest.raises(RecommendationError):contract.decode(wire)
+    assert wire==before
+
+@pytest.mark.parametrize('mutation',['null_main','meal_as_main','duplicate_sequence','gapped_sequence','missing_sequence'])
+def test_required_main_content_and_explicit_order_cannot_be_bypassed(payload,wire,mutation):
+    day=wire['days'][0];main=day['requiredMainActivities']['main_2']
+    if mutation=='null_main':day['requiredMainActivities']['main_2']=None
+    if mutation=='meal_as_main':main['kind']='meal'
+    if mutation=='duplicate_sequence':main['sequence']=1
+    if mutation=='gapped_sequence':main['sequence']=3
+    if mutation=='missing_sequence':del main['sequence']
+    with pytest.raises(RecommendationError):GenerationContract(TripPreferences(**payload)).decode(wire)
+
+def test_order_is_proposed_by_sequence_not_container_or_key_order(payload,wire):
+    for day in wire['days']:
+        day['requiredMainActivities']=dict(reversed(list(day['requiredMainActivities'].items())))
+    result=validate_itinerary(GenerationContract(TripPreferences(**payload)).decode(wire),TripPreferences(**payload),'fixture','fixture')
+    assert all([(a.startTime,a.durationMinutes) for a in d.activities]==[('09:00',90),('14:00',60)] for d in result.days)
 
 def test_representative_real_fastapi_serialization_and_mounted_component(payload,wire):
     calls=[]

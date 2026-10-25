@@ -26,7 +26,11 @@ class GenerationContract:
         activity['gapBeforeMinutes']={'type':'integer','enum':list(range(241)),
             'description':'Nonnegative travel/rest gap after the previous entry (or day start for the first), 0-240 minutes. No overlaps.'}
         activity['kind']={'type':'string','enum':['main','rest','transfer','meal','accommodation']}
+        activity['sequence']={'type':'integer','enum':list(range(1,9)),
+            'description':'Unique position across requiredMainActivities and activities together, consecutive 1 through total entries. This specifies the intended chronological order.'}
         defs['ActivityProposal']=obj(activity)
+        main=deepcopy(activity);main['kind']={'type':'string','enum':['main']}
+        defs['RequiredMainProposal']=obj(main)
         public_day=defs['ItineraryDay']['properties']
         self.narratives=('morning','afternoon','evening','dining','dietaryNotes','mobilityNotes','transitAndRest')
         day={'date':{'type':'string','enum':self.dates},
@@ -34,8 +38,9 @@ class GenerationContract:
         for name in self.narratives:
             day[name]['description']=f'Required nonblank AI-authored description, 1-{day[name]["maxLength"]} characters. Never empty; explicitly describe any planned rest/return arrangements without inventing bookings.'
         day['dayStart']={'type':'string','enum':[f'{h:02}:{m:02}' for h in range(24) for m in (0,15,30,45)]}
+        day['requiredMainActivities']=obj({f'main_{i+1}':{'$ref':'#/$defs/RequiredMainProposal'} for i in range(self.minimum)})
         day['activities']={'type':'array','items':{'$ref':'#/$defs/ActivityProposal'},
-            'description':f'One to eight ordered entries, including {self.minimum}-{self.maximum} main activities. All supporting event orders are allowed. Local validation enforces these bounds.'}
+            'description':f'Additional entries only, not copies of requiredMainActivities. At most {8-self.minimum} additional entries and at most one additional main. Empty is allowed. Combined sequence specifies order; local validation enforces upper bounds.'}
         defs['GenerationDay']=obj(day)
         # Remove unused public definitions so the private output has no competing
         # absolute-time shape or redundant model-selected mainActivityCount.
@@ -51,17 +56,20 @@ class GenerationContract:
         self.instructions=(
             '\nGENERATION PROPOSAL CONTRACT: Return one complete JSON object with ALL four root fields: days, status, explanation, warnings. '
             'Write the complete days array first; an explanation and warnings alone are never a planned itinerary. '
-            'Each day object must contain date, morning, afternoon, evening, dining, dietaryNotes, mobilityNotes, transitAndRest, interestTags, costs, dayStart and activities. '
-            'Each activity must contain id, title, durationMinutes, notes, latitude, longitude, kind and gapBeforeMinutes. '
+            'Each day object must contain date, morning, afternoon, evening, dining, dietaryNotes, mobilityNotes, transitAndRest, interestTags, costs, dayStart, requiredMainActivities and activities. '
+            'Each activity must contain id, title, durationMinutes, notes, latitude, longitude, kind, gapBeforeMinutes and sequence. '
             'Do not output destination, currency, travelStyle, travelPace, vibe, mainActivityCount, startTime or fixedTime fields. '
             'The server supplies request metadata and computes counts and schedule times; it does not repair missing content. '
             f'For planned output days must contain exactly {len(self.dates)} complete objects with these dates exactly once in this order: {", ".join(self.dates)}. '
             f'Include arrival and departure days. Every day requires {self.minimum}-{self.maximum} real main experiences for the requested {preferences.travelPace} pace. '
             'Travel-only or rest-only days do not satisfy this existing pace rule; if these requirements cannot realistically fit, '
             'return status infeasible, explanation and warnings, AND days: []. Never omit days even for infeasible output. Never label meals or transfers as main experiences. '
-            'Each activities array contains one to eight total ordered entries. Main, meal, transfer, rest and accommodation entries may appear in any realistic order. '
+            f'requiredMainActivities must contain {", ".join(f"main_{i+1}" for i in range(self.minimum))}, each a complete genuine main experience with kind main, including on Day 1. '
+            'The activities array contains only additional entries, optionally one more main experience. Do not repeat the required main experiences there. '
+            'Across both containers there must be at most eight total entries. Assign unique consecutive sequence positions 1 through the total count across BOTH containers. '
+            'Main, meal, transfer, rest and accommodation entries may appear in any realistic sequence; required main keys do not impose timeline positions. '
             'Use each real activity once and include every main excursion. '
-            'Choose dayStart, then for each entry in array order compute start = previous end + gapBeforeMinutes; '
+            'Choose dayStart, then for each entry in sequence order compute start = previous end + gapBeforeMinutes; '
             'for the first entry previous end is dayStart. End = start + durationMinutes. Choose realistic gaps for transport/rest. '
             'Check the entire duration/gap sum fits before midnight. Do not provide absolute entry times or fixed commitments: '
             'these preferences contain none. If real transport/venue constraints cannot be represented safely, report infeasible. '
@@ -100,9 +108,12 @@ class GenerationContract:
                     if not day[name].strip():raise ValueError()
                 h,m=map(int,day['dayStart'].split(':'));end=60*h+m
                 activities=[]
-                if not 1<=len(day['activities'])<=8:raise ValueError()
-                for entry in day['activities']:
-                    activity=deepcopy(entry);gap=activity.pop('gapBeforeMinutes')
+                entries=[*day['requiredMainActivities'].values(),*day['activities']]
+                if not 1<=len(entries)<=8:raise ValueError()
+                entries=sorted(entries,key=lambda entry:entry['sequence'])
+                if [entry['sequence'] for entry in entries]!=list(range(1,len(entries)+1)):raise ValueError()
+                for entry in entries:
+                    activity=deepcopy(entry);gap=activity.pop('gapBeforeMinutes');activity.pop('sequence')
                     start=end+gap;end=start+activity['durationMinutes']
                     if end>1440:raise ValueError()
                     activity.update(startTime=f'{start//60:02}:{start%60:02}',fixedTime=False)

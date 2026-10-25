@@ -1,5 +1,10 @@
 # Day-plan generation contract correction — draft, not deployed
 
+This document records earlier contract iterations and their failures. The latest
+required-main correction and successful local real-provider acceptance are in
+[REQUIRED_MAIN_OFFLINE_FIX.md](REQUIRED_MAIN_OFFLINE_FIX.md). Earlier statements
+about pending acceptance below apply to those earlier iterations, not that result.
+
 One explicitly authorized local request used synthetic six-day Jaipur preferences,
 the existing Groq configuration, GPT-OSS-20B, strict schema and the unchanged 4096
 token cap. There were no retries or database operations. Account plan was unknown.
