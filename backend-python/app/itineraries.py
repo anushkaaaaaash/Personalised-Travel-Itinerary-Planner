@@ -265,8 +265,12 @@ class ItineraryService:
         warning_contract = None
         if contract is None and isinstance(provider, GroqProvider):
             from .warning_contract import WarningContract
-            warning_contract = WarningContract(response_schema)
+            warning_contract = WarningContract(response_schema, generation=context is None)
             response_schema = warning_contract.schema
+            if context is None:
+                messages[0]['content'] = messages[0]['content'].replace(
+                    'Echo supplied vibe or null.',
+                    'Do not output vibe: no refinement vibe was requested; the server supplies that unset request metadata.')
             messages[0]['content'] += warning_contract.instructions
         try:
             raw = await asyncio.wait_for(provider.generate(messages, response_schema), self.timeout_seconds)

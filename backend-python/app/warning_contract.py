@@ -5,8 +5,13 @@ from .recommendations import RecommendationError
 
 
 class WarningContract:
-    def __init__(self, schema):
+    def __init__(self, schema, *, generation=False):
         self.schema = deepcopy(schema)
+        self.generation = generation
+        if generation:
+            # Generation requests no vibe: this is server-owned request metadata.
+            self.schema['properties'].pop('vibe', None)
+            self.schema['required'] = [key for key in self.schema.get('required', []) if key != 'vibe']
         self.schema['properties']['warnings'] = {
             'type': 'object', 'additionalProperties': False,
             'required': ['verificationWarning', 'additionalWarnings'],
@@ -39,6 +44,11 @@ class WarningContract:
                     result[key] = value
                 return result
             data = json.loads(text, object_pairs_hook=unique)
+            if self.generation:
+                # Never overwrite a conflicting vibe or repair generated travel content.
+                if data.get('vibe') is not None:
+                    raise ValueError()
+                data['vibe'] = None
             warnings = data['warnings']
             if type(warnings) is not dict or set(warnings) != {'verificationWarning', 'additionalWarnings'}:
                 raise ValueError()
