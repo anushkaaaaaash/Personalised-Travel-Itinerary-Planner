@@ -243,6 +243,11 @@ class ItineraryService:
         response_schema['properties']['vibe'] = ({'type': 'null'} if expected_vibe is None
             else {'type': 'string', 'enum': [expected_vibe]})
         from .groq import GroqProvider
+        if context is None and isinstance(provider, GroqProvider):
+            from .generation_contract import GenerationContract
+            contract = GenerationContract(p)
+            response_schema = contract.schema
+            messages[0]['content'] = prompt.messages[0].content + contract.instructions
         if context is not None and context.targetDate is None and context.maxMainActivitiesPerDay is not None and isinstance(provider, GroqProvider):
             from .refinement_contract import RefinementContract
             contract = RefinementContract(context)

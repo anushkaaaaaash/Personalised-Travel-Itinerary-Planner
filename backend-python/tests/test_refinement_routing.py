@@ -9,6 +9,7 @@ from app.providers import create_provider
 from test_itineraries import generated, NoStorage
 from test_recommendations import recommendations
 from test_private_refinement import request_for, proposal_for
+from generation_fixture import private_proposal
 
 
 @pytest.mark.parametrize('scope',['whole','day','uncapped'])
@@ -21,7 +22,7 @@ def test_normal_endpoint_routes_refinement_only_to_120b(monkeypatch,payload,gene
     response_body=proposal_for(request) if scope=='whole' else public
     generation=copy.deepcopy(generated)
     generation['warnings']={'verificationWarning':generation['warnings'][0],'additionalWarnings':generation['warnings'][1:]}
-    outputs=[response_body,generation,recommendations]
+    outputs=[response_body,private_proposal(generation,payload),recommendations]
     def handler(req):
         body=json.loads(req.content); calls.append(body)
         return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(outputs[len(calls)-1])}}]})

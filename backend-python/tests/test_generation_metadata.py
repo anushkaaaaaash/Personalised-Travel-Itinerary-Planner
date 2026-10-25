@@ -11,6 +11,7 @@ from app.warning_contract import WarningContract
 from app.recommendations import RecommendationError
 from test_itineraries import generated
 from test_warning_contract import proposal, run_provider
+from app.generation_contract import SCHEDULE_NOTICE
 
 def test_real_missing_vibe_shape_no_longer_requires_model_echo(payload, generated):
     data=proposal(generated);data.pop('vibe')
@@ -22,7 +23,7 @@ def test_real_missing_vibe_shape_no_longer_requires_model_echo(payload, generate
     result,calls=run_provider(payload,data)
     assert result.vibe is None and result.status=='planned'
     assert len(result.days)==len(data['days'])
-    assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings']]
+    assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]
     wire=calls[0]['response_format']['json_schema']['schema']
     assert 'vibe' not in wire['properties'] and 'vibe' not in wire['required']
     assert 'Echo supplied vibe or null.' not in calls[0]['messages'][0]['content']
@@ -42,7 +43,7 @@ def test_generation_metadata_does_not_change_refinement_or_public_schema(generat
     assert refinement.decode(data)['vibe']=='relaxed'
 
 def test_missing_vibe_does_not_bypass_other_required_fields(payload,generated):
-    data=proposal(generated);data.pop('vibe');data.pop('destination')
+    data=proposal(generated);data.pop('vibe');data.pop('explanation')
     with pytest.raises(RecommendationError):run_provider(payload,data)
 
 def test_infeasible_generation_also_derives_only_unset_vibe(payload,generated):

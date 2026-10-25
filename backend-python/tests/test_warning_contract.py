@@ -16,6 +16,8 @@ from app.recommendations import RecommendationError
 from app.refinement_contract import check_shape
 from app.warning_contract import WarningContract
 from test_itineraries import generated, NoStorage
+from generation_fixture import private_proposal
+from app.generation_contract import SCHEDULE_NOTICE
 
 
 def proposal(generated):
@@ -33,7 +35,7 @@ def run_provider(payload, result, context=None):
         assert wire['response_format']['json_schema']['strict'] is True
         expected='openai/gpt-oss-120b' if context else 'openai/gpt-oss-20b'
         assert wire['model']==expected
-        content=result if isinstance(result,str) else json.dumps(result)
+        content=result if isinstance(result,str) else json.dumps(result if context else private_proposal(result,payload))
         return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':content}}]})
     service=ItineraryService(GroqProvider('synthetic-offline-provider-key',model='openai/gpt-oss-120b' if context else 'openai/gpt-oss-20b',transport=httpx.MockTransport(handler)))
     try:
@@ -64,9 +66,9 @@ def test_seven_day_generation_keeps_public_contract_and_frontend_roundtrip(paylo
     data=proposal(generated);data.update(destination='Jaipur',currency='USD')
     data['days']=[{**deepcopy(generated['days'][0]),'date':(date(2026,12,12)+timedelta(days=i)).isoformat()} for i in range(7)]
     result,calls=run_provider(payload,data)
-    assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings']]
+    assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]
     assert len(result.days)==7 and result.saved is False
-    assert 'warnings is an object' in calls[0]['messages'][0]['content']
+    assert 'verificationWarning is mandatory' in calls[0]['messages'][0]['content']
     script="""
       import {validItinerary} from './frontend/src/services/itineraries.js';
       import {exportSnapshot} from './frontend/src/services/itineraryExport.js';
@@ -120,11 +122,11 @@ def test_fastapi_generation_route_returns_public_array_without_storage(payload,g
     data=proposal(generated);calls=[]
     def handler(request):
         calls.append(request)
-        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(data)}}]})
+        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(private_proposal(data,payload))}}]})
     service=ItineraryService(GroqProvider('synthetic-offline-provider-key',transport=httpx.MockTransport(handler)))
     response=TestClient(create_app(NoStorage(),itinerary_service=service)).post('/api/itineraries/generate',json=payload)
     assert response.status_code==200 and len(calls)==1
-    assert response.json()['warnings']==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings']]
+    assert response.json()['warnings']==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]
     assert response.json()['saved'] is False
 
 
@@ -135,4 +137,4 @@ def test_other_guards_unchanged(payload,generated,reason):
     if reason=='BUDGET':data['days'][0]['costs']['meals']=payload['budget']+1
     if reason=='DATE_COVERAGE':data['days'].pop()
     with pytest.raises(RecommendationError) as error:run_provider(payload,data)
-    assert error.value.reason==reason
+    assert error.value.reason==(reason if reason=='BUDGET' else 'FORMAT_SCHEMA')
