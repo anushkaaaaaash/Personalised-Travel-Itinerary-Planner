@@ -1,4 +1,5 @@
-# REVIEW ONLY: no cloud resources or settings have been created.
+# REVIEW ONLY: reference template, not live service state. Do not apply to create
+# another service; reuse anushka-travel-planner-api. See ACTIVITY_6_1_RENDER.md.
 services:
   - type: web
     name: travel-planner-api
