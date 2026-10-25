@@ -3,12 +3,21 @@ import { requestJson, PlannerRequestError } from '../services/readRequest.js';
 import { getSession, setSession, subscribeSession } from '../services/session.js';
 import PlannerRoutes from './PlannerRoutes.jsx';
 import { authFailure as failure } from '../services/authFeedback.js';
+import { createAuthCooldown } from '../services/authCooldown.js';
 export default function AuthBoundary() {
   const [config, setConfig] = useState(null), [configError, setConfigError] = useState('');
   const [session, updateSession] = useState(getSession), [epoch, setEpoch] = useState(0);
   const [mode, setMode] = useState('login'), [email, setEmail] = useState(''), [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const active = useRef(null), mounted = useRef(true);
+  const cooldown = useRef(null);
+  if (!cooldown.current) cooldown.current = createAuthCooldown();
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  useEffect(() => {
+    if (!waitSeconds) return;
+    const timer = setInterval(() => setWaitSeconds(cooldown.current.remaining()), 1000);
+    return () => clearInterval(timer);
+  }, [waitSeconds > 0]);
   useEffect(() => { mounted.current = true; const unsubscribe = subscribeSession(value => { updateSession(value); setEpoch(n => n + 1); setPassword(''); }); return () => { mounted.current = false; active.current?.abort(); unsubscribe(); }; }, []);
   async function loadConfig() {
     active.current?.abort(); const controller = new AbortController(); active.current = controller;
@@ -22,19 +31,22 @@ export default function AuthBoundary() {
   }
   useEffect(() => { void loadConfig(); }, []);
   async function submit(event) {
-    event.preventDefault(); if (active.current) return;
+    event.preventDefault(); if (active.current || cooldown.current.remaining()) return;
     const controller = new AbortController(); active.current = controller;
     setBusy(true); setError(''); setNotice('');
     try {
-      const value = await requestJson(`/auth/${mode === 'login' ? 'login' : 'register'}`, { method: 'POST', payload: { email: email.trim(), password }, signal: controller.signal, failure });
+      const value = await requestJson(`/auth/${mode === 'login' ? 'login' : 'register'}`, { method: 'POST', payload: { email: email.trim(), password }, signal: controller.signal, failure: (status, diagnostic) => failure(status, diagnostic, mode) });
       if (controller.signal.aborted || !mounted.current) return;
       if (value.session) {
         const s = value.session;
         if (typeof s.access_token !== 'string' || !s.access_token || s.token_type !== 'bearer' || !Number.isFinite(s.expires_at) || s.expires_at * 1000 <= Date.now() || !value.user?.id) throw new PlannerRequestError('Account session could not be verified.');
         setSession({ ...s, user: value.user }); setNotice('Signed in. Session stays in memory and ends on refresh or expiry.');
-      } else if (value.pending_confirmation === true) setNotice('Check your email for any required confirmation, then sign in. This response does not confirm a new account or verified email.');
+      } else if (value.pending_confirmation === true) setNotice('Check your inbox and spam folder for confirmation, then choose Switch to sign in. This response does not verify account creation or email delivery. Do not keep registering to resend; if no email arrives, delivery settings need to be checked.');
       else throw new PlannerRequestError('No active session was returned. Confirm your email and try signing in.');
-    } catch (e) { if (!controller.signal.aborted && mounted.current) setError(e instanceof PlannerRequestError ? e.message : 'Account request could not be completed.'); }
+    } catch (e) { if (!controller.signal.aborted && mounted.current) {
+      cooldown.current.record(e); setWaitSeconds(cooldown.current.remaining());
+      setError(e instanceof PlannerRequestError ? e.message : 'Account request could not be completed.');
+    } }
     finally { if (active.current === controller) { active.current = null; if (mounted.current) { setBusy(false); setPassword(''); } } }
   }
   async function logout() {
@@ -53,9 +65,10 @@ export default function AuthBoundary() {
     <aside className="account-shell card" aria-label="Account access"><h2>{config.mode === 'local' ? 'Private local planner' : 'Your planner account'}</h2>
       <p className="hint">{config.mode === 'local' && !config.ownership_enabled ? 'Local mode is for one trusted operator. Legacy preference-only history is project-wide. My saved full itineraries uses separate account-scoped storage. Public deployment is not configured.' : 'Account access is required. Sessions are kept in memory only.'}</p>
       {config.mode === 'production' && !config.ownership_enabled && !savedOnly && <p role="alert">Planner access is blocked until owner-scoped storage is configured.</p>}
-      {config.enabled && (session ? <div><p>Signed in as {session.user.email || 'your account'}</p><button className="preview-btn" onClick={logout} disabled={busy}>Sign out and clear planner</button></div> : <details open={config.mode === 'production' || config.ownership_enabled}><summary>Sign in or register</summary><form onSubmit={submit} className="account-form"><label className="field">Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label><label className="field">Password<input type="password" required minLength={8} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label><button className="generate-btn" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register account'}</button><button type="button" className="preview-btn" disabled={busy} onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setPassword(''); }}>{mode === 'login' ? 'Switch to registration' : 'Switch to sign in'}</button></form></details>)}
+      {config.enabled && (session ? <div><p>Signed in as {session.user.email || 'your account'}</p><button className="preview-btn" onClick={logout} disabled={busy}>Sign out and clear planner</button></div> : <details open={config.mode === 'production' || config.ownership_enabled}><summary>Sign in or register</summary><form onSubmit={submit} className="account-form"><label className="field">Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label><label className="field">Password<input type="password" required minLength={8} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label><button className="generate-btn" disabled={busy || waitSeconds > 0}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register account'}</button><button type="button" className="preview-btn" disabled={busy} onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setPassword(''); }}>{mode === 'login' ? 'Switch to registration' : 'Switch to sign in'}</button></form></details>)}
       {!config.enabled && <p className="hint">Account registration and sign-in are not configured.</p>}
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
+      {waitSeconds > 0 && <p role="status">Account submissions paused for {waitSeconds} seconds. The service may still require a longer wait. Nothing will be retried automatically.</p>}
     </aside>
     {allowed && <PlannerRoutes savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} />}
   </>;

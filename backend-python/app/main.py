@@ -62,7 +62,7 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
     app.add_middleware(AccessBoundary, auth_service=authentication, ownership_supported=callable(getattr(storage, 'for_user', None)))
     app.add_middleware(CORSMiddleware, allow_origins=configured_frontend_origins(),
         allow_credentials=False, allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-        allow_headers=['Authorization','Content-Type'])
+        allow_headers=['Authorization','Content-Type'], expose_headers=['Retry-After'])
     app.add_middleware(NoStoreBoundary)
     app.include_router(build_auth_router(authentication))
     from .saved_itineraries import build_saved_itinerary_router
