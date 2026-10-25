@@ -1,4 +1,24 @@
-# Activity 5.3: readiness, not a live deployment
+# Activity 5.3 course-demo acceptance and Activity 5.4 configuration
+
+## Recorded acceptance (2026-10-25)
+
+PR #8 merged at `0fc98046ba46d79f5dc0ff600f46bafef201538e` after independent review,
+612 Python tests, 358 JavaScript tests, build/scans and both GitHub CI runs passed.
+Vercel reported successful deployment for this commit; public frontend and API health
+returned 200. The operator subsequently confirmed the Render deployment and supplied
+the rendered three-day production itinerary. This is user-run browser evidence,
+not an autonomous authenticated test or an independently read Render commit ID.
+
+The submitted result covered December 11–13 with durations 30–150 minutes and
+chronological, non-overlapping activities. It showed USD956.66 estimated cost and
+USD1543.34 remaining. This demonstrates successful bounded production generation;
+it does not establish factual travel accuracy. The text's day-one main-activity
+count disagreed with its listed activities, a domestic flight was described as
+international, and a beach name was unverified. AI prose and prices require review.
+No additional export test, data write, account change or AI request was performed
+for this documentation update. Earlier owner-isolation, CRUD and export evidence
+remains separate. Activity 5.3 is implemented and tested as a free course demo,
+not certified for reliable always-on production or travel booking.
 
 ## 5.3 testing and production boundary
 
@@ -12,13 +32,17 @@ Conservative in-process limits: 30 account requests/minute across the instance; 
 
 CI performs offline Python/JS tests, deterministic lockfile installation, a hosted-mode frontend build, public-bundle pattern checks and tracked-env exclusion. No deployment credentials are used. A passing static scan cannot establish that arbitrary strings contain no secrets. The build uses minification and emits no source maps by default; its measured size should be reported with the test evidence.
 
-## Required deployment configuration (broader Activity 5.4 is queued)
+## Required deployment configuration
 
 ### Explicit preview-origin approval
 
 The backend supports one optional `FRONTEND_PREVIEW_ORIGIN` alongside `FRONTEND_ORIGIN`; each must be a complete HTTPS origin. Matching is exact, never a wildcard or Vercel suffix. An invalid optional value fails production setup closed. Leaving it unset preserves single-origin behavior. This permits browser requests from that site's code; verified authentication and owner-scoped access are still required.
 
-For the specifically approved existing preview, after deploying the reviewed backend commit, keep Render `FRONTEND_ORIGIN=https://personalised-travel-itinerary-plann.vercel.app` and add `FRONTEND_PREVIEW_ORIGIN=https://personalised-travel-itinerary-planner-git-f-0f4c9b-anushka-76c5.vercel.app`. Save/redeploy only through the authorized operator workflow. No secret values need changing. Do not substitute a new PR preview alias without another explicit trust decision. Updating frontend code on another branch does not automatically update this older branch alias; verify its deployment identity separately. Never disable preview protection or email confirmation to make this work.
+The approved production origin is `https://personalised-travel-itinerary-plann.vercel.app`.
+The single approved preview origin is `https://personalised-travel-itinerary-planner-git-f-7a86cd-anushka-76c5.vercel.app`;
+it supersedes the old `f-0f4c9b` alias, which must remain blocked. Do not substitute
+another PR alias without explicit approval. No settings are changed by these docs.
+Never disable preview protection or email confirmation to make access work.
 
 ### Vercel frontend-only project
 
@@ -45,17 +69,23 @@ Provider settings use typed Pydantic models and `SecretStr`. Environment/process
 
 The supplied course screenshots are reference examples, not credentials to copy. If custom JWT signing or an alternative provider is mandatory for assessment, clarify that requirement before changing the authentication architecture or installing another provider. Existing Gemini support is retained but not selected for this production plan.
 
-Frontend key/token/secret/password-named `VITE_` variables are rejected during configuration because Vite bundles these values publicly. Hosted builds require a valid HTTPS `/api` backend URL. The Vercel root must be the repository root, retaining the workspace lockfile and `shared/` imports: install `npm ci --ignore-scripts`, build `npm run build`, output `frontend/dist`. The review-only SPA rewrite covers direct `/itineraries/:tripID` navigation; it is not a backend API proxy.
+Frontend key/token/secret/password-named `VITE_` variables are rejected because Vite
+bundles them publicly. Hosted builds require a valid HTTPS `/api` backend URL.
+Use the frontend-root configuration above; the repository-root template is only
+an alternative, not a second required deployment.
 
-## Exact approval needed before cloud setup
+## Cloud change boundaries
 
-1. The user selected a **free course demo**: Vercel Hobby and Render Free only. No payment method, paid resource, upgrade or overage is authorized. Render says Free is not for production and sleeps after inactivity; Vercel Hobby is limited to personal non-commercial use. No cloud service has been created.
+1. The existing deployment uses a **free course demo**: Vercel Hobby and Render Free only. No payment method, paid resource, upgrade or overage is authorized. Render Free sleeps after inactivity; Vercel Hobby is limited to personal non-commercial use.
 2. Identify the user's Vercel and Render accounts/teams. Approve connecting **only the existing repository** and the necessary Git provider permissions. No new repository is needed.
 3. Approve creating one frontend project and one backend service, selected regions/plan, and public exposure. Keep automatic deployment off until verification.
 4. Approve transmitting the existing Groq key plus existing Supabase public auth key/project URL to **Render backend environment storage**. Never send a service-role key or signing secret to Vercel. Vercel receives only the exact public API base URL.
 5. Once hostnames are assigned, approve `API_HOST`, `FRONTEND_ORIGIN`, and `VITE_API_BASE_URL`, plus any actual Supabase Site URL/redirect or email-confirmation setting change if needed. Password login itself does not justify weakening email verification.
 6. After settings are reviewed, run bounded deployed health/sign-in/owner-read/export checks. Any new account, real AI charge, write/delete or cleanup test requires its specific approval. Verify provider-side limits and rollback by disabling the service if checks fail.
 
-These are pending actions, not completed deployment steps. No cloud resource, OAuth grant, key transmission, billing change, database mutation or SkillWallet submission has occurred.
+The existing projects and approved environment values were configured by the
+operator during 5.3. The list above describes approval boundaries for future
+changes, not instructions to recreate those resources. This audit changes no
+cloud settings, keys, billing, database records or SkillWallet progress.
 
 Official references checked 2026-10-24: [Render FastAPI](https://render.com/docs/deploy-fastapi), [Render Free limitations](https://render.com/docs/free), [Render pricing](https://render.com/pricing), [Vercel Vite](https://vercel.com/docs/frameworks/frontend/vite), [Vercel Hobby](https://vercel.com/docs/plans/hobby).

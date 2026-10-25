@@ -21,4 +21,6 @@ Offline regressions inspect serialized requests, projection idempotence and
 immutability, valid boundary values, rejection of out-of-range/non-integer mocked
 responses, and private refinement propagation. These establish the submitted
 contract, not live provider quality or successful production generation. No live
-AI call was made for this fix; deployment and bounded acceptance remain pending.
+AI call was made by the agent for this fix. After merge, the operator confirmed
+Render deployment and supplied a successful three-day production result; see
+ACTIVITY_5_3_5_4.md for the evidence and content-quality limitations.
