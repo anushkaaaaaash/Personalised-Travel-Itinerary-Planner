@@ -14,6 +14,12 @@ CI performs offline Python/JS tests, deterministic lockfile installation, a host
 
 ## Required deployment configuration (broader Activity 5.4 is queued)
 
+### Explicit preview-origin approval
+
+The backend supports one optional `FRONTEND_PREVIEW_ORIGIN` alongside `FRONTEND_ORIGIN`; each must be a complete HTTPS origin. Matching is exact, never a wildcard or Vercel suffix. An invalid optional value fails production setup closed. Leaving it unset preserves single-origin behavior. This permits browser requests from that site's code; verified authentication and owner-scoped access are still required.
+
+For the specifically approved existing preview, after deploying the reviewed backend commit, keep Render `FRONTEND_ORIGIN=https://personalised-travel-itinerary-plann.vercel.app` and add `FRONTEND_PREVIEW_ORIGIN=https://personalised-travel-itinerary-planner-git-f-0f4c9b-anushka-76c5.vercel.app`. Save/redeploy only through the authorized operator workflow. No secret values need changing. Do not substitute a new PR preview alias without another explicit trust decision. Updating frontend code on another branch does not automatically update this older branch alias; verify its deployment identity separately. Never disable preview protection or email confirmation to make this work.
+
 ### Vercel frontend-only project
 
 Use a single Vite project with Root Directory `frontend`, Node.js 24.x, and **Include source files outside of the Root Directory in the Build Step** enabled. Set Install Command to `cd .. && npm ci --ignore-scripts`, Build Command to `npm run build`, and Output Directory to `dist`. The root lockfile and workspace installation are required; frontend imports `shared/` and `deployment/frontend_config.mjs` outside its directory.

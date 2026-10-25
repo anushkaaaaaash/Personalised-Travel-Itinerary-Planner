@@ -17,7 +17,7 @@ def settings(auth):
         or not re.fullmatch(r'[a-z0-9]+(?:[.-][a-z0-9]+)*',host) or '.' not in host
         or not configured_frontend_origins() or not auth.configured()):
         raise ValueError('Production configuration is incomplete. Review deployment settings.')
-    return host,configured_frontend_origins()[0]
+    return host,configured_frontend_origins()
 
 def denied(status,code,message):
     return JSONResponse(status_code=status,content={'error':{'code':code,'message':message}},headers={'Cache-Control':'no-store',**({'Retry-After':'60'} if status==429 else {})})
@@ -36,14 +36,14 @@ class ProductionAccess:
 
     async def __call__(self,scope,receive,send):
         from .auth import bearer,AuthError,auth_error
-        try:host,origin=settings(self.auth)
+        try:host,allowed_origins=settings(self.auth)
         except ValueError:
             return await denied(503,'PUBLIC_DEPLOYMENT_DISABLED','Production setup has not been verified.')(scope,receive,send)
         hosts=[v for k,v in scope['headers'] if k.lower()==b'host']
         origins=[v for k,v in scope['headers'] if k.lower()==b'origin']
         if hosts!=[host.encode()] and hosts!=[(host+':443').encode()]:
             return await denied(400,'INVALID_HOST','Unrecognized API host.')(scope,receive,send)
-        if origins and origins!=[origin.encode()]:
+        if origins and (len(origins)!=1 or origins[0] not in [origin.encode() for origin in allowed_origins]):
             return await denied(403,'ORIGIN_FORBIDDEN','This browser origin is not permitted.')(scope,receive,send)
         path=scope['path']
         # Legacy history is deliberately unavailable even with a valid JWT or old ownership flags.
