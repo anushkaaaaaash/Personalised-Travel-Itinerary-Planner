@@ -48,48 +48,68 @@ Only numeric schedules, kinds, counts and blank-field evidence are reconstructed
 in tests. Raw provider prose, credentials and personal data are not committed.
 The real plan remains rejected; it was not silently repaired into success.
 
-## Prospective generation-only contract
+## Latest real acceptance and complete-contract review
 
-Groq now proposes named day objects and eight ordered activity slots. Existing
-pace determines mandatory main slots; optional main slots cannot exceed the upper
-bound. Supporting slots accept only meal/rest/transfer/lodging kinds. The adapter
-derives request metadata and actual main counts, never inventing missing content.
+The named-day/eight-slot contract subsequently received one separately authorized
+request. Groq returned HTTP 400 with json_validate_failed. The 899 decoded bytes
+were retained in memory and inspected before any further correction. SHA256:
+`265cae505844aa8e719b171268b4c83305621b027dac04b7e54e32a65296f000`.
+Its failed_generation was complete parseable JSON marked planned, containing only
+explanation and warnings (verificationWarning plus empty additionalWarnings).
+There was no days property or alternative itinerary structure. This is not visibly
+cut-off JSON or an infeasible result. No token/finish metadata was supplied, so the
+mechanism of the omission and any budget contribution remain unknown.
 
-The model proposes a day start, durations and nonnegative gaps. Clock times are
-computed in slot order, not corrected from an old absolute schedule. Accepted
-entries therefore cannot overlap. A schedule exceeding midnight is rejected.
-Absolute activity times and fixed-time fields are forbidden in this private
-generation shape. The typed generation preferences contain no fixed commitments;
-if meaningful external timing constraints cannot fit, the prompt requires an
-infeasible response. Refinement preserves its fixed commitments unchanged.
+The committed captured-missing-days-shape fixture preserves this structure and
+provenance, with prose explicitly replaced by synthetic strings. It is not a raw
+provider-body replay. Both HTTP 400 and HTTP 200 carrying that malformed shape
+remain rejected through the actual provider adapter and FastAPI route, without
+retry or content fabrication.
 
-Every daily narrative including evening is mandatory and locally checked for
-nonblank text. Missing AI content is never filled with a generic placeholder.
-Departure/rest-only days receive no new pace exemption: if the plan cannot meet
-the existing rules, return infeasible with all day values null. Public validation
-still checks text, coordinates, dates, budget, interests, pace, duplicate IDs and
-the final timeline.
+Review found a separate concrete representation defect: alternating eight slots
+cannot express breakfast then transfer then main activity, and fast pace leaves
+no supporting slot after the last main. No prompt instruction requested omission
+of days, and this representation restriction is not proven to cause that omission.
 
-Planned results carry a separate visible warning identifying computed times as
-unverified proposals, not bookings. Model-authored safety warnings are preserved;
-at most six additional warnings leave room for this disclosure. Infeasible results
-do not claim a computed schedule.
+## Coherent generation-only correction
 
-## Enforcement and limits
+Replace alternating slots with ordered day and activity arrays. Every day carries
+its explicit requested date, all narratives, costs, tags, dayStart and activities.
+The prompt and schema list the same complete fields, place days first, and require
+all requested dates in order. Infeasible output requires days: [], never omission.
+All activity orders are representable within the existing eight-activity limit.
+Exact coverage, pace-specific main counts, nonblank narratives and other semantic
+bounds are enforced locally, not assumed from provider decoding.
 
-Required slots/kinds, duration/gap domains and day keys are structural constraints.
-Nonblank prose and practical travel/venue feasibility are not guaranteed by provider
-decoding; local validators still reject invalid content. Alternating slot types
-bound the representation: not every eight-event sequence fits (four main entries
-at fast pace leave no supporting slot after the final main). The model must choose
-a coherent supported plan or report infeasible; no event is dropped by the adapter.
+The model proposes a day start, ordered durations and nonnegative gaps. The server
+computes times from that representation, derives counts and request metadata, and
+adds the visible computed-timing disclosure. It never shifts an old absolute-time
+schedule or invents an activity/narrative. Absolute-time and fixed-time entries
+are rejected in this private generation shape. Typed generation preferences have
+no fixed commitments; meaningful constraints that cannot fit require infeasible.
+Refinement preserves its existing fixed-time contract unchanged.
 
-Offline coverage includes the observed failures, mixed supporting activities,
-all paces, zero gaps, midnight, invalid durations/coordinates, reversed JSON key
-order, required narratives/warnings and FastAPI serialization into mounted React.
-Successful fixtures are synthetic, separate from the rejected captured response.
+Midnight overflow, absent dates, empty evening, missing or excessive main events,
+invalid coordinates, duplicate IDs, budgets and all existing public semantic
+checks remain enforced. Existing model safety notices are retained. Recommendations,
+refinement, GPT-OSS-20B generation, 4096-token cap and no-retry behavior are unchanged.
+The earlier invalid six-day response remains rejected; it was not repaired.
 
-The new private contract has NOT received a live provider request. Public deployment,
-authentication, credentials, CORS, billing and existing data were not changed.
-Keep this PR unmerged. A separately authorized bounded verification must establish
-actual provider acceptance and rendering before deployment; mocks are not live proof.
+## Evidence and remaining limits
+
+Offline regression covers the captured omissions, three actual overlaps, blank
+evening and zero final-day main events, complete/infeasible shapes, all paces,
+flexible supporting-event order, boundary durations/gaps, date order, duplicate
+fields/IDs, warnings and midnight. A representative synthetic multi-day response
+passes the actual Groq adapter, FastAPI validation/serialization and mounted React
+component with dates, activities, times, narratives and warnings. This is explicitly
+synthetic success, not acceptance of the captured invalid provider response.
+
+Official [Groq structured-output documentation](https://console.groq.com/docs/structured-outputs)
+supports strict mode, arrays and closed required objects for GPT-OSS. No evidence
+establishes an unsupported feature or provider-internal cause here. Strict mode
+is retained; switching to JSON mode would not ensure complete content. Simplifying
+the representation removes a proven restriction but does not guarantee the provider
+will stop omitting days. A fresh separately approved acceptance is still needed.
+No further provider calls, production changes or deployments were made during this
+correction. Keep PR14 draft and unmerged; PR10/11 and auth work are untouched.

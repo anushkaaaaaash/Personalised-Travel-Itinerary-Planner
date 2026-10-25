@@ -1,4 +1,4 @@
-"""Generation-only proposal shape: named slots and constructive scheduling.
+"""Generation-only proposal shape: ordered activities and constructive scheduling.
 
 No old absolute-time response is repaired. The model explicitly proposes an
 ordered sequence of durations and gaps; the adapter computes its clock times.
@@ -25,45 +25,43 @@ class GenerationContract:
         activity.pop('startTime');activity.pop('fixedTime')
         activity['gapBeforeMinutes']={'type':'integer','enum':list(range(241)),
             'description':'Nonnegative travel/rest gap after the previous entry (or day start for the first), 0-240 minutes. No overlaps.'}
-        main=deepcopy(activity);main['kind']={'type':'string','enum':['main']}
-        support=deepcopy(activity);support['kind']={'type':'string','enum':['rest','transfer','meal','accommodation']}
-        defs['MainProposal']=obj(main);defs['SupportProposal']=obj(support)
-        self.slots={}
-        for i in range(1,9):
-            main_index=i//2 if i%2==0 else 0
-            is_main=0<main_index<=self.maximum
-            required=is_main and main_index<=self.minimum
-            node={'$ref':'#/$defs/MainProposal' if is_main else '#/$defs/SupportProposal'}
-            self.slots[f'entry_{i}']=node if required else {'anyOf':[node,{'type':'null'}]}
+        activity['kind']={'type':'string','enum':['main','rest','transfer','meal','accommodation']}
+        defs['ActivityProposal']=obj(activity)
         public_day=defs['ItineraryDay']['properties']
         self.narratives=('morning','afternoon','evening','dining','dietaryNotes','mobilityNotes','transitAndRest')
-        day={name:deepcopy(public_day[name]) for name in (*self.narratives,'interestTags','costs')}
+        day={'date':{'type':'string','enum':self.dates},
+            **{name:deepcopy(public_day[name]) for name in (*self.narratives,'interestTags','costs')}}
         for name in self.narratives:
             day[name]['description']=f'Required nonblank AI-authored description, 1-{day[name]["maxLength"]} characters. Never empty; explicitly describe any planned rest/return arrangements without inventing bookings.'
         day['dayStart']={'type':'string','enum':[f'{h:02}:{m:02}' for h in range(24) for m in (0,15,30,45)]}
-        day['entries']=obj(self.slots)
+        day['activities']={'type':'array','items':{'$ref':'#/$defs/ActivityProposal'},
+            'description':f'One to eight ordered entries, including {self.minimum}-{self.maximum} main activities. All supporting event orders are allowed. Local validation enforces these bounds.'}
         defs['GenerationDay']=obj(day)
         # Remove unused public definitions so the private output has no competing
         # absolute-time shape or redundant model-selected mainActivityCount.
         defs.pop('ItineraryDay');defs.pop('ItineraryActivity')
-        self.schema=obj({'status':{'type':'string','enum':['planned','infeasible']},
+        self.schema=obj({'days':{'type':'array','items':{'$ref':'#/$defs/GenerationDay'},
+                'description':f'For planned output include all {len(self.dates)} requested dates exactly once in order. For infeasible output use an empty array. Never omit this property.'},
+            'status':{'type':'string','enum':['planned','infeasible']},
             'explanation':deepcopy(base['properties']['explanation']),
             'warnings':obj({'verificationWarning':{'type':'string','description':'Required nonblank warning, 1-500 characters: prices, hours, dining, accessibility and transport are unverified.'},
-                'additionalWarnings':{'type':'array','items':{'type':'string'},'description':'Zero to six nonblank additional warnings; each 1-500 characters.'}}),
-            'days':obj({f'day_{i+1}':{'anyOf':[{'$ref':'#/$defs/GenerationDay'},{'type':'null'}]} for i in range(len(self.dates))})})
+                'additionalWarnings':{'type':'array','items':{'type':'string'},'description':'Zero to six nonblank additional warnings; each 1-500 characters.'}})})
         self.schema['$defs']=defs
         self.shape=strict_schema(self.schema)
         self.instructions=(
-            '\nGENERATION PROPOSAL CONTRACT: Use ONLY the supplied private schema. Do not output the public days array, '
-            'date, destination, currency, travelStyle, travelPace, vibe, mainActivityCount, startTime or fixedTime fields. '
+            '\nGENERATION PROPOSAL CONTRACT: Return one complete JSON object with ALL four root fields: days, status, explanation, warnings. '
+            'Write the complete days array first; an explanation and warnings alone are never a planned itinerary. '
+            'Each day object must contain date, morning, afternoon, evening, dining, dietaryNotes, mobilityNotes, transitAndRest, interestTags, costs, dayStart and activities. '
+            'Each activity must contain id, title, durationMinutes, notes, latitude, longitude, kind and gapBeforeMinutes. '
+            'Do not output destination, currency, travelStyle, travelPace, vibe, mainActivityCount, startTime or fixedTime fields. '
             'The server supplies request metadata and computes counts and schedule times; it does not repair missing content. '
-            f'Day keys in order represent these inclusive dates: {", ".join(self.dates)}. '
-            f'For a planned result ALL day objects must be non-null, including arrival and departure days. Every day requires {self.minimum}-{self.maximum} real main experiences for the requested {preferences.travelPace} pace. '
+            f'For planned output days must contain exactly {len(self.dates)} complete objects with these dates exactly once in this order: {", ".join(self.dates)}. '
+            f'Include arrival and departure days. Every day requires {self.minimum}-{self.maximum} real main experiences for the requested {preferences.travelPace} pace. '
             'Travel-only or rest-only days do not satisfy this existing pace rule; if these requirements cannot realistically fit, '
-            'return infeasible, explain the conflicting constraints, and make ALL day values null. Never label meals or transfers as main experiences. '
-            'Each day has eight named ordered slots entry_1 through entry_8. Required main slots must contain main experiences; '
-            'nullable slots may be null. Use each real activity once. Include every main excursion in its main slot. '
-            'Choose dayStart, then for each non-null entry in numeric order compute start = previous end + gapBeforeMinutes; '
+            'return status infeasible, explanation and warnings, AND days: []. Never omit days even for infeasible output. Never label meals or transfers as main experiences. '
+            'Each activities array contains one to eight total ordered entries. Main, meal, transfer, rest and accommodation entries may appear in any realistic order. '
+            'Use each real activity once and include every main excursion. '
+            'Choose dayStart, then for each entry in array order compute start = previous end + gapBeforeMinutes; '
             'for the first entry previous end is dayStart. End = start + durationMinutes. Choose realistic gaps for transport/rest. '
             'Check the entire duration/gap sum fits before midnight. Do not provide absolute entry times or fixed commitments: '
             'these preferences contain none. If real transport/venue constraints cannot be represented safely, report infeasible. '
@@ -75,7 +73,7 @@ class GenerationContract:
             'are estimates in the requested currency and must sum within that budget. Never invent cheap costs or bookings. '
             'The verificationWarning is mandatory nonblank text for both planned and infeasible outputs; additionalWarnings has at most six entries. '
             'All prices, locations, accessibility, dining, opening hours and transport times remain unverified. '
-            'The server will add a separate disclosure that clock times were computed, not verified or booked.')
+            'For planned output the server adds a separate disclosure that clock times were computed, not verified or booked.')
 
     def decode(self,raw):
         try:
@@ -94,20 +92,16 @@ class GenerationContract:
             warnings=[warning['verificationWarning'],*additional]
             if any(type(w) is not str or not w.strip() or len(w)>500 for w in warnings):raise ValueError()
             days=[]
-            for index in range(len(self.dates)):
-                day=data['days'][f'day_{index+1}']
-                if data['status']=='infeasible':
-                    if day is not None:raise ValueError()
-                    continue
-                if day is None:raise ValueError()
+            if data['status']=='infeasible' and data['days']:raise ValueError()
+            if data['status']=='planned' and [day['date'] for day in data['days']]!=self.dates:raise ValueError()
+            for day in data['days']:
                 # Public validators still enforce all nonblank/length/semantic rules.
                 for name in self.narratives:
                     if not day[name].strip():raise ValueError()
                 h,m=map(int,day['dayStart'].split(':'));end=60*h+m
                 activities=[]
-                for name in self.slots:
-                    entry=day['entries'][name]
-                    if entry is None:continue
+                if not 1<=len(day['activities'])<=8:raise ValueError()
+                for entry in day['activities']:
                     activity=deepcopy(entry);gap=activity.pop('gapBeforeMinutes')
                     start=end+gap;end=start+activity['durationMinutes']
                     if end>1440:raise ValueError()
@@ -116,7 +110,7 @@ class GenerationContract:
                 count=sum(a['kind']=='main' for a in activities)
                 if not self.minimum<=count<=self.maximum:raise ValueError()
                 days.append({**{name:day[name] for name in (*self.narratives,'interestTags','costs')},
-                    'date':self.dates[index],'activities':activities,'mainActivityCount':count})
+                    'date':day['date'],'activities':activities,'mainActivityCount':count})
             p=self.preferences
             return {'status':data['status'],'explanation':data['explanation'],'warnings':warnings+([SCHEDULE_NOTICE] if data['status']=='planned' else []),
                 'days':days,'destination':p.destination,'currency':p.currency,'travelStyle':p.travelStyle,'travelPace':p.travelPace,'vibe':None}

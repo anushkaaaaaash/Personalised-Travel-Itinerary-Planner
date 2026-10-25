@@ -1,0 +1,18 @@
+{
+  "provenance": {
+    "source": "actual failed_generation structure; prose replaced, not a complete raw response replay",
+    "responseSha256": "265cae505844aa8e719b171268b4c83305621b027dac04b7e54e32a65296f000",
+    "httpStatus": 400,
+    "providerCode": "json_validate_failed",
+    "originalExplanationCharacters": 304,
+    "originalVerificationWarningCharacters": 163
+  },
+  "failedGeneration": {
+    "status": "planned",
+    "explanation": "Synthetic replacement for captured model explanation.",
+    "warnings": {
+      "verificationWarning": "Synthetic replacement for captured safety warning.",
+      "additionalWarnings": []
+    }
+  }
+}
