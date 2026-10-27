@@ -11,6 +11,7 @@ from test_itineraries import generated, NoStorage
 from test_recommendations import recommendations
 from test_private_refinement import request_for, proposal_for
 from generation_fixture import private_proposal
+from test_openai_schema_limits import assert_pure_refs
 
 
 @pytest.mark.parametrize('scope',['whole','day','uncapped'])
@@ -43,6 +44,8 @@ def test_all_ai_endpoints_route_to_luna_max(monkeypatch,payload,generated,recomm
     assert client.post('/api/recommendations',json=payload).status_code==200
     assert [call['model'] for call in calls]==['gpt-6-luna','gpt-6-luna','gpt-6-luna']
     assert all(c['reasoning']=={'effort':'max'} and c['max_output_tokens']==32768 and c['text']['format']['strict'] is True for c in calls)
+    for call in calls:
+        assert_pure_refs(call['text']['format']['schema'])
     assert request.previous.model_dump()==before
 
 
