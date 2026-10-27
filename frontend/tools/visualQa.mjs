@@ -128,6 +128,7 @@ try {
       await page.getByRole('heading',{name:/Make the days your own/}).waitFor();await noOverflow(page,`itinerary-${width}`);await snapshot(page,`itinerary-${width}`);
       await page.locator('summary').filter({hasText:'Make it more you'}).click();
       await page.getByRole('button',{name:'Update my plan',exact:true}).waitFor();
+      assert.ok(await page.locator('.refinement-controls .form-grid select').evaluateAll(elements=>elements.every(element=>element.getBoundingClientRect().width>=200)),'Refinement selections stay readable');
       await noOverflow(page,`refinement-${width}`);await snapshot(page,`refinement-${width}`);
       await page.locator('summary').filter({hasText:'Make it more you'}).click();
       await page.getByRole('button',{name:/Trip preferences/}).click();await page.getByRole('button',{name:/Return to your itinerary/}).click();await page.getByRole('heading',{name:/Make the days your own/}).waitFor();
