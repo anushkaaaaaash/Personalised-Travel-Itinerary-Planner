@@ -173,3 +173,18 @@ def test_user_scope_comes_only_from_verified_endpoint(monkeypatch):
     def private(request:Request): return {'owner':request.state.auth_user_id}
     response=TestClient(app).get('/api/private',headers={'Authorization':'Bearer provider-token', 'X-User-Id':'attacker'})
     assert response.json()=={'owner':UID}
+
+@pytest.mark.parametrize('confirmed,status',[(True,200),(False,401)])
+def test_confirmation_route_requires_authoritative_confirmed_user(confirmed,status):
+    def handler(request):
+        assert request.url.path == '/auth/v1/user'
+        assert request.headers['authorization']=='Bearer supplied-token'
+        return httpx.Response(200,json={**USER,'email_confirmed_at':USER['email_confirmed_at'] if confirmed else None})
+    app=FastAPI();app.include_router(build_auth_router(service(handler)))
+    with TestClient(app) as client:
+        response=client.get('/api/auth/confirmation',headers={'Authorization':'Bearer supplied-token'})
+        assert response.status_code==status
+        assert response.headers['cache-control']=='no-store'
+        if confirmed:assert response.json()=={'confirmed':True}
+        assert 'supplied-token' not in response.text and USER['email'] not in response.text
+        assert client.get('/api/auth/confirmation?confirmed=true').status_code==401

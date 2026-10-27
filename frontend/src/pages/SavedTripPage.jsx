@@ -1,3 +1,5 @@
+import SiteHeader from '../components/SiteHeader.jsx';
+import { useDestinationTheme } from '../themes/DestinationTheme.jsx';
 import { travelError } from '../utils/travelMessages.js';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -9,12 +11,15 @@ export default function SavedTripPage(){const {tripID}=useParams();return <Saved
 export function SavedTripEditor({tripID}) {
   const [state,setState]=useState({record:null,plan:null,title:'',dirty:false,busy:false,error:'',notice:''}),[confirm,setConfirm]=useState(null);
   const controller=useRef(null),reducedMotion=useReducedMotion();
+  useDestinationTheme(state.record?.preferences?.destination);
+  const guardNavigation = e => { if(state.dirty && !window.confirm('Leave this page and discard your current edits?')) e.preventDefault(); };
   useEffect(()=>{const c=createDetailController(tripID,setState);controller.current=c;void c.run('load');return()=>c.dispose();},[tripID]);
   useEffect(()=>{if(!state.dirty)return;const warn=e=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[state.dirty]);
   function edit(patch){setConfirm(null);controller.current?.edit(patch);}
   async function commit(){const action=confirm;setConfirm(null);if(action)await controller.current?.run(action);}
   return <motion.main className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}}>
-    <Link to="/" onClick={e=>{if(state.dirty&&!window.confirm('Leave this page and discard your current edits?'))e.preventDefault();}}><ArrowLeft size={16} aria-hidden="true"/> Back to planner</Link>
+    <SiteHeader onNavigate={guardNavigation}/>
+    <Link to="/" onClick={guardNavigation}><ArrowLeft size={16} aria-hidden="true"/> Back to planner</Link>
     <section className="card"><h1>Your saved trip</h1><p>Only you can open this trip. Use a summary to share your plans.</p>
     {state.busy&&<p role="status">Getting your trip ready…</p>}{state.error&&<p role="alert">{travelError(state.error)}</p>}{state.notice&&<p role="status">{state.notice.startsWith('Updated') ? 'Your changes are saved.' : state.notice.startsWith('New local') ? 'Your new plan is ready.' : state.notice.includes('canceled') ? 'Your previous plan is ready to explore.' : state.notice}</p>}
     {!state.record&&!state.busy&&<button onClick={()=>controller.current?.run('load')}>Retry loading saved itinerary</button>}

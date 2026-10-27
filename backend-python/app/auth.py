@@ -246,6 +246,16 @@ def build_auth_router(service, planning_capability=None):
         except AuthError as exc:
             return auth_error(exc)
 
+    @router.get('/confirmation')
+    async def confirmation(request: Request):
+        try:
+            # Explicit verification also protects local-mode calls. Never infer success
+            # from callback query fields or decode unsigned JWT claims.
+            await service.verify(bearer(request.scope))
+            return JSONResponse(content={'confirmed': True}, headers={'Cache-Control': 'no-store'})
+        except AuthError as exc:
+            return auth_error(exc)
+
     @router.post('/logout')
     async def logout(request: Request):
         try:

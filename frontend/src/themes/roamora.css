@@ -1,0 +1,308 @@
+:root {
+  --sea: #28564c;
+  --lagoon: #28564c;
+  --coral: #bd5b39;
+  --sand: #f5f3ec;
+  --foam: #f5f3ec;
+  --theme-wash: #e3ebe2;
+  --theme-glow: #d8c6a6;
+  --ink: #24332e;
+  --muted: #525f58;
+  --line: #d5ddd4;
+  --card: #fffefa;
+  --shadow: 0 20px 60px #28564c12;
+  color-scheme: light;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--sand);
+  background-image: radial-gradient(ellipse at 95% 8%, var(--theme-wash), transparent 52%), radial-gradient(ellipse at 0 84%, var(--theme-wash), transparent 48%);
+  transition: background-color .45s ease;
+}
+body, #root { min-width: 280px; }
+a { color: var(--sea); text-underline-offset: .2em; }
+button, a, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; }
+button:not(.destination-tile) { min-height: 44px; }
+button:disabled { cursor: not-allowed; }
+input, select, textarea { accent-color: var(--sea); }
+button, .pill, summary { transition: transform .18s ease, background-color .25s ease, border-color .25s ease, box-shadow .25s ease; }
+button:not(:disabled):active, .pill:active { transform: scale(.975); }
+:where(button, a, summary, input, select, textarea):focus-visible, .pill:focus-within {
+  outline: 3px solid var(--sea);
+  outline-offset: 4px;
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline-color: var(--sea); }
+.page { position: relative; max-width: 1320px; padding: 24px 48px 80px; }
+.skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 12px 18px; border-radius: 8px; color: #fff; background: var(--sea); transform: translateY(-160%); }
+.skip-link:focus { transform: translateY(0); }
+.site-header { gap: 24px; margin-bottom: 42px; padding-bottom: 23px; }
+.site-header__brand { gap: 12px; align-items: center; min-height: 52px; }
+.site-header__brand > span:last-child { display: grid; gap: 2px; }
+.site-header__mark { width: 49px; height: 49px; border-radius: 16px; background: var(--sea); color: #fffefa; flex-shrink: 0; transform: rotate(-7deg); transition: background-color .4s, transform .3s; }
+.brand-mark { width: 42px; height: 42px; transform: rotate(7deg); }
+.site-header .brand-name { font-size: 32px; letter-spacing: -1.5px; font-weight: 600; }
+.brand-dot { color: var(--coral); }
+.brand-tagline { color: var(--muted); font-size: 10px; letter-spacing: .025em; }
+.header-passport { display: flex; align-items: center; gap: 8px; color: var(--sea); font-size: 11px; }
+.header-passport__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sea); flex-shrink: 0; }
+.journey-layout { gap: 64px; grid-template-columns: minmax(0, .95fr) minmax(0, 1fr); }
+.discovery { padding-top: 5px; min-width: 0; }
+.discovery-heading { font-size: 10px; letter-spacing: .18em; margin-bottom: 16px; }
+.discovery h1 { font-size: clamp(44px, 4.6vw, 64px); line-height: 1.05; font-weight: 400; letter-spacing: -2.7px; }
+.discovery h1 em { font-weight: 400; color: var(--sea); }
+.discovery > p { font-size: 14px; max-width: 375px; line-height: 1.8; margin: 20px 0 24px; }
+.discovery-postcard { position: relative; border: 1px solid var(--line); padding: 8px; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); animation: postcard-arrive .55s ease both; }
+.journey-artwork { display: block; width: 100%; height: auto; overflow: visible; }
+.discovery-postcard .journey-artwork { height: 226px; width: 100%; object-fit: cover; border-radius: 16px; background: var(--theme-wash); }
+.discovery-postcard__caption { display: flex; align-items: center; justify-content: space-between; padding: 13px 12px 10px; gap: 10px; }
+.discovery-postcard__caption > span:first-child { display: grid; gap: 4px; }
+.discovery-postcard__caption small { font-size: 8px; letter-spacing: .15em; color: var(--muted); }
+.discovery-postcard__caption strong { font-family: Georgia, serif; font-size: 19px; color: var(--sea); font-weight: 400; }
+.postcard-coordinate { border: 1px solid var(--line); border-radius: 50%; width: 39px; height: 39px; display: grid; place-items: center; font-size: 10px; color: var(--sea); flex-shrink: 0; }
+.journey-artwork__route { stroke-dashoffset: 100; animation: route-reveal 2.4s ease-out forwards; }
+.journey-artwork__plane { transform-origin: 407px 69px; animation: plane-arrive 1.2s ease-out both; }
+.artwork-waves, .artwork-arches, .artwork-forest { display: none; }
+[data-motif='waves'] .artwork-mountains, [data-motif='dunes'] .artwork-mountains, [data-motif='arches'] .artwork-mountains, [data-motif='forest'] .artwork-mountains { display: none; }
+[data-motif='waves'] .artwork-waves, [data-motif='dunes'] .artwork-waves, [data-motif='arches'] .artwork-arches, [data-motif='forest'] .artwork-forest { display: inline; }
+[data-motif='sun'] .journey-artwork__sun, [data-motif='dunes'] .journey-artwork__sun { r: 60px; }
+.destination-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.destination-tile { display: flex; flex-direction: column; align-items: stretch; min-width: 0; min-height: 150px; padding: 0; background: #f1e5e8; border: 1px solid transparent; border-radius: 13px; text-align: left; }
+.destination-tile--goa { background: #f1e7d2; }.destination-tile--paris { background: #eae6f0; }
+.destination-tile[aria-pressed=true] { border-color: var(--sea); box-shadow: 0 0 0 2px var(--sea); }
+.destination-art { width: 100%; height: 51px; min-height: 51px; margin: 0; background: linear-gradient(135deg,#dfb7c4,#f2dce4); }
+.destination-art > span { font-size: 33px; color: #724353; }
+.destination-tile--goa .destination-art { background: linear-gradient(135deg,#debe83,#f2e1bd); }
+.destination-tile--goa .destination-art > span { font-size: 38px; color: #85592f; }
+.destination-tile--paris .destination-art { background: linear-gradient(135deg,#c5b7d7,#e6e0ef); }
+.destination-tile--paris .destination-art > span { color: #66527b; }
+.destination-tile-copy { display: grid; padding: 10px 12px 13px; gap: 1px; }
+.destination-tile-copy strong { font-size: 22px; order: 1; }
+.destination-tile-copy small { display: block; margin: 0; font-size: 9px; color: #59615b; text-transform: uppercase; letter-spacing: .08em; order: 0; }
+.destination-tile-copy > span { font-size: 9px; color: #59615b; line-height: 1.6; order: 2; }
+.destination-tile > svg { position: absolute; top: 63px; right: 10px; width: 13px; }
+.discovery .discovery-footnote { display: block; font-size: 10px; line-height: 1.7; margin-top: 16px; max-width: none; }
+.planner-form { border-top: 3px solid var(--sea); padding: 31px; box-shadow: var(--shadow); transition: border-color .4s; }
+.card { background: var(--card); backdrop-filter: none; }
+.card__intro .eyebrow { font-size: 9px; letter-spacing: .18em; }
+.card__intro h2 { font-size: clamp(28px, 2.8vw, 34px); line-height: 1.2; }
+.step-progress { gap: 10px; margin: 23px 0; }
+.step-progress li { font-size: 10px; padding-bottom: 12px; transition: color .3s, border-color .3s; }
+.step-progress span { display: inline-grid; margin-right: 6px; width: 23px; height: 23px; font-size: 10px; }
+.step-progress [aria-current='step'] span { box-shadow: 0 0 0 4px var(--theme-wash); }
+.planner-fields { animation: step-arrive .3s ease-out; }
+.form-grid { gap: 20px 16px; }
+.field input, .field select, .field textarea, .budget-row select { font-size: 16px; min-height: 48px; border-color: var(--line); }
+.field input::placeholder, .field textarea::placeholder { color: #70766f; opacity: 1; font-size: 13px; }
+.field > .destination-theme-note { color: var(--sea); font-size: 10px; line-height: 1.6; min-height: 1.6em; }
+.field:has([name='destination']) { grid-column: 1 / -1; }
+.generate-btn { background: var(--sea); color: #fff; border-radius: 11px; font-size: 13px; position: relative; isolation: isolate; overflow: hidden; min-height: 48px; }
+.generate-btn::after { content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(255,255,255,.13); transform: translateX(-105%) skewX(-15deg); transition: transform .4s ease; }
+.generate-btn:hover:not(:disabled) { background: var(--sea); box-shadow: 0 7px 20px color-mix(in srgb, var(--sea) 16%, transparent); }
+.generate-btn:hover:not(:disabled)::after { transform: translateX(0) skewX(0); }
+.generate-btn:disabled { opacity: .6; }
+.preview-btn, .back-btn { border-color: var(--line); color: var(--sea); font-size: 12px; }
+.preview-btn:hover:not(:disabled), .back-btn:hover:not(:disabled) { background: var(--theme-wash); }
+.pill { min-height: 44px; }
+.pill.is-on { background: var(--theme-wash); border-color: var(--sea); }
+.pill input { width: 15px; height: 15px; }
+.step-actions { flex-wrap: wrap; }
+.step-actions > * { min-width: 0; }
+.results-hero, .day-badge, .tag { background: var(--theme-wash); color: var(--sea); }
+.practical-checks, .day-notes { background: var(--sand); }
+.timeline { border-color: var(--line); }
+.day-card, .results-hero, .budget-card, .refinement-controls, .itinerary-sharing { animation: step-arrive .35s ease-out both; }
+.destination-loading { border-color: var(--line); background: linear-gradient(135deg,var(--card),var(--theme-wash)); }
+.destination-loading__map { background: var(--theme-wash); color: var(--sea); border-color: var(--line); }
+.destination-loading__orbit { border-color: var(--sea); }
+.destination-loading__pin { color: var(--coral); }
+.destination-loading__postcard { border-color: var(--line); border-left-color: var(--coral); background: var(--card); animation: postcard-arrive .35s ease-out both; }
+.destination-loading__card-controls button { border-color: var(--line); min-height: 44px; }
+.results-wrap, .page > section { min-width: 0; }
+.page > section + .generated-itinerary, .page > a + section { margin-top: 24px; }
+.account-shell.card { font-size: 12px; }
+.account-shell .preview-btn { margin-top: 0; width: auto; }
+.account-shell > div { min-width: 0; overflow-wrap: anywhere; }
+.account-shell--welcome.card { display: grid; max-width: 640px; padding: 26px 32px 30px; margin: 0 auto 64px; background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); gap: 16px; animation: step-arrive .5s ease-out; }
+.account-shell--welcome h2 { font-family: Georgia, serif; font-size: 25px; font-weight: 400; }
+.account-shell--welcome details { width: 100%; }
+.account-shell--welcome summary { min-height: 30px; }
+.account-shell--welcome .account-form { display: grid; max-width: none; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 4px; }
+.account-shell--welcome .account-form button { align-self: end; }
+.account-shell--welcome > [role='alert'], .account-shell--welcome > [role='status'] { max-width: 100%; }
+.brand-welcome.page { padding-bottom: 35px; }
+.welcome-hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 70px; align-items: center; }
+.welcome-hero__copy { animation: step-arrive .6s ease-out; }
+.welcome-hero h1 { font-size: clamp(34px, 3.9vw, 53px); line-height: 1.13; letter-spacing: -1.9px; font-weight: 400; }
+.welcome-hero h1 em { color: var(--sea); font-weight: 400; }
+.welcome-hero__copy > p:not(.eyebrow) { font-size: 13px; line-height: 1.85; color: var(--muted); max-width: 405px; margin: 20px 0; }
+.welcome-hero__invite { display: inline-flex; align-items: center; gap: 12px; font-size: 11px; color: var(--sea); }
+.welcome-hero__art { position: relative; padding: 10px; border: 1px solid var(--line); border-radius: 23px; background: var(--card); transform: rotate(2deg); animation: postcard-arrive .8s ease-out; }
+.postcard-stamp { position: absolute; right: -10px; bottom: -15px; width: 87px; height: 87px; border: 1px dashed var(--sea); outline: 5px solid var(--card); background: var(--card); border-radius: 50%; transform: rotate(-15deg); display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 9px; color: var(--sea); letter-spacing: 1px; line-height: 1.6; }
+.postcard-stamp > span { font-size: 20px; }
+.auth-loading.page { padding-top: 0; max-width: 700px; }
+.auth-loading .card { text-align: center; font-size: 13px; }
+.auth-loading [role='status'] { display: flex; gap: 12px; align-items: center; justify-content: center; }
+.auth-loading [role='status']::before { content: ''; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--sea); border-radius: 50%; animation: spin 1s linear 4; }
+@keyframes postcard-arrive { from { opacity: 0; transform: translateY(8px) rotate(-1deg); } to { opacity: 1; transform: translateY(0) rotate(0); } }
+@keyframes step-arrive { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes route-reveal { to { stroke-dashoffset: 0; } }
+@keyframes plane-arrive { from { opacity: 0; translate: -14px 8px; } to { opacity: 1; translate: 0 0; } }
+@media (hover: hover) {
+  .site-header__brand:hover .site-header__mark { transform: rotate(0); }
+  .destination-tile:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+}
+@media (min-width: 1100px) {
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .field:has([name='departureCity']) { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .page { padding: 24px 30px 64px; }
+  .journey-layout { gap: 34px; }
+  .planner-form { padding: 24px; }
+  .discovery h1 { font-size: 49px; }
+  .discovery-postcard .journey-artwork { height: 205px; }
+  .destination-tile-copy > span { display: none; }
+  .destination-tile { min-height: 120px; }
+  .step-progress li { font-size: 9px; }
+  .step-progress span { display: grid; }
+  .welcome-hero { gap: 40px; }
+  .account-shell.card:not(.account-shell--welcome) { margin-left: 30px; margin-right: 30px; padding-left: 0; padding-right: 0; }
+}
+@media (max-width: 760px) {
+  .page { padding: 18px 20px 48px; }
+  .site-header { margin-bottom: 26px; padding-bottom: 19px; }
+  .site-header .brand-name { font-size: 29px; }
+  .site-header__mark { width: 43px; height: 43px; border-radius: 13px; }
+  .brand-mark { width: 38px; height: 38px; }
+  .brand-tagline { font-size: 9px; }
+  .header-passport { max-width: 125px; font-size: 9px; line-height: 1.7; }
+  .journey-layout { grid-template-columns: 1fr; gap: 24px; }
+  .discovery { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; align-items: start; }
+  .discovery-heading { grid-column: 1 / -1; margin-bottom: 12px; }
+  .discovery h1 { font-size: 46px; letter-spacing: -2px; }
+  .discovery > p:not(.discovery-footnote) { grid-column: 1; font-size: 12px; margin: 13px 0 0; }
+  .discovery-postcard { grid-column: 2; grid-row: 2 / 4; margin-top: 2px; padding: 5px; border-radius: 16px; }
+  .discovery-postcard .journey-artwork { height: 150px; border-radius: 11px; }
+  .discovery-postcard__caption { padding: 8px; }
+  .discovery-postcard__caption strong { font-size: 14px; }
+  .discovery-postcard__caption small { font-size: 7px; letter-spacing: .06em; }
+  .postcard-coordinate { display: none; }
+  .destination-tiles { grid-column: 1 / -1; margin-top: 20px; }
+  .destination-tile { flex-direction: row; align-items: center; min-height: 73px; border-radius: 11px; }
+  .destination-art { width: 46px; min-width: 46px; align-self: stretch; height: auto; }
+  .destination-art > span { font-size: 27px; }
+  .destination-tile--goa .destination-art > span { font-size: 30px; }
+  .destination-tile-copy { padding: 7px 9px; }
+  .destination-tile-copy strong { font-size: 21px; }
+  .destination-tile-copy small { font-size: 8px; }
+  .destination-tile > svg { display: none; }
+  .discovery .discovery-footnote { grid-column: 1 / -1; margin: 10px 0 0; font-size: 9px; }
+  .planner-form, .card { padding: 24px; border-radius: 18px; }
+  .card__intro h2 { font-size: 31px; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .field:has([name='departureCity']) { grid-column: 1 / -1; }
+  .step-progress { gap: 10px; }
+  .step-progress span { display: inline-grid; }
+  .step-progress li { font-size: 11px; }
+  .journey-toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .account-shell.card:not(.account-shell--welcome) { margin-left: 20px; margin-right: 20px; gap: 10px; }
+  .account-shell > div { flex-wrap: wrap; }
+  .welcome-hero { gap: 24px; }
+  .welcome-hero h1 { font-size: 35px; }
+  .welcome-hero__copy > p:not(.eyebrow) { font-size: 12px; }
+  .welcome-hero__art .postcard-stamp { width: 65px; height: 65px; font-size: 7px; right: -6px; }
+  .account-shell--welcome.card { margin-left: 20px; margin-right: 20px; padding: 24px; }
+}
+@media (max-width: 480px) {
+  .page { padding: 16px 16px 44px; }
+  .site-header { gap: 12px; margin-bottom: 24px; }
+  .header-passport { display: none; }
+  .discovery { gap: 0 14px; }
+  .discovery h1 { font-size: clamp(31px, 9.4vw, 42px); letter-spacing: -1.7px; }
+  .discovery-heading { font-size: 8px; letter-spacing: .14em; }
+  .discovery > p:not(.discovery-footnote) { font-size: 11px; line-height: 1.75; margin-top: 10px; }
+  .discovery-postcard .journey-artwork { height: 143px; }
+  .discovery-postcard__caption { padding: 6px 5px; }
+  .discovery-postcard__caption strong { font-size: 14px; }
+  .discovery-postcard__caption small { display: none; }
+  .destination-tiles { gap: 8px; margin-top: 16px; }
+  .destination-tile { min-height: 65px; }
+  .destination-art { width: 28px; min-width: 28px; }
+  .destination-art > span { font-size: 23px; }
+  .destination-tile--goa .destination-art > span { font-size: 25px; }
+  .destination-tile-copy { padding: 6px; }
+  .destination-tile-copy strong { font-size: 19px; }
+  .destination-tile-copy small { font-size: 9px; letter-spacing: .02em; }
+  .planner-form, .card { padding: 21px 18px; }
+  .card__intro h2 { font-size: 28px; }
+  .card__intro > p:last-child { font-size: 12px; }
+  .form-grid { gap: 18px 12px; }
+  .field input, .field select, .budget-row select { padding: 11px 9px; }
+  .field > span, .field > label, .field--split > label { font-size: 11px; }
+  .field input::placeholder { font-size: 11px; }
+  .step-progress { gap: 7px; }
+  .step-progress li { font-size: 9px; }
+  .step-progress span { display: grid; margin-bottom: 8px; }
+  .step-actions { gap: 8px; }
+  .step-actions .generate-btn { flex: 1; font-size: 12px; padding: 14px 10px; }
+  .trip-review dl { grid-template-columns: 1fr 1.15fr; gap: 12px; }
+  .day-card { padding: 20px 18px; }
+  .timeline { margin-left: 4px; padding-left: 15px; }
+  .timeline > li { padding-left: 7px; }
+  .timeline > li::before { left: -21px; }
+  .timeline strong { font-size: 20px; }
+  .destination-loading__postcard { padding: 18px; }
+  .destination-loading__copy h2 { font-size: 27px; }
+  .destination-loading__card-controls > div { width: 100%; }
+  .destination-loading__card-controls button { flex: 1; justify-content: center; }
+  .account-shell.card:not(.account-shell--welcome) { margin-left: 16px; margin-right: 16px; font-size: 10px; }
+  .account-shell--welcome.card { margin-left: 16px; margin-right: 16px; padding: 24px 20px; }
+  .account-shell--welcome .account-form { grid-template-columns: 1fr; gap: 14px; }
+  .account-shell--welcome .preview-btn { width: 100%; }
+  .welcome-hero { grid-template-columns: 1fr; gap: 25px; }
+  .welcome-hero h1 { font-size: 37px; }
+  .welcome-hero__copy > p:not(.eyebrow) { font-size: 12px; margin: 16px 0; }
+  .welcome-hero__art { max-width: 300px; justify-self: center; display: none; }
+  .brand-welcome.page { padding-bottom: 24px; }
+  .welcome-hero__invite { font-size: 10px; }
+}
+@media (max-width: 340px) {
+  .discovery h1 { font-size: 30px; }
+  .discovery-postcard .journey-artwork { height: 130px; }
+  .destination-tile-copy strong { font-size: 16px; }
+  .destination-art { width: 22px; min-width: 22px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .card__intro h2 { font-size: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .journey-artwork__route { stroke-dashoffset: 0; }
+  button:not(:disabled):active, .pill:active, .destination-tile:hover { transform: none; }
+}
+@media (forced-colors: active) {
+  .destination-tile[aria-pressed=true], .pill.is-on, .step-progress [aria-current='step'] { outline: 2px solid Highlight; }
+  .journey-artwork { opacity: .6; }
+}
+@media print {
+  body { background: white; }
+  .brand-welcome, .discovery, .skip-link, .site-header, .account-shell { display: none !important; }
+  .page { padding: 0; }
+  .card { box-shadow: none; }
+}
+.email-confirmation { max-width: 580px; margin: 45px auto; padding: 45px; text-align: center; display: grid; justify-items: center; gap: 17px; animation: postcard-arrive .5s ease-out; }
+.email-confirmation__seal { width: 78px; height: 78px; border-radius: 50%; color: var(--sea); background: var(--theme-wash); display: grid; place-items: center; margin-bottom: 8px; border: 1px solid var(--line); }
+.email-confirmation--verified .email-confirmation__seal { animation: confirmation-arrive .6s ease-out; }
+.email-confirmation--checking .email-confirmation__seal { animation: travel-pulse 1.8s ease-in-out 2; }
+.email-confirmation h1 { font-size: 36px; font-weight: 400; line-height: 1.15; }
+.email-confirmation h1:focus { outline: none; }
+.email-confirmation > p:not(.eyebrow) { color: var(--muted); line-height: 1.8; font-size: 13px; }
+.email-confirmation .generate-btn { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; }
+.email-confirmation .hint { font-size: 11px !important; }
+@keyframes confirmation-arrive { from { transform: scale(.8) rotate(-12deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+@media (max-width: 480px) { .email-confirmation { padding: 30px 22px; margin: 24px auto; }.email-confirmation h1 { font-size: 31px; } }
+.route-message { display: grid; gap: 18px; max-width: 700px; margin: 30px auto; animation: step-arrive .35s ease-out; }
+.route-message h1 { font-size: 30px; font-weight: 400; }
+.route-message p { color: var(--muted); }

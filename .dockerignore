@@ -52,6 +52,15 @@ frontend/src/utils/**
 !frontend/src/utils/*.js
 !frontend/src/utils/*.jsx
 !frontend/src/utils/*.css
+!frontend/src/themes/
+frontend/src/themes/**
+!frontend/src/themes/*.js
+!frontend/src/themes/*.jsx
+!frontend/src/themes/*.css
+!frontend/public/
+frontend/public/**
+!frontend/public/roamora.svg
+frontend/public/roamora.svg/**
 !frontend/tools/
 frontend/tools/**
 !frontend/tools/qaPreviewGuard.mjs

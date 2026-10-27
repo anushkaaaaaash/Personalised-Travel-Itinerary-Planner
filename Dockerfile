@@ -7,6 +7,7 @@ COPY backend/package.json ./backend/package.json
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY frontend/index.html frontend/vite.config.js ./frontend/
 COPY frontend/src/ ./frontend/src/
+COPY frontend/public/roamora.svg ./frontend/public/roamora.svg
 COPY frontend/tools/qaPreviewGuard.mjs ./frontend/tools/qaPreviewGuard.mjs
 COPY shared/tripPreferences.mjs ./shared/tripPreferences.mjs
 COPY deployment/frontend_config.mjs ./deployment/frontend_config.mjs

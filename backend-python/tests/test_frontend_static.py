@@ -10,6 +10,7 @@ class Auth:
 @pytest.fixture
 def ui(monkeypatch,tmp_path):
     root=tmp_path/'dist';root.mkdir();(root/'assets').mkdir()
+    (root/'roamora.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
     (root/'index.html').write_text('<html>PUBLIC_PLANNER</html>')
     (root/'assets'/'index-abc123.js').write_text('console.log("public")')
     (tmp_path/'private.env').write_text('PRIVATE_SENTINEL')
@@ -54,3 +55,12 @@ def test_enabled_frontend_missing_build_fails_closed(monkeypatch,tmp_path):
     monkeypatch.setenv('SERVE_FRONTEND','true');monkeypatch.setenv('FRONTEND_DIST',str(tmp_path))
     from app.main import create_app
     with pytest.raises(RuntimeError,match='Frontend build'):create_app(auth_service=Auth())
+
+
+def test_only_reviewed_public_brand_asset_is_public(ui):
+    client,root=ui
+    response=client.get('/roamora.svg')
+    assert response.status_code==200 and response.headers['content-type'].startswith('image/svg+xml')
+    assert response.headers['x-content-type-options']=='nosniff'
+    for path in ['/private.svg','/public/roamora.svg','/roamora.svg/private.env']:
+        assert client.get(path).status_code in (401,404)
