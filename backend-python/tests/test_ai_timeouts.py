@@ -18,13 +18,13 @@ def diagnostics(caplog):
 
 
 def test_coordinated_backend_deadlines_and_unchanged_wire_policy():
-    assert ItineraryService().timeout_seconds == RecommendationService().timeout_seconds == AI_SERVICE_TIMEOUT_SECONDS == 190
+    assert ItineraryService().timeout_seconds == RecommendationService().timeout_seconds == AI_SERVICE_TIMEOUT_SECONDS == 315
     calls=[]
     def handler(request):
         calls.append(request)
-        assert request.extensions['timeout'] == {'connect':10, 'read':180, 'write':45, 'pool':45}
+        assert request.extensions['timeout'] == {'connect':10, 'read':300, 'write':45, 'pool':45}
         body=json.loads(request.content)
-        assert body['model']=='gpt-6-luna' and body['reasoning']=={'effort':'max'}
+        assert body['model']=='gpt-6-luna' and body['reasoning']=={'effort':'xhigh'}
         assert body['store'] is False and body['stream'] is False
         assert body['max_output_tokens']==32768 and body['text']['format']['strict'] is True
         return httpx.Response(200,json=envelope())
@@ -42,7 +42,7 @@ def test_transport_timeout_is_classified_without_raw_content_or_retries(kind,lab
         raise kind('PRIVATE_EXCEPTION_AND_URL',request=request)
     p=OpenAIProvider(KEY,transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderTransportTimeout):
-        asyncio.run(wait_for_provider(p.generate(MESSAGES,SCHEMA),190))
+        asyncio.run(wait_for_provider(p.generate(MESSAGES,SCHEMA),315))
     values=diagnostics(caplog)
     assert len(values)==len(calls)==1
     assert values[0]['event']=='TRANSPORT_TIMEOUT' and values[0]['timeoutType']==label
@@ -82,7 +82,7 @@ def test_delayed_success_and_explicit_cancellation_have_no_false_timeout(caplog)
         return 'complete'
     assert asyncio.run(wait_for_provider(success(),0.1))=='complete'
     async def cancel():
-        task=asyncio.create_task(wait_for_provider(asyncio.sleep(10),190))
+        task=asyncio.create_task(wait_for_provider(asyncio.sleep(10),315))
         await asyncio.sleep(0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):await task
@@ -104,7 +104,7 @@ def test_timeout_telemetry_rejects_non_allowlisted_values(event,subtype,stage,el
 def test_provider_raised_timeout_is_not_mislabelled_as_service_deadline(caplog):
     async def provider():
         raise TimeoutError('PRIVATE_PROVIDER_TIMEOUT')
-    with pytest.raises(TimeoutError):asyncio.run(wait_for_provider(provider(),190))
+    with pytest.raises(TimeoutError):asyncio.run(wait_for_provider(provider(),315))
     assert diagnostics(caplog)==[]
 
 

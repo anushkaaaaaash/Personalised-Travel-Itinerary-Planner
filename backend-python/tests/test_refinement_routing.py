@@ -29,7 +29,7 @@ def test_all_ai_endpoints_route_to_luna_max(monkeypatch,payload,generated,recomm
         body=json.loads(req.content); calls.append(body)
         return httpx.Response(200,json=envelope(json.dumps(outputs[len(calls)-1])))
     original_init=OpenAIProvider.__init__
-    def offline_init(self,key,model='gpt-6-luna',transport=None,*,reasoning_effort='max'):
+    def offline_init(self,key,model='gpt-6-luna',transport=None,*,reasoning_effort='xhigh'):
         original_init(self,key,model,transport=httpx.MockTransport(handler),reasoning_effort=reasoning_effort)
     monkeypatch.setattr(OpenAIProvider,'__init__',offline_init)
     monkeypatch.setattr('app.providers.read_configuration',lambda:{'OPENAI_API_KEY':'fake-offline-key-123','OPENAI_MODEL':'gpt-6-luna'})
@@ -43,7 +43,7 @@ def test_all_ai_endpoints_route_to_luna_max(monkeypatch,payload,generated,recomm
     assert client.post('/api/itineraries/generate',json=payload).status_code==200
     assert client.post('/api/recommendations',json=payload).status_code==200
     assert [call['model'] for call in calls]==['gpt-6-luna','gpt-6-luna','gpt-6-luna']
-    assert all(c['reasoning']=={'effort':'max'} and c['max_output_tokens']==32768 and c['text']['format']['strict'] is True for c in calls)
+    assert all(c['reasoning']=={'effort':'xhigh'} and c['max_output_tokens']==32768 and c['text']['format']['strict'] is True for c in calls)
     for call in calls:
         assert_pure_refs(call['text']['format']['schema'])
     assert request.previous.model_dump()==before
@@ -55,7 +55,7 @@ def test_refinement_error_does_not_retry_or_mutate_previous(monkeypatch,payload,
         calls.append(json.loads(req.content))
         return httpx.Response(400,json={'error':{'code':'json_validate_failed','message':'schema.days expected object'}})
     original_init=OpenAIProvider.__init__
-    def offline_init(self,key,model='gpt-6-luna',transport=None,*,reasoning_effort='max'):
+    def offline_init(self,key,model='gpt-6-luna',transport=None,*,reasoning_effort='xhigh'):
         original_init(self,key,model,transport=httpx.MockTransport(handler),reasoning_effort=reasoning_effort)
     monkeypatch.setattr(OpenAIProvider,'__init__',offline_init)
     monkeypatch.setattr('app.providers.read_configuration',lambda:{'OPENAI_API_KEY':'fake-offline-key-123'})

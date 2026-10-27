@@ -19,8 +19,8 @@ test('selected destinations resolve exact curated aliases, unknown and inherited
   }
 });
 
-test('every AI request uses the shared 210 second deadline and clears its timer on error',async()=>{
-  assert.equal(AI_REQUEST_TIMEOUT_MS,210000);
+test('every AI request uses the shared 330 second deadline and clears its timer on error',async()=>{
+  assert.equal(AI_REQUEST_TIMEOUT_MS,330000);
   const set=globalThis.setTimeout,clear=globalThis.clearTimeout;let deadlines=[],cleared=[];
   globalThis.setTimeout=(_fn,ms)=>{deadlines.push(ms);return deadlines.length;};
   globalThis.clearTimeout=id=>cleared.push(id);
@@ -29,7 +29,7 @@ test('every AI request uses the shared 210 second deadline and clears its timer 
     await assert.rejects(generateItinerary(preferences,options));
     await assert.rejects(refineItinerary({preferences,previous:plan(),feedback:'More rest'},options));
     await assert.rejects(getRecommendations(preferences,options));
-    assert.deepEqual(deadlines,[210000,210000,210000]);assert.deepEqual(cleared,[1,2,3]);
+    assert.deepEqual(deadlines,[330000,330000,330000]);assert.deepEqual(cleared,[1,2,3]);
   }finally{globalThis.setTimeout=set;globalThis.clearTimeout=clear;}
 });
 

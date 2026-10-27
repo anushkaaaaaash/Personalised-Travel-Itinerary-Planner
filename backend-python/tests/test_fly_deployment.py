@@ -69,3 +69,13 @@ def test_unreviewed_fly_config_fails_startup(monkeypatch,tmp_path):
     fake_verified_environment(monkeypatch,tmp_path)
     monkeypatch.setenv('SAVED_ITINERARIES_SCHEMA_VERIFIED','false')
     with pytest.raises(ValueError):create_production_app()
+
+
+def test_fly_reasoning_and_deadlines_match_user_requested_bounded_policy():
+    from app.ai_timeout import AI_READ_TIMEOUT_SECONDS, AI_SERVICE_TIMEOUT_SECONDS
+    env=CONFIG['env']
+    assert env['OPENAI_REASONING_EFFORT']=='xhigh'
+    assert env['FRONTEND_ORIGIN']=='https://'+env['API_HOST']
+    assert 'FRONTEND_PREVIEW_ORIGIN' not in env
+    assert AI_READ_TIMEOUT_SECONDS == 300 < AI_SERVICE_TIMEOUT_SECONDS == 315
+    assert CONFIG['http_service']['http_options']['idle_timeout']==360

@@ -81,7 +81,7 @@ def test_local_environment_overrides_file_without_interpolation(monkeypatch):
 def test_typed_provider_settings_hide_secrets_and_preserve_model_defaults():
     s=ProviderSettings(OPENAI_API_KEY='fixture-private-value')
     assert 'fixture-private-value' not in repr(s)
-    assert s.OPENAI_MODEL=='gpt-6-luna' and s.OPENAI_REASONING_EFFORT=='max'
+    assert s.OPENAI_MODEL=='gpt-6-luna' and s.OPENAI_REASONING_EFFORT=='xhigh'
     p=create_provider(lambda:{'OPENAI_API_KEY':'synthetic-fixture-only','OPENAI_MODEL':'gpt-6-luna'},for_refinement=True)
     assert p.model=='gpt-6-luna'
     with pytest.raises(Exception):ProviderSettings(OPENAI_MODEL='unsupported')
