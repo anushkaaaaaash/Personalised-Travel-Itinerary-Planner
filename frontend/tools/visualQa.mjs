@@ -26,7 +26,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], savedTrip:false, reducedMotion:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;
@@ -60,7 +60,21 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   return {page,context};
 }
 async function snapshot(page,name) {
-  await page.waitForFunction(() => [...document.querySelectorAll('.page, .welcome-hero__copy, .account-shell--welcome, .email-confirmation, .planner-fields, .results-hero, .day-card, .destination-loading__postcard')].every(element => Number(getComputedStyle(element).opacity) >= .99));
+  const selector = '.page, .welcome-hero__copy, .account-shell--welcome, .email-confirmation, .planner-fields, .results-hero, .day-card, .destination-loading__postcard';
+  try {
+    await page.waitForFunction(selector => [...document.querySelectorAll(selector)].every(element => {
+      const style = getComputedStyle(element);
+      const hidden = !element.getClientRects().length || element.closest('details:not([open])') || style.display === 'none' || ['hidden','collapse'].includes(style.visibility);
+      return hidden || Number(style.opacity) >= .99;
+    }), selector);
+  } catch(error) {
+    const elements = await page.evaluate(selector => [...document.querySelectorAll(selector)].slice(0,30).map(element => {
+      const style = getComputedStyle(element);
+      return {className:element.getAttribute('class'),display:style.display,visibility:style.visibility,opacity:style.opacity,rects:element.getClientRects().length,closedDetails:Boolean(element.closest('details:not([open])'))};
+    }), selector);
+    findings.snapshotReadinessErrors.push({name,elements});
+    throw error;
+  }
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({path:path.join(output,name+'.png'),fullPage:true,animations:'disabled'});findings.screenshots.push(name+'.png');
 }
@@ -112,6 +126,10 @@ try {
       await page.getByRole('button',{name:'Next note',exact:true}).click();
       await pendingGeneration();pendingGeneration=null;
       await page.getByRole('heading',{name:/Make the days your own/}).waitFor();await noOverflow(page,`itinerary-${width}`);await snapshot(page,`itinerary-${width}`);
+      await page.locator('summary').filter({hasText:'Make it more you'}).click();
+      await page.getByRole('button',{name:'Update my plan',exact:true}).waitFor();
+      await noOverflow(page,`refinement-${width}`);await snapshot(page,`refinement-${width}`);
+      await page.locator('summary').filter({hasText:'Make it more you'}).click();
       await page.getByRole('button',{name:/Trip preferences/}).click();await page.getByRole('button',{name:/Return to your itinerary/}).click();await page.getByRole('heading',{name:/Make the days your own/}).waitFor();
     }
     await context.close();
