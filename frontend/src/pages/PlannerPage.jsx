@@ -1,12 +1,12 @@
 import { useDestinationTheme } from '../themes/DestinationTheme.jsx';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { FINAL_STEP, firstErrorStep, nextPlannerStep } from '../utils/plannerSteps.js';
+import { FINAL_STEP, firstErrorStep, nextPlannerStep, validatePlannerStep } from '../utils/plannerSteps.js';
 import DestinationDiscovery from '../components/DestinationDiscovery.jsx';
 import GeneratedItinerary from '../components/GeneratedItinerary.jsx';
 import SavedItineraries from '../components/SavedItineraries.jsx';
 import { createReadRequest } from '../services/readRequest.js';
-import { generateItinerary, refineItinerary, itineraryDates } from '../services/itineraries.js';
+import { generateItinerary, refineItinerary } from '../services/itineraries.js';
 import SiteHeader from '../components/SiteHeader.jsx';
 import PlannerForm from '../components/PlannerForm.jsx';
 import PlanningJobStatus from '../components/PlanningJobStatus.jsx';
@@ -51,9 +51,9 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   function clearResult() { jobRef.current?.clear(); generationRef.current?.reset(); refinementRef.current?.reset(); setEdited(false); setFieldErrors({}); }
   function handleChange(event) { if(jobBusy)return;const {name,value}=event.target; clearResult(); setForm(current=>({...current,[name]:value})); }
   function handleToggleInterest(id) { if(jobBusy)return;clearResult(); setForm(current=>({...current,interests:current.interests.includes(id)?current.interests.filter(item=>item!==id):[...current.interests,id]})); }
-  function validatedPayload() { const validation=buildTripPayload(form);setFieldErrors(validation.valid?{}:validation.errors);if(!validation.valid){setStep(firstErrorStep(validation.errors));setViewingPreferences(true);}return validation.valid?validation.value:null; }
+  function validatedPayload() { const validation=buildTripPayload(form);const errors=validatePlannerStep(form,FINAL_STEP);const valid=validation.valid && !Object.keys(errors).length;setFieldErrors(errors);if(!valid){setStep(firstErrorStep(errors));setViewingPreferences(true);}return valid?validation.value:null; }
   function handleSubmit(event) { event.preventDefault(); if(step===FINAL_STEP)return;const next=nextPlannerStep(form,step);setFieldErrors(next.errors);setStep(next.step); }
-  function handleGenerateItinerary() { if(jobBusy || step!==FINAL_STEP || generationRef.current?.isBusy() || refinementRef.current?.isBusy())return;const payload=validatedPayload();if(payload && useJobs && !itineraryDates(payload).length){setFieldErrors({endDate:'Choose a trip of 1–14 days.'});setStep(0);setViewingPreferences(true);return;}if(payload){refinementRef.current?.reset();setEdited(false);setViewingPreferences(false);if(useJobs){setGeneration(emptyRead);void jobRef.current?.start(payload);}else void generationRef.current?.submit(payload);} }
+  function handleGenerateItinerary() { if(jobBusy || step!==FINAL_STEP || generationRef.current?.isBusy() || refinementRef.current?.isBusy())return;const payload=validatedPayload();if(!payload){generationRef.current?.reset();refinementRef.current?.reset();return;}if(payload){refinementRef.current?.reset();setEdited(false);setViewingPreferences(false);if(useJobs){setGeneration(emptyRead);void jobRef.current?.start(payload);}else void generationRef.current?.submit(payload);} }
   async function handleRefine({feedback,vibe,targetDate,maxMainActivitiesPerDay}) { if(generationRef.current?.isBusy() || refinementRef.current?.isBusy())return;const preferences=validatedPayload();if(!preferences || !generation.result)return;const outcome=await refinementRef.current?.submit({preferences,previous:generation.result,feedback,vibe,targetDate,maxMainActivitiesPerDay});if(outcome?.result){setGeneration({loading:false,error:'',result:outcome.result,evidence:null});setEdited(false);} }
   function handleEditDay(day) { refinementRef.current?.reset();setEdited(true);setGeneration(current=>({...current,evidence:null,result:{...current.result,refinementSummary:null,days:current.result.days.map(d=>d.date===day.date?day:d)}})); }
   return <motion.div className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}} transition={{duration:reducedMotion?0:.2}}>
@@ -68,7 +68,7 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
       </>}
       <div className="results-wrap" aria-label="Trip results">
         {showPlan && jobWaiting && <PlanningJobStatus state={jobState} destination={form.destination} onCheck={()=>jobRef.current?.check()} onCancel={()=>jobRef.current?.cancel()} onNewPlan={()=>{jobRef.current?.clear();setGeneration(emptyRead);setViewingPreferences(true);}}/>}
-        {showPlan && !jobWaiting && <GeneratedItinerary preferences={valid.valid?valid.value:null} {...generation} edited={edited} refinement={refinement} onEditDay={handleEditDay} onRefine={handleRefine} onCancelRefine={()=>refinementRef.current?.reset()} onRetry={handleGenerateItinerary} onCancel={()=>generationRef.current?.reset()}/>}
+        {showPlan && !jobWaiting && <GeneratedItinerary preferences={valid.valid?valid.value:null} {...generation} edited={edited} refinement={refinement} onEditDay={handleEditDay} onRefine={handleRefine} onCancelRefine={()=>refinementRef.current?.reset()} onEditPreferences={()=>{generationRef.current?.reset();setStep(0);setViewingPreferences(true);}} onRetry={handleGenerateItinerary} onCancel={()=>generationRef.current?.reset()}/>}
         {signedIn && !generation.loading && !jobBusy && <SavedItineraries signedIn={signedIn} preferences={valid.valid?valid.value:null} itinerary={generation.result} plannerBusy={generation.loading || refinement.loading || jobBusy} onLoad={record=>{clearResult();setForm({...createInitialForm(),...record.preferences});setGeneration({loading:false,error:'',result:record.itinerary});setStep(FINAL_STEP);setViewingPreferences(false);}}/>}
       </div>
     </main>

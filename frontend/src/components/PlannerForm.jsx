@@ -13,9 +13,9 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
       previousStep.current = step;
     }
   }, [step]);
-  const feedback = (name) => ({
+  const feedback = (name, hint) => ({
     'aria-invalid': Boolean(errors[name]),
-    'aria-describedby': errors[name] ? `${name}-error` : undefined,
+    'aria-describedby': [errors[name] ? `${name}-error` : '', hint].filter(Boolean).join(' ') || undefined,
   });
   const errorFor = (name) => errors[name] ? <span className="field-error" id={`${name}-error`}>{errors[name]}</span> : null;
 
@@ -37,7 +37,7 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
       {Object.keys(errors).length > 0 && <p role="alert" className="field-error">Please correct the highlighted preferences before continuing.</p>}
       <fieldset key={step} className="planner-fields" disabled={loading}>
         <legend className="sr-only">Trip preferences</legend>
-        {step === 0 && <div className="form-grid">
+        {step === 0 && <><div className="form-grid">
           <label className="field">
             <span>Destination</span>
             <input name="destination" value={form.destination} onChange={onChange}
@@ -57,18 +57,18 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
           <label className="field">
             <span>Start date</span>
             <input type="date" name="startDate" value={form.startDate} onChange={onChange}
-              required {...feedback('startDate')} />
+              required {...feedback('startDate', 'trip-length-hint')} />
             {errorFor('startDate')}
           </label>
 
           <label className="field">
             <span>End date</span>
             <input type="date" name="endDate" value={form.endDate} onChange={onChange}
-              min={form.startDate} required {...feedback('endDate')} />
+              min={form.startDate} required {...feedback('endDate', 'trip-length-hint')} />
             {errorFor('endDate')}
           </label>
 
-        </div>}
+        </div><p className="hint" id="trip-length-hint">Plan 1–14 days at a time, including your start and end dates.</p></>}
 
         {step === 1 && <>
         <div className="form-grid">

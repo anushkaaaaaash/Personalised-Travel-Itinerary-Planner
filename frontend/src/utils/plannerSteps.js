@@ -1,3 +1,4 @@
+import { planningDateError } from './planningDates.js';
 import { buildTripPayload } from './tripPreferences.js';
 
 export const PLANNER_STEPS = Object.freeze([
@@ -10,10 +11,12 @@ export const FINAL_STEP = PLANNER_STEPS.length - 1;
 /** Reuse the shared full validator, exposing only errors relevant to this step. */
 export function validatePlannerStep(form, step) {
   const validation = buildTripPayload(form);
-  if (validation.valid) return {};
-  if (step === FINAL_STEP) return validation.errors;
+  const errors = { ...(validation.errors || {}) };
+  const dateError = planningDateError(form);
+  if (dateError && !errors.endDate) errors.endDate = dateError;
+  if (step === FINAL_STEP) return errors;
   const fields = PLANNER_STEPS[step]?.fields || [];
-  return Object.fromEntries(Object.entries(validation.errors).filter(([field]) => field === 'form' || fields.includes(field)));
+  return Object.fromEntries(Object.entries(errors).filter(([field]) => field === 'form' || fields.includes(field)));
 }
 
 export function firstErrorStep(errors) {

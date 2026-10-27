@@ -26,7 +26,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;
@@ -42,6 +42,7 @@ result.days[0].mobilityNotes = 'Check step-free routes with the venues before vi
 async function newPage({width=1440,height=1050,production=false,reducedMotion='no-preference',confirmation='verified'}={}) {
   const context = await browser.newContext({viewport:{width,height},reducedMotion});
   const page = await context.newPage();
+  const generationRequests = [];
   page.on('pageerror',error=>findings.errors.push(error.message));
   await context.route('**/*',route=>{
     const url = new URL(route.request().url());
@@ -54,10 +55,10 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
     if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
     if(url.pathname==='/api/saved-itineraries/32345678-1234-1234-1234-123456789abc')return route.fulfill({json:fixtureDetail()});
     if(url.pathname==='/api/auth/confirmation')return confirmation==='verified' ? route.fulfill({json:{confirmed:true}}) : route.fulfill({status:confirmation==='unverified'?401:503,json:{error:'Synthetic test response'}});
-    if(url.pathname==='/api/itineraries/generate') {pendingGeneration=()=>route.fulfill({json:result});return;}
+    if(url.pathname==='/api/itineraries/generate') {generationRequests.push(route.request().postDataJSON());pendingGeneration=(json=result,status=200)=>route.fulfill({status,json});return;}
     findings.unexpectedRequests.push(url.pathname);return route.abort();
   });
-  return {page,context};
+  return {page,context,generationRequests};
 }
 async function snapshot(page,name) {
   const selector = '.page, .welcome-hero__copy, .account-shell--welcome, .email-confirmation, .planner-fields, .results-hero, .day-card, .destination-loading__postcard';
@@ -134,6 +135,43 @@ try {
       await page.getByRole('button',{name:/Trip preferences/}).click();await page.getByRole('button',{name:/Return to your itinerary/}).click();await page.getByRole('heading',{name:/Make the days your own/}).waitFor();
     }
     await context.close();
+  }
+  {
+    const {page,context,generationRequests}=await newPage({width:390});
+    await page.goto(origin);await page.locator('input[name=destination]').fill('Japan');await settleTheme(page,'JP');
+    await page.locator('input[name=departureCity]').fill('Mumbai');
+    await page.locator('input[name=startDate]').fill('2026-10-27');await page.locator('input[name=endDate]').fill('2026-11-19');
+    await page.getByRole('button',{name:/Next:/}).click();
+    await page.getByText(/Choose a trip of 1–14 days\. These dates cover 24 days/).waitFor();
+    assert.equal(await page.locator('input[name=endDate]').inputValue(),'2026-11-19');
+    assert.equal(generationRequests.length,0);
+    await noOverflow(page,'date-range-recovery-390');await snapshot(page,'date-range-recovery-390');
+    await page.locator('input[name=startDate]').fill('2028-02-28');await page.locator('input[name=endDate]').fill('2028-02-28');
+    await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
+    await page.getByRole('button',{name:'Build my trip →',exact:true}).click();await page.getByRole('heading',{name:'Your trip is taking shape'}).waitFor();
+    await pendingGeneration({...result,destination:'Japan'});pendingGeneration=null;
+    await page.getByRole('heading',{name:/Make the days your own/}).waitFor();await settleTheme(page,'JP');
+    await page.getByRole('button',{name:/Trip preferences/}).click();
+    await page.getByRole('button',{name:'Back',exact:true}).click();await page.getByRole('button',{name:'Back',exact:true}).click();
+    await page.locator('input[name=destination]').fill('France');await settleTheme(page,'FR');
+    assert.equal(await page.locator('.generated-itinerary, .return-to-plan').count(),0);
+    await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
+    await page.getByRole('button',{name:'Build my trip →',exact:true}).click();await page.getByRole('heading',{name:'Your trip is taking shape'}).waitFor();await settleTheme(page,'FR');
+    await pendingGeneration({error:{code:'AI_PROVIDER_FAILED'}},502);pendingGeneration=null;
+    await page.getByRole('heading',{name:'We couldn’t build this trip.'}).waitFor();await settleTheme(page,'FR');
+    await noOverflow(page,'generation-error-france-390');await snapshot(page,'generation-error-france-390');
+    await page.getByRole('button',{name:'Edit trip details',exact:true}).click();
+    assert.equal(await page.locator('input[name=destination]').inputValue(),'France');
+    await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
+    await page.getByRole('button',{name:'Build my trip →',exact:true}).click();await page.getByRole('heading',{name:'Your trip is taking shape'}).waitFor();
+    await pendingGeneration({...result,destination:'France',explanation:'A fresh plan for France.'});pendingGeneration=null;
+    await page.getByRole('heading',{name:/France.*Make the days your own/}).waitFor();await settleTheme(page,'FR');
+    assert.equal(await page.locator('.generated-itinerary').getByText('Japan',{exact:true}).count(),0);
+    assert.deepEqual(generationRequests.map(request=>request.destination),['Japan','France','France']);
+    await noOverflow(page,'fresh-result-france-390');await snapshot(page,'fresh-result-france-390');
+    await page.reload();await page.locator('input[name=destination]').waitFor();await settleTheme(page,'WORLD');
+    assert.equal(await page.locator('input[name=destination]').inputValue(),'');assert.equal(await page.locator('.generated-itinerary').count(),0);
+    findings.destinationRecovery=true;await context.close();
   }
   for(const width of [1440,390,320]){
     const {page,context}=await newPage({width,production:true});await page.goto(origin);await page.locator('input[type=email]').waitFor();await noOverflow(page,`welcome-${width}`);await snapshot(page,`welcome-${width}`);await context.close();

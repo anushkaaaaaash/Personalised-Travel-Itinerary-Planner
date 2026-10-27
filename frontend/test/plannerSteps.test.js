@@ -69,3 +69,13 @@ test('optional style and mobility errors block their step and route back there',
   assert.ok(result.errors.mobilityConcerns);
   assert.equal(firstErrorStep(result.errors), 1);
 });
+
+test('reported 24-day trip is blocked before Review without changing its dates',()=>{
+  const form={...validForm(),startDate:'2026-10-27',endDate:'2026-11-19'};const before=structuredClone(form);
+  const first=nextPlannerStep(form,0);assert.equal(first.step,0);assert.match(first.errors.endDate,/24 days/);
+  assert.match(validatePlannerStep(form,FINAL_STEP).endDate,/1–14 days/);assert.deepEqual(form,before);
+});
+test('planning duration is inclusive across month/year/leap boundaries',()=>{
+  for(const [start,end] of [['2026-12-25','2027-01-07'],['2028-02-20','2028-03-04'],['2026-10-27','2026-10-27']])assert.equal(validatePlannerStep({...validForm(),startDate:start,endDate:end},0).endDate,undefined);
+  assert.match(validatePlannerStep({...validForm(),startDate:'2026-12-25',endDate:'2027-01-08'},0).endDate,/15 days/);
+});
