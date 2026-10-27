@@ -1,0 +1,60 @@
+name: Provision Fly checkpoint volume
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Full SHA of reviewed main commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-travel-planner-deploy
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify reviewed commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          case "$EXPECTED_SHA" in *[!0-9a-f]*|'') exit 1 ;; esac
+          test "${#EXPECTED_SHA}" -eq 40
+          test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify approved config before using token
+        run: |
+          python3 - <<'PYCODE'
+          import tomllib
+          with open('fly.toml', 'rb') as f:
+              c = tomllib.load(f)
+          assert c['app'] == 'personalised-travel-itinerary-planner'
+          assert c['primary_region'] == 'sin'
+          assert c['vm'] == [{'size': 'shared-cpu-1x', 'memory': '512mb'}]
+          assert c['env']['PLANNING_JOBS_ENABLED'] == 'false'
+          assert c['env'].get('ADAPTIVE_PLANNING_ENABLED', 'false') == 'false'
+          mounts = c['mounts']
+          assert isinstance(mounts, list) and len(mounts) == 1
+          mount = mounts[0]
+          assert isinstance(mount, dict)
+          assert set(mount) == {'source', 'destination', 'scheduled_snapshots'}
+          assert mount['source'] == 'planner_checkpoints'
+          assert mount['destination'] == '/data'
+          assert mount['scheduled_snapshots'] is False
+          PYCODE
+      - name: Provision one approved volume
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 deployment/fly_checkpoint_volume.py

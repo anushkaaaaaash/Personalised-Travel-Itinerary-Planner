@@ -82,6 +82,9 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
         let money=false;
         if(response.status===400){try{money=(await response.json())?.error?.code==='SECTION_MONEY_INVALID';}catch{}}
         if(money)code='SECTION_MONEY_INVALID';
+        // Only an authenticated, known-plan GET has definitive absence semantics.
+        // Request-only lookup or a missing route does not resolve an uncertain create.
+        if(response.status===404 && method==='GET' && id && path===`/${id}?afterSequence=${afterSequence}`){try{if((await response.json())?.error?.code==='SECTION_NOT_FOUND')code='ADAPTIVE_PLAN_UNAVAILABLE';}catch{}}
         throw new AdaptivePlanningError(code,money?'Enter a budget with at most two decimal places in the supported monetary range. This is a number-format check, not a minimum trip budget.':response.status===401?'Sign in again to check this trip.':'This planning request could not be completed. Check its status before trying again.',{confirmed:[400,401,403,404,409,413,422,429].includes(response.status)});
       }
       const body=await response.json();if(controller.signal.aborted)throw Error('aborted');

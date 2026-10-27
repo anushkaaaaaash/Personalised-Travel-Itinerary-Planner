@@ -26,7 +26,7 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
   function accept(value,cursor){
     if(terminal(value.plan.status))wantsCancel=false;
     handle={owner,requestId:value.plan.requestId || handle.requestId,planId:value.plan.id};persist();
-    publish({...value,pageCursor:cursor,loading:false,error:'',errorCode:null,needsCheck:value.plan.activeSection?.status==='submission_unknown',resumable:true,checking:false,cancelling:wantsCancel,cancelRequested:wantsCancel,cancelUnconfirmed:false});
+    publish({...value,preferences:value.plan.status==='expired'?(value.preferences || state.preferences):value.preferences,pageCursor:cursor,loading:false,error:'',errorCode:null,needsCheck:value.plan.activeSection?.status==='submission_unknown',resumable:true,checking:false,cancelling:wantsCancel,cancelRequested:wantsCancel,cancelUnconfirmed:false});
   }
   async function run(kind,action,cursor=0) {
     if(disposed||resetOwner()||!owner||active)return{ignored:true};stop();
@@ -35,6 +35,12 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
     catch(error){if(!current(op))return{ignored:true};
       if(error?.code==='AUTH_REQUIRED'){handle=null;wantsCancel=false;persist();publish({...initial(),error:'Sign in again to check your trip.',errorCode:'AUTH_REQUIRED'});}
       else if(kind==='start'&&error?.confirmed&&['VALIDATION_ERROR','ADAPTIVE_REJECTED','SECTION_MONEY_INVALID'].includes(error.code)){handle=null;persist();publish({...initial(),error:error.code==='SECTION_MONEY_INVALID'?'Check your budget format.':'Check your trip details.',errorCode:safeErrorCode(error)});}
+      else if(['check','page'].includes(kind)&&handle?.planId&&error?.confirmed&&error.code==='ADAPTIVE_PLAN_UNAVAILABLE'){
+        // Keep the opaque identity until the user acknowledges this terminal state.
+        // In particular, request-ID-only ambiguity must never take this branch.
+        wantsCancel=false;
+        publish({...initial(),plan:{id:handle.planId,requestId:handle.requestId,status:'expired',activeSection:null},preferences:state.preferences,resumable:true,errorCode:'ADAPTIVE_PLAN_UNAVAILABLE'});
+      }
       else publish({errorCode:safeErrorCode(error),loading:false,checking:false,cancelling:false,cancelRequested:false,needsCheck:true,resumable:Boolean(handle),cancelUnconfirmed:kind==='cancel'||state.cancelUnconfirmed,error:kind==='cancel'?'The stop could not be confirmed. Check this trip before trying again.':kind==='check'||kind==='page'?'This trip could not be checked. Your saved checkpoints have not been replaced.':'The change could not be confirmed. Check this trip before continuing; no automatic retry was made.'});
       return{error:true};
     }finally{if(active===op){active=null;if(!disposed){if(wantsCancel&&handle?.planId&&!terminal(state.plan?.status)&&(!state.needsCheck||(state.plan?.activeSection?.status==='submission_unknown'&&!state.cancelUnconfirmed)))void cancelKnown();else schedule();}}}
