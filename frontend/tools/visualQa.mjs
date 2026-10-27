@@ -4,7 +4,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { COUNTRY_THEMES } from '../src/themes/countryThemes.js';
-import { plan as fixturePlan } from '../test/shareFixture.js';
+import { plan as fixturePlan, detail as fixtureDetail } from '../test/shareFixture.js';
 
 const { chromium } = await import(pathToFileURL(path.join(process.env.QA_NODE_MODULES, 'playwright/index.mjs')).href);
 const dist = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
@@ -26,7 +26,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], reducedMotion:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], savedTrip:false, reducedMotion:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;
@@ -51,6 +51,8 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   await context.route('**/api/**', async route=>{
     const url=new URL(route.request().url());
     if(url.pathname==='/api/auth/config')return route.fulfill({json:production?liveConfig:localConfig});
+    if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
+    if(url.pathname==='/api/saved-itineraries/32345678-1234-1234-1234-123456789abc')return route.fulfill({json:fixtureDetail()});
     if(url.pathname==='/api/auth/confirmation')return confirmation==='verified' ? route.fulfill({json:{confirmed:true}}) : route.fulfill({status:confirmation==='unverified'?401:503,json:{error:'Synthetic test response'}});
     if(url.pathname==='/api/itineraries/generate') {pendingGeneration=()=>route.fulfill({json:result});return;}
     findings.unexpectedRequests.push(url.pathname);return route.abort();
@@ -119,6 +121,21 @@ try {
     await noOverflow(page,`confirmation-${status}`);await snapshot(page,`confirmation-${status}`);
     await page.getByRole('button',{name:'Continue to sign in',exact:true}).click();await page.locator('input[type=email]').waitFor();
     findings.confirmations.push(status);await context.close();
+  }
+  for(const width of [1440,390]) {
+    const {page,context}=await newPage({width,production:true});
+    await page.goto(`${origin}/itineraries/32345678-1234-1234-1234-123456789abc`);
+    await page.locator('input[type=email]').fill('traveler@example.test');await page.locator('input[type=password]').fill('synthetic-test-only');
+    await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await page.getByRole('heading',{name:'Your saved trip',exact:true}).waitFor();await settleTheme(page,'JP');
+    await noOverflow(page,`saved-trip-${width}`);await snapshot(page,`saved-trip-${width}`);
+    await page.getByLabel('Itinerary title').fill('A quiet day in Kyoto');
+    page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('link',{name:'Back to planner',exact:true}).click();
+    assert.match(page.url(),/itineraries\/32345678/);
+    await page.getByRole('button',{name:'Reload saved revision',exact:true}).click();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    assert.equal(await page.getByLabel('Itinerary title').inputValue(),'A quiet day in Kyoto');
+    findings.savedTrip=true;await context.close();
   }
   const {page,context}=await newPage({width:390,reducedMotion:'reduce'});
   await page.goto(origin);await page.locator('input[name=destination]').waitFor();await page.locator('input[name=destination]').fill('Kyoto, Japan');await settleTheme(page,'JP');

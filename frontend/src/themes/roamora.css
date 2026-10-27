@@ -306,3 +306,10 @@ button:not(:disabled):active, .pill:active { transform: scale(.975); }
 .route-message { display: grid; gap: 18px; max-width: 700px; margin: 30px auto; animation: step-arrive .35s ease-out; }
 .route-message h1 { font-size: 30px; font-weight: 400; }
 .route-message p { color: var(--muted); }
+button:not([class]) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--sea); background: var(--card); cursor: pointer; font-size: 12px; }
+button:not([class]):hover:not(:disabled) { background: var(--theme-wash); border-color: var(--sea); }
+button:not([class]):disabled { opacity: .6; cursor: not-allowed; }
+[role='group'] > button + button, .saved-trips > button + button { margin-left: 8px; }
+.saved-trips > ul { padding-left: 20px; }
+.saved-trips > ul > li { padding: 12px 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .step-actions > button:not([class]) { flex: 1 1 140px; } }
