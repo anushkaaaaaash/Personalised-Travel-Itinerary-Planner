@@ -15,7 +15,7 @@ SCHEDULE_NOTICE=('Schedule times are computed from AI-proposed ordered activitie
 class GenerationContract:
     def __init__(self,preferences):
         from .itineraries import ItineraryPayload
-        from .groq import strict_schema
+        from .openai import strict_schema
         self.preferences=preferences
         self.dates=[(date.fromisoformat(preferences.startDate)+timedelta(days=i)).isoformat()
             for i in range((date.fromisoformat(preferences.endDate)-date.fromisoformat(preferences.startDate)).days+1)]
@@ -23,7 +23,10 @@ class GenerationContract:
         base=ItineraryPayload.model_json_schema();defs=deepcopy(base['$defs'])
         activity=defs['ItineraryActivity']['properties']
         activity.pop('startTime');activity.pop('fixedTime')
-        activity['gapBeforeMinutes']={'type':'integer','enum':list(range(241)),
+        # Share the finite gap domain: duplicating it in both proposal definitions
+        # exceeded OpenAI's 1,000-total-enum-value strict-schema limit.
+        defs['GapBeforeMinutes']={'type':'integer','enum':list(range(241))}
+        activity['gapBeforeMinutes']={'$ref':'#/$defs/GapBeforeMinutes',
             'description':'Nonnegative travel/rest gap after the previous entry (or day start for the first), 0-240 minutes. No overlaps.'}
         activity['kind']={'type':'string','enum':['main','rest','transfer','meal','accommodation']}
         activity['sequence']={'type':'integer','enum':list(range(1,9)),

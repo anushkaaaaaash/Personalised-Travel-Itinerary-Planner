@@ -1,3 +1,4 @@
+from test_openai import envelope
 """Only synthetic plans and MockTransport; no credentials, live AI, or storage."""
 import asyncio
 from copy import deepcopy
@@ -9,7 +10,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
-from app.groq import GroqProvider, strict_schema
+from app.openai import OpenAIProvider, strict_schema
 from app.itineraries import ItineraryPayload, ItineraryService, RefinementRequest, validate_itinerary
 from app.models import TripPreferences
 from app.recommendations import RecommendationError
@@ -31,13 +32,13 @@ def run_provider(payload, result, context=None):
     calls=[]
     def handler(request):
         wire=json.loads(request.content);calls.append(wire)
-        assert wire['max_completion_tokens']==4096 and wire['stream'] is False
-        assert wire['response_format']['json_schema']['strict'] is True
-        expected='openai/gpt-oss-120b' if context else 'openai/gpt-oss-20b'
+        assert wire['max_output_tokens']==32768 and wire['stream'] is False
+        assert wire['text']['format']['strict'] is True
+        expected='gpt-6-luna' if context else 'gpt-6-luna'
         assert wire['model']==expected
         content=result if isinstance(result,str) else json.dumps(result if context else private_proposal(result,payload))
-        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':content}}]})
-    service=ItineraryService(GroqProvider('synthetic-offline-provider-key',model='openai/gpt-oss-120b' if context else 'openai/gpt-oss-20b',transport=httpx.MockTransport(handler)))
+        return httpx.Response(200,json=envelope(content))
+    service=ItineraryService(OpenAIProvider('synthetic-offline-provider-key',model='gpt-6-luna' if context else 'gpt-6-luna',transport=httpx.MockTransport(handler)))
     try:
         response=asyncio.run(service.refine(context) if context else service.generate(TripPreferences(**payload)))
         return response,calls
@@ -68,7 +69,7 @@ def test_seven_day_generation_keeps_public_contract_and_frontend_roundtrip(paylo
     result,calls=run_provider(payload,data)
     assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]
     assert len(result.days)==7 and result.saved is False
-    assert 'verificationWarning is mandatory' in calls[0]['messages'][0]['content']
+    assert 'verificationWarning is mandatory' in calls[0]['input'][0]['content']
     script="""
       import {validItinerary} from './frontend/src/services/itineraries.js';
       import {exportSnapshot} from './frontend/src/services/itineraryExport.js';
@@ -122,8 +123,8 @@ def test_fastapi_generation_route_returns_public_array_without_storage(payload,g
     data=proposal(generated);calls=[]
     def handler(request):
         calls.append(request)
-        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(private_proposal(data,payload))}}]})
-    service=ItineraryService(GroqProvider('synthetic-offline-provider-key',transport=httpx.MockTransport(handler)))
+        return httpx.Response(200,json=envelope(json.dumps(private_proposal(data,payload))))
+    service=ItineraryService(OpenAIProvider('synthetic-offline-provider-key',transport=httpx.MockTransport(handler)))
     response=TestClient(create_app(NoStorage(),itinerary_service=service)).post('/api/itineraries/generate',json=payload)
     assert response.status_code==200 and len(calls)==1
     assert response.json()['warnings']==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]

@@ -1,3 +1,5 @@
+> Historical checkpoint: provider setup below is superseded by [OpenAI-only setup](backend-python/OPENAI_SETUP.md). Groq/Gemini adapters have been removed; do not configure their credentials. No deployment is authorized by this document.
+
 # Consolidated travel planner update
 
 This update targets the separate -FastAPI project, not the original project.

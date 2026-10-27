@@ -74,17 +74,17 @@ def test_hosted_configuration_never_reads_local_files(monkeypatch):
 def test_local_environment_overrides_file_without_interpolation(monkeypatch):
     import app.configuration as cfg
     for key in ['RENDER','VERCEL','APP_ENV','APP_MODE']:monkeypatch.delenv(key,raising=False)
-    def file(*a,**k):assert k['interpolate'] is False;return {'GROQ_MODEL':'file-model'}
-    monkeypatch.setattr(cfg,'dotenv_values',file);monkeypatch.setenv('GROQ_MODEL','process-model')
-    assert private_backend_values()['GROQ_MODEL']=='process-model'
+    def file(*a,**k):assert k['interpolate'] is False;return {'OPENAI_MODEL':'file-model'}
+    monkeypatch.setattr(cfg,'dotenv_values',file);monkeypatch.setenv('OPENAI_MODEL','process-model')
+    assert private_backend_values()['OPENAI_MODEL']=='process-model'
 
 def test_typed_provider_settings_hide_secrets_and_preserve_model_defaults():
-    s=ProviderSettings(GROQ_API_KEY='fixture-private-value')
+    s=ProviderSettings(OPENAI_API_KEY='fixture-private-value')
     assert 'fixture-private-value' not in repr(s)
-    assert s.GROQ_MODEL=='openai/gpt-oss-20b' and s.GROQ_REFINEMENT_MODEL=='openai/gpt-oss-120b'
-    p=create_provider(lambda:{'GROQ_API_KEY':'synthetic-fixture-only','GROQ_REFINEMENT_MODEL':'openai/gpt-oss-20b'},for_refinement=True)
-    assert p.model=='openai/gpt-oss-20b'
-    with pytest.raises(Exception):ProviderSettings(GROQ_REFINEMENT_MODEL='unsupported')
+    assert s.OPENAI_MODEL=='gpt-6-luna' and s.OPENAI_REASONING_EFFORT=='max'
+    p=create_provider(lambda:{'OPENAI_API_KEY':'synthetic-fixture-only','OPENAI_MODEL':'gpt-6-luna'},for_refinement=True)
+    assert p.model=='gpt-6-luna'
+    with pytest.raises(Exception):ProviderSettings(OPENAI_MODEL='unsupported')
 
 def test_legacy_configuration_cannot_be_read_in_production(monkeypatch):
     from app.storage import read_configuration,StorageNotConfigured
@@ -96,9 +96,9 @@ def test_startup_validates_provider_before_serving_without_any_paid_call(monkeyp
     configure(monkeypatch)
     monkeypatch.setenv('SUPABASE_URL','https://synthetic.supabase.co')
     monkeypatch.setenv('SUPABASE_PUBLISHABLE_KEY','sb_publishable_synthetic')
-    monkeypatch.setenv('AI_PROVIDER','groq');monkeypatch.setenv('GROQ_API_KEY','x')
+    monkeypatch.setenv('AI_PROVIDER','openai');monkeypatch.setenv('OPENAI_API_KEY','x')
     with pytest.raises(RuntimeError,match='invalid'):create_production_app()
-    monkeypatch.setenv('GROQ_API_KEY','synthetic-provider-only')
+    monkeypatch.setenv('OPENAI_API_KEY','synthetic-provider-only')
     app=create_production_app()
     assert TestClient(app,base_url='https://api.example.test').get('/api/health').status_code==200
 

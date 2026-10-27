@@ -1,8 +1,5 @@
 """Activity 4.1: asynchronous provider abstraction and lazy, offline factory."""
 from abc import ABC, abstractmethod
-import os
-from pathlib import Path
-from dotenv import dotenv_values
 
 
 class LLMProvider(ABC):
@@ -26,14 +23,9 @@ def create_provider(configuration=None, transport=None, *, for_refinement=False)
     try:
         from .configuration import ProviderSettings
         values = ProviderSettings.model_validate((configuration or read_configuration)())
-        selected = values.AI_PROVIDER
-        if selected == 'groq':
-            from .groq import GroqProvider, DEFAULT_MODEL
-            return GroqProvider(values.GROQ_API_KEY.get_secret_value(),
-                values.GROQ_REFINEMENT_MODEL if for_refinement else values.GROQ_MODEL, transport=transport)
-        if selected == 'gemini':
-            from .gemini import GeminiProvider, DEFAULT_MODEL
-            return GeminiProvider(values.GEMINI_API_KEY.get_secret_value(),values.GEMINI_MODEL, transport=transport)
+        from .openai import OpenAIProvider
+        return OpenAIProvider(values.OPENAI_API_KEY.get_secret_value(), values.OPENAI_MODEL,
+            transport=transport, reasoning_effort=values.OPENAI_REASONING_EFFORT)
     except RecommendationError:
         raise
     except Exception:

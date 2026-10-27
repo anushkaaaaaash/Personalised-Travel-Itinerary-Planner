@@ -2,12 +2,12 @@
 import json
 import httpx
 import pytest
-from app.groq import provider_error_detail, strict_schema
+from app.openai import provider_error_detail, strict_schema
 from app.itineraries import ItineraryPayload
 from app.warning_contract import WarningContract
 from app.schema_diagnostics import schema_names, missing_properties
 from app.recommendations import RecommendationError
-from test_groq import run
+from test_openai import run
 
 
 @pytest.fixture
@@ -100,8 +100,8 @@ def test_actual_provider_error_uses_outgoing_schema_once(caplog):
         run(handler)
     assert error.value.code == 'AI_SCHEMA_REJECTED'
     assert len(calls) == 1
-    names, _ = schema_names(calls[0]['response_format']['json_schema']['schema'])
-    # test_groq.run supplies its own small schema; only its actual names may be emitted.
+    names, _ = schema_names(calls[0]['text']['format']['schema'])
+    # test_openai.run supplies its own small schema; only its actual names may be emitted.
     expected = [n for n in ('status', 'verificationWarning') if n in names]
     assert '"missingProperties": ' + json.dumps(expected) in caplog.text
     assert 'PRIVATE' not in caplog.text

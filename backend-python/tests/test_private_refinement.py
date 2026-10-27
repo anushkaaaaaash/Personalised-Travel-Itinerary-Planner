@@ -1,10 +1,11 @@
+from test_openai import envelope
 import copy
 import json
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
-from app.groq import GroqProvider
+from app.openai import OpenAIProvider
 from app.itineraries import ItineraryService, RefinementRequest, validate_itinerary
 from app.models import TripPreferences
 from app.refinement_contract import RefinementContract
@@ -34,14 +35,13 @@ def invoke(request,proposal,finish='stop',status=200):
     calls=[]
     def handler(req):
         body=json.loads(req.content); calls.append(body)
-        assert body['model']=='openai/gpt-oss-20b'
-        assert body['max_completion_tokens']==4096 and body['stream'] is False
-        schema=body['response_format']['json_schema']
+        assert body['model']=='gpt-6-luna'
+        assert body['max_output_tokens']==32768 and body['stream'] is False
+        schema=body['text']['format']
         assert schema['strict'] is True
         assert schema['schema']['additionalProperties'] is False
-        return httpx.Response(status,json={'choices':[{'finish_reason':finish,'message':{'role':'assistant',
-            'content':proposal if isinstance(proposal,str) else json.dumps(proposal)}}]})
-    service=ItineraryService(GroqProvider('fake-offline-test-key',transport=httpx.MockTransport(handler)))
+        return httpx.Response(status,json=envelope(proposal if isinstance(proposal,str) else json.dumps(proposal),reason=finish))
+    service=ItineraryService(OpenAIProvider('fake-offline-test-key',transport=httpx.MockTransport(handler)))
     response=TestClient(create_app(NoStorage(),itinerary_service=service)).post('/api/itineraries/refine',json=request.model_dump())
     return response,calls
 
@@ -55,12 +55,12 @@ def test_private_valid_whole_contract_and_single_invocation(payload,generated):
     assert result['vibe']=='relaxed' and result['travelPace']=='balanced'
     assert result['refinementSummary']['scope']=='whole'
     assert [d['mainActivityCount'] for d in result['days']]==[2]*len(generated['days'])
-    schema=calls[0]['response_format']['json_schema']['schema']
+    schema=calls[0]['text']['format']['schema']
     assert schema['$defs']['NewMainActivity']['properties']['durationMinutes']['enum']==list(range(15,241))
     planned=schema['properties']['days']['anyOf'][0]
     assert set(planned['properties'])=={f'day_{i+1}' for i in range(len(generated['days']))}
     assert all(d['required']==list(d['properties']) and d['additionalProperties'] is False for d in planned['properties'].values())
-    assert 'server' in calls[0]['messages'][0]['content']
+    assert 'server' in calls[0]['input'][0]['content']
 
 
 @pytest.mark.parametrize('mutation,reason',[
@@ -111,7 +111,7 @@ def test_private_fixed_commitment_preserved_exactly(payload,generated):
     actual=response.json()['days'][0]['activities'][0]
     assert actual==before['days'][0]['activities'][0]
     assert request.previous.model_dump()==before and len(calls)==1
-    schema=calls[0]['response_format']['json_schema']['schema']
+    schema=calls[0]['text']['format']['schema']
     slots=schema['properties']['days']['anyOf'][0]['properties']['day_1']['properties']['mainSlots']
     assert set(slots['properties'])=={'main_1'}
 
@@ -146,7 +146,7 @@ def test_capped_target_day_uses_public_path_and_preserves_others(payload,generat
     response,calls=invoke(request,proposal)
     assert response.status_code==200,response.text
     result=response.json()
-    schema=calls[0]['response_format']['json_schema']['schema']
+    schema=calls[0]['text']['format']['schema']
     assert schema['properties']['days']['type']=='array'
     assert result['days'][1]['morning']=='Updated target visit'
     for i,day in enumerate(request.previous.days):
@@ -184,7 +184,7 @@ def test_private_slot_object_key_order_is_not_timeline_order(payload,generated):
 
 
 def test_private_schema_only_documented_structural_subset(payload,generated):
-    from app.groq import strict_schema
+    from app.openai import strict_schema
     schema=strict_schema(RefinementContract(request_for(payload,generated)).schema)
     assert set(schema['$defs'])=={'DayCosts','NewMainActivity'}
     allowed={'type','title','description','enum','anyOf','$ref','$defs','items','properties','required','additionalProperties'}
@@ -205,13 +205,13 @@ def test_private_prompt_has_one_output_contract_and_preserves_context(payload,ge
     request=request_for(payload,generated)
     response,calls=invoke(request,proposal_for(request))
     assert response.status_code==200 and len(calls)==1
-    prompt=calls[0]['messages'][0]['content']
+    prompt=calls[0]['input'][0]['content']
     assert 'ONLY output shape' in prompt and 'including mainSlots' in prompt
     assert 'Return a complete payload' not in prompt
     assert 'an empty days array' not in prompt
     assert 'one short sentence per narrative field' in prompt
     assert 'whole-group daily estimates' in prompt and '15-240 minutes' in prompt
-    context=calls[0]['messages'][1]['content']
+    context=calls[0]['input'][1]['content']
     assert request.feedback in context and request.previous.days[0].activities[0].title in context
 
 
@@ -290,7 +290,7 @@ def test_private_prompt_uses_requested_pace(payload,generated,pace,bounds):
     request=request_for(payload,generated)
     response,calls=invoke(request,proposal_for(request))
     assert response.status_code==200,response.text
-    assert f'Original {pace} pace requires {bounds}' in calls[0]['messages'][0]['content']
+    assert f'Original {pace} pace requires {bounds}' in calls[0]['input'][0]['content']
 
 
 def test_uncapped_whole_refinement_still_uses_public_contract(payload,generated):
@@ -300,5 +300,5 @@ def test_uncapped_whole_refinement_still_uses_public_contract(payload,generated)
     response,calls=invoke(request,proposal)
     assert response.status_code==200,response.text
     assert len(calls)==1
-    assert calls[0]['response_format']['json_schema']['schema']['properties']['days']['type']=='array'
+    assert calls[0]['text']['format']['schema']['properties']['days']['type']=='array'
     assert response.json()['refinementSummary']['scope']=='whole'

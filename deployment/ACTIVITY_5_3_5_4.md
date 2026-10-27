@@ -1,3 +1,5 @@
+> Historical checkpoint: provider setup below is superseded by [OpenAI-only setup](../backend-python/OPENAI_SETUP.md). Groq/Gemini adapters have been removed; do not configure their credentials. No deployment is authorized by this document.
+
 # Activity 5.3 course-demo acceptance and Activity 5.4 configuration
 
 ## Recorded acceptance (2026-10-25)

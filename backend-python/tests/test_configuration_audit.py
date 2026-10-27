@@ -20,10 +20,10 @@ def test_each_hosted_marker_prevents_file_fallback(monkeypatch,marker,value):
 def test_explicit_blank_process_key_does_not_reactivate_file_key(monkeypatch):
     for key in ('APP_ENV','APP_MODE','RENDER','VERCEL'):
         monkeypatch.delenv(key,raising=False)
-    monkeypatch.setattr(cfg,'dotenv_values',lambda *a,**k:{'GROQ_API_KEY':'synthetic-file-only'})
-    monkeypatch.setenv('GROQ_API_KEY','')
+    monkeypatch.setattr(cfg,'dotenv_values',lambda *a,**k:{'OPENAI_API_KEY':'synthetic-file-only'})
+    monkeypatch.setenv('OPENAI_API_KEY','')
     values=cfg.private_backend_values()
-    assert values['GROQ_API_KEY']==''
+    assert values['OPENAI_API_KEY']==''
     with pytest.raises(RecommendationError) as error:create_provider(lambda:values)
     assert error.value.code=='AI_NOT_CONFIGURED'
 
@@ -39,13 +39,13 @@ def test_public_auth_selection_never_uses_administrative_key(monkeypatch):
     assert cfg.public_auth_values()[1]=='synthetic-public'
 
 
-@pytest.mark.parametrize('provider',['huggingface','ollama','unknown'])
+@pytest.mark.parametrize('provider',['groq','gemini','huggingface','ollama','unknown'])
 def test_unimplemented_provider_fails_without_claiming_support(provider):
     with pytest.raises(RecommendationError) as error:
-        create_provider(lambda:{'AI_PROVIDER':provider,'GROQ_API_KEY':'synthetic-provider-only'})
+        create_provider(lambda:{'AI_PROVIDER':provider,'OPENAI_API_KEY':'synthetic-provider-only'})
     assert error.value.code=='AI_NOT_CONFIGURED'
 
 
 def test_secret_model_serialization_masks_values():
-    settings=cfg.ProviderSettings(GROQ_API_KEY='synthetic-private-only')
+    settings=cfg.ProviderSettings(OPENAI_API_KEY='synthetic-private-only')
     assert 'synthetic-private-only' not in repr(settings)+settings.model_dump_json()

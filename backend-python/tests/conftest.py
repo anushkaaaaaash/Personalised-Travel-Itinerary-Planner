@@ -8,11 +8,6 @@ def payload():
 
 
 @pytest.fixture(autouse=True)
-def no_live_gemini_configuration(monkeypatch):
-    # Tests never consume a developer's real backend key, even if .env exists.
-    monkeypatch.setattr('app.gemini.read_configuration', lambda: ('', 'gemini-3.5-flash-lite'))
-
-@pytest.fixture(autouse=True)
 def no_live_auth_configuration(monkeypatch):
     # Never consume real auth credentials or accidentally send verification requests.
     for name in ('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_ANON_KEY'):
@@ -21,6 +16,12 @@ def no_live_auth_configuration(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_live_provider_configuration(monkeypatch):
     # A test must explicitly inject fake config; never read a developer's .env.
-    for name in ('AI_PROVIDER', 'GROQ_API_KEY', 'GROQ_MODEL', 'GEMINI_API_KEY', 'GEMINI_MODEL'):
+    for name in ('AI_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_REASONING_EFFORT', 'GROQ_API_KEY', 'GEMINI_API_KEY', 'GEMINI_MODEL'):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr('app.providers.read_configuration', lambda: {})
+
+@pytest.fixture(autouse=True)
+def no_private_dotenv_reads(monkeypatch):
+    # Isolate the low-level loader too; config precedence tests replace this fake.
+    monkeypatch.setattr('app.configuration.dotenv_values', lambda *a, **k: {})
+    monkeypatch.setattr('app.storage.dotenv_values', lambda *a, **k: {})

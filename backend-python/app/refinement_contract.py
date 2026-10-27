@@ -1,4 +1,4 @@
-"""Private Groq refinement shape. No provider calls, repairs, or storage."""
+"""Private OpenAI refinement shape. No provider calls, repairs, or storage."""
 from copy import deepcopy
 import json
 from .recommendations import RecommendationError
@@ -57,7 +57,7 @@ def check_shape(value, schema, root):
 class RefinementContract:
     def __init__(self, request):
         from .itineraries import ItineraryPayload
-        from .groq import strict_schema
+        from .openai import strict_schema
         self.request=request
         self.selected=[d for d in request.previous.days if request.targetDate is None or d.date==request.targetDate]
         public_schema=ItineraryPayload.model_json_schema()

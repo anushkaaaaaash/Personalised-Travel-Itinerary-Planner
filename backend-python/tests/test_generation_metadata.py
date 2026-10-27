@@ -4,7 +4,7 @@ Only the observed missing-property shape is reconstructed, not a captured itiner
 """
 from copy import deepcopy
 import pytest
-from app.groq import strict_schema
+from app.openai import strict_schema
 from app.itineraries import ItineraryPayload
 from app.refinement_contract import check_shape
 from app.warning_contract import WarningContract
@@ -24,9 +24,9 @@ def test_real_missing_vibe_shape_no_longer_requires_model_echo(payload, generate
     assert result.vibe is None and result.status=='planned'
     assert len(result.days)==len(data['days'])
     assert result.warnings==[data['warnings']['verificationWarning'],*data['warnings']['additionalWarnings'],SCHEDULE_NOTICE]
-    wire=calls[0]['response_format']['json_schema']['schema']
+    wire=calls[0]['text']['format']['schema']
     assert 'vibe' not in wire['properties'] and 'vibe' not in wire['required']
-    assert 'Echo supplied vibe or null.' not in calls[0]['messages'][0]['content']
+    assert 'Echo supplied vibe or null.' not in calls[0]['input'][0]['content']
 
 @pytest.mark.parametrize('vibe',['relaxed','budget',False,0,{},[]])
 def test_generation_metadata_never_masks_conflicting_provider_vibe(generated,vibe):

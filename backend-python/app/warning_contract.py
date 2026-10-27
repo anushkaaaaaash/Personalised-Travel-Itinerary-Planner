@@ -1,4 +1,4 @@
-"""Private Groq warning shape; public itinerary warnings remain a validated array."""
+"""Private OpenAI warning shape; public itinerary warnings remain a validated array."""
 from copy import deepcopy
 import json
 from .recommendations import RecommendationError

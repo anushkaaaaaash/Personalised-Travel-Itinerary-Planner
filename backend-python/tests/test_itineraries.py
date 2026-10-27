@@ -433,7 +433,7 @@ def test_diagnostic_unknown_fields_and_messages_are_redacted(payload,generated,c
 
 
 def test_provider_sees_duration_contract_after_schema_projection(payload,generated):
-    from app.groq import strict_schema
+    from app.openai import strict_schema
     provider=Provider(generated)
     assert call(payload,provider).status_code==200
     messages,schema=provider.calls[0]
@@ -466,7 +466,7 @@ def test_duration_boundary_output_is_accepted_unchanged(payload,generated,durati
 
 
 def test_provider_sees_total_timeline_entry_budget(payload,generated):
-    from app.groq import strict_schema
+    from app.openai import strict_schema
     provider=Provider(generated)
     assert call(payload,provider).status_code==200
     messages,schema=provider.calls[0]
