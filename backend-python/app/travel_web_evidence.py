@@ -113,7 +113,7 @@ class OpenAIWebEvidence:
         if not self.api_key: return result('unavailable', 'PROVIDER_UNAVAILABLE')
         # An explicit public DTO is the entire input; no preferences/history/health fields.
         body = {
-            'model': MODEL, 'reasoning': {'effort': 'max'}, 'store': False, 'service_tier': 'default',
+            'model': MODEL, 'reasoning': {'effort': 'xhigh'}, 'store': False, 'service_tier': 'default',
             'max_output_tokens': p.maxOutputTokens, 'max_tool_calls': p.maxToolCalls,
             'tools': [{'type': 'web_search', 'external_web_access': True,
                        'filters': {'allowed_domains': list(p.officialDomains)}}],

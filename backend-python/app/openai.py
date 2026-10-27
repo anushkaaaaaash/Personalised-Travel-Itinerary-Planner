@@ -151,10 +151,10 @@ def strict_schema(schema):
 class OpenAIProvider(LLMProvider):
     name = 'OpenAI'
 
-    def __init__(self, api_key, model=DEFAULT_MODEL, transport=None, *, reasoning_effort="max"):
+    def __init__(self, api_key, model=DEFAULT_MODEL, transport=None, *, reasoning_effort="xhigh"):
         if (not isinstance(api_key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{10,256}', api_key)
                 or not isinstance(model, str) or model not in SUPPORTED_MODELS
-                or reasoning_effort != "max"):
+                or reasoning_effort != "xhigh"):
             raise RecommendationError('AI_NOT_CONFIGURED', 503,
                 'OpenAI is not configured correctly. Check the backend-only key and supported model.')
         self._api_key, self.model, self._transport = api_key, model, transport

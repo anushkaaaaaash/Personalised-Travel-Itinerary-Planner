@@ -24,4 +24,4 @@ class ProviderSettings(BaseModel):
     AI_PROVIDER: Literal['openai']='openai'
     OPENAI_API_KEY: SecretStr=SecretStr('')
     OPENAI_MODEL: Literal['gpt-6-luna']='gpt-6-luna'
-    OPENAI_REASONING_EFFORT: Literal['max']='max'
+    OPENAI_REASONING_EFFORT: Literal['xhigh']='xhigh'

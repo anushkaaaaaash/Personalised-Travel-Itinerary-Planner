@@ -31,7 +31,7 @@ async def test_gate_before_network(change):
 async def test_real_request_contract_and_minimized_dto():
     r,requests=await run(); assert r.status=='available' and r.applicability=='unverified' and r.checkedAt==NOW
     body=json.loads(requests[0].content)
-    assert str(requests[0].url)==ENDPOINT and body['model']=='gpt-6-luna' and body['reasoning']=={'effort':'max'}
+    assert str(requests[0].url)==ENDPOINT and body['model']=='gpt-6-luna' and body['reasoning']=={'effort':'xhigh'}
     assert body['store'] is False and body['max_tool_calls']==2 and body['max_output_tokens']==16384
     assert body['include']==['web_search_call.action.sources'] and body['tools'][0]['external_web_access'] is True
     assert set(json.loads(body['input']))=={'destinationId','destinationName','countryCode','startDate','endDate','venueNames','mode'}

@@ -11,19 +11,8 @@ for(const value of ['http://api.example.test/api','https://user:password@api.exa
 test('frontend key-like variables rejected without echoing values',()=>{
   assert.throws(()=>checkFrontendEnvironment({VITE_GROQ_API_KEY:'PRIVATE_SENTINEL'}),e=>!e.message.includes('PRIVATE_SENTINEL'));
 });
-test('review-only SPA deployment handles direct detail links and root workspace build',()=>{
-  const config=JSON.parse(fs.readFileSync(new URL('../../deployment/vercel.REVIEW_ONLY.json',import.meta.url)));
-  assert.equal(config.outputDirectory,'frontend/dist');assert.deepEqual(config.rewrites,[{source:'/(.*)',destination:'/index.html'}]);assert.equal(config.installCommand,'npm ci --ignore-scripts');
-});
-
-test('active frontend-root Vercel configuration serves SPA routes without backend services',()=>{
-  const config=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url)));
-  assert.deepEqual(config,{rewrites:[{source:'/(.*)',destination:'/index.html'}]});
-  const pattern=new RegExp(`^${config.rewrites[0].source}$`);
-  for(const path of ['/','/itineraries/00000000-0000-4000-8000-000000000001']) {
-    assert.ok(pattern.test(path));
-    assert.equal(config.rewrites[0].destination,'/index.html');
-  }
+test('Fly deployment has no Vercel routing dependency',()=>{
+  for(const name of ['../vercel.json','../../deployment/vercel.REVIEW_ONLY.json'])assert.equal(fs.existsSync(new URL(name,import.meta.url)),false);
 });
 
 test('explicit same-origin hosted build permits only relative /api and still rejects secrets',()=>{

@@ -106,7 +106,7 @@ def test_request_shape_schema_and_logs(caplog):
         body=json.loads(request.content)
         assert body['model']==DEFAULT_MODEL and body['input']==MESSAGES
         assert body['stream'] is False and 'tools' not in body
-        assert body['reasoning']=={'effort':'max'}
+        assert body['reasoning']=={'effort':'xhigh'}
         assert body['store'] is False
         assert body['max_output_tokens']==32768
         assert not {'messages','response_format','reasoning_effort','include_reasoning','temperature'} & body.keys()
@@ -342,8 +342,8 @@ def test_responses_contract_rejects_ambiguous_output(mutation):
     assert error.value.code=='AI_INVALID_RESPONSE'
 
 
-@pytest.mark.parametrize('effort',['none','low','medium','high','xhigh','unknown',''])
-def test_configuration_cannot_silently_downgrade_requested_max(effort):
+@pytest.mark.parametrize('effort',['none','low','medium','high','max','unknown',''])
+def test_configuration_cannot_silently_change_requested_xhigh(effort):
     with pytest.raises(RecommendationError) as error:
         create_provider(lambda:{'OPENAI_API_KEY':KEY,'OPENAI_REASONING_EFFORT':effort})
     assert error.value.code=='AI_NOT_CONFIGURED'

@@ -14,10 +14,9 @@ kill_timeout = "45s"
   PORT = "8080"
   AI_PROVIDER = "openai"
   OPENAI_MODEL = "gpt-6-luna"
-  OPENAI_REASONING_EFFORT = "max"
+  OPENAI_REASONING_EFFORT = "xhigh"
   API_HOST = "personalised-travel-itinerary-planner.fly.dev"
   FRONTEND_ORIGIN = "https://personalised-travel-itinerary-planner.fly.dev"
-  FRONTEND_PREVIEW_ORIGIN = "https://personalised-travel-itinerary-plann.vercel.app"
   SERVE_FRONTEND = "true"
   FRONTEND_DIST = "/app/frontend-dist"
   SAVED_ITINERARIES_SCHEMA_VERIFIED = "false"
@@ -31,6 +30,9 @@ kill_timeout = "45s"
   # Approved always-on worker availability; one Machine, not HA.
   auto_stop_machines = "off"
   auto_start_machines = false
+  # Longer than the bounded 315s synchronous service deadline; no automatic retry.
+  [http_service.http_options]
+    idle_timeout = 360
   [http_service.concurrency]
     type = "requests"
     soft_limit = 20
