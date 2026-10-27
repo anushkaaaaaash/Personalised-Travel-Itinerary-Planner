@@ -27,7 +27,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false, adaptiveWidths:[], adaptiveUncertainty:false, adaptiveExports:[], adaptiveCompleteExport:false, adaptiveTravelDay:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false, adaptiveWidths:[], adaptiveUncertainty:false, adaptiveExports:[], adaptiveCompleteExport:false, adaptiveTravelDay:false, adaptiveOwnerRecovery:false, savedTripsNavigation:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;
@@ -55,6 +55,7 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
     if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_planning_policy:{sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
     if(adaptive&&url.pathname.startsWith('/api/adaptive-plans'))return adaptive.handle(route,url);
     if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
+    if(url.pathname==='/api/saved-itineraries'&&route.request().method()==='GET'){const {id,title,version,createdAt,updatedAt}=fixtureDetail();return route.fulfill({json:{items:[{id,title,version,createdAt,updatedAt}],offset:Number(url.searchParams.get('offset') || 0),hasMore:false}});}
     if(url.pathname==='/api/saved-itineraries/32345678-1234-1234-1234-123456789abc')return route.fulfill({json:fixtureDetail()});
     if(url.pathname==='/api/auth/confirmation')return confirmation==='verified' ? route.fulfill({json:{confirmed:true}}) : route.fulfill({status:confirmation==='unverified'?401:503,json:{error:'Synthetic test response'}});
     if(url.pathname==='/api/itineraries/generate') {generationRequests.push(route.request().postDataJSON());pendingGeneration=(json=result,status=200)=>route.fulfill({status,json});return;}

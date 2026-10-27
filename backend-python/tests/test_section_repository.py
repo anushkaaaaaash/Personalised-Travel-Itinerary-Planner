@@ -96,7 +96,7 @@ def test_failure_details_are_proposals_not_raw_errors():
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize('code,status',[('SECTION_ADMISSION_REJECTED',429),('SECTION_REQUEST_CONFLICT',409)])
+@pytest.mark.parametrize('code,status',[('SECTION_ADMISSION_REJECTED',429),('SECTION_REQUEST_CONFLICT',409),('SECTION_OWNER_PLAN_EXISTS',429),('SECTION_CAPACITY_LIMIT',429)])
 def test_definite_admission_rejection_is_not_reclassified_as_ambiguous(payload,code,status):
     class Rejected(Gateway):
         async def request(self,*args,**kwargs):
@@ -116,4 +116,19 @@ def test_recent_checkpoints_is_separate_bounded_owner_lookup():
         assert [row['sequence'] for row in await repo.recent_checkpoints(OWNER,plan)]==[9,4]
         assert gateway.calls[-1][1]=='rpc/adaptive_recent_checkpoints'
         assert gateway.calls[-1][2]=={'owner':OWNER,'plan':plan}
+    asyncio.run(scenario())
+
+
+def test_owner_recovery_requires_capability_and_never_accepts_other_owner():
+    async def scenario():
+        g=Gateway();r=SectionCheckpointRepository(g,enabled=True)
+        with pytest.raises(JobRepositoryError) as caught:await r.find_current(OWNER)
+        assert caught.value.code=='SECTION_OWNER_RECOVERY_UNAVAILABLE' and not g.calls
+        g.supports_owner_recovery=True;g.rows=[]
+        assert await r.find_current(OWNER) is None
+        assert g.calls[-1]==('POST','rpc/adaptive_find_current',{'owner':OWNER})
+        g.rows=[{'user_id':str(uuid4())}]
+        with pytest.raises(JobRepositoryError):await r.find_current(OWNER)
+        g.rows=[{'user_id':OWNER},{'user_id':OWNER}]
+        with pytest.raises(JobRepositoryError):await r.find_current(OWNER)
     asyncio.run(scenario())

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { plan as itinerary } from '../test/shareFixture.js';
+import { plan as itinerary, preferences as fixturePreferences } from '../test/shareFixture.js';
 
 const id='11111111-1111-4111-8111-111111111111';
 const sectionId=sequence=>`52345678-1234-1234-1234-${String(sequence).padStart(12,'0')}`;
 const dateAt=(start,offset)=>new Date(Date.parse(`${start}T00:00:00Z`)+offset*86400000).toISOString().slice(0,10);
 
 export function createAdaptiveFixture() {
-  const fixture={phase:'active',preferences:null,requestId:null,requests:[],pendingCancel:null,finalTravelDay:false};
+  const fixture={phase:'active',preferences:null,requestId:null,requests:[],pendingCancel:null,finalTravelDay:false,currentAvailable:false,startError:null};
   fixture.snapshot=()=>{
     const p=fixture.preferences;
     const totalDays=(Date.parse(p.endDate)-Date.parse(p.startDate))/86400000+1;
@@ -32,6 +32,8 @@ export function createAdaptiveFixture() {
   };
   fixture.handle=async(route,url)=>{
     const method=route.request().method();fixture.requests.push({method,path:url.pathname});
+    if(method==='GET'&&url.pathname==='/api/adaptive-plans/current')return fixture.currentAvailable?route.fulfill({json:fixture.snapshot()}):route.fulfill({status:404,json:{error:{code:'SECTION_CURRENT_NOT_FOUND'}}});
+    if(method==='POST'&&url.pathname==='/api/adaptive-plans'&&fixture.startError){if(fixture.startError==='SECTION_OWNER_PLAN_EXISTS')fixture.currentAvailable=true;return route.fulfill({status:429,json:{error:{code:fixture.startError}}});}
     if(method==='POST'&&url.pathname==='/api/adaptive-plans') {const body=route.request().postDataJSON();fixture.preferences=body.preferences;fixture.requestId=body.requestId;return route.fulfill({status:202,json:fixture.snapshot()});}
     if(method==='POST'&&url.pathname.endsWith('/continue')) {fixture.phase='constraint';return route.fulfill({json:fixture.snapshot()});}
     if(method==='POST'&&url.pathname.endsWith('/cancel')) {fixture.pendingCancel=async()=>{fixture.phase='cancelled';await route.fulfill({json:fixture.snapshot()});};return;}
@@ -100,4 +102,32 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
   const downloaded=final.page.waitForEvent('download');await final.page.getByRole('button',{name:'Download retained plan (.txt)',exact:true}).click();const download=await downloaded;
   assert.equal(download.suggestedFilename(),`roamora-retained-plan-${id}.txt`);assert.equal(await download.failure(),null);const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=Buffer.concat(chunks).toString('utf8');
   assert.match(exported,/Full snapshot: 3 of 3 days/);assert.ok(exported.endsWith('\nEND OF ROAMORA EXPORT\n'));assert.equal(complete.requests.filter(request=>request.method==='POST').length,1);findings.adaptiveCompleteExport=true;await final.context.close();
+  await checkOwnerRecovery({newPage,origin,settleTheme,noOverflow,snapshot,findings});
+}
+
+async function checkOwnerRecovery({newPage,origin,settleTheme,noOverflow,snapshot,findings}) {
+  const seeded=()=>{const fixture=createAdaptiveFixture();fixture.phase='constraint';fixture.preferences={...fixturePreferences,destination:'France',departureCity:'Mumbai',startDate:'2028-01-01',endDate:'2028-02-15'};fixture.requestId='22345678-1234-1234-1234-123456789abc';return fixture;};
+  const signIn=async page=>{await page.goto(origin);await page.locator('input[type=email]').fill('traveler@example.test');await page.locator('input[type=password]').fill('synthetic-test-only');await page.getByRole('button',{name:'Sign in',exact:true}).click();};
+  const submit=async page=>{await page.locator('input[name=destination]').fill('Kyoto, Japan');await page.locator('input[name=departureCity]').fill('Mumbai');await page.locator('input[name=startDate]').fill('2028-03-01');await page.locator('input[name=endDate]').fill('2028-03-09');await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:'Build my trip →',exact:true}).click();};
+  const adaptive=seeded();adaptive.startError='SECTION_OWNER_PLAN_EXISTS';const first=await newPage({width:390,production:true,adaptive});
+  await signIn(first.page);await submit(first.page);await first.page.getByRole('heading',{name:'You have an unfinished trip.',exact:true}).waitFor();
+  await first.page.getByText('9 of 46 days planned',{exact:true}).waitFor();await settleTheme(first.page,'JP');await noOverflow(first.page,'adaptive-existing-trip-390');await snapshot(first.page,'adaptive-existing-trip-390');
+  assert.deepEqual(adaptive.requests.filter(request=>request.method==='POST').map(request=>request.path),['/api/adaptive-plans']);
+  await first.page.getByRole('button',{name:'Stop existing trip',exact:true}).click();await first.page.getByRole('heading',{name:'Stop this unfinished trip?',exact:true}).waitFor();
+  assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);await noOverflow(first.page,'adaptive-stop-confirmation-390');await snapshot(first.page,'adaptive-stop-confirmation-390');
+  await first.page.getByRole('button',{name:'Keep this trip',exact:true}).click();await first.page.getByRole('button',{name:'Resume existing trip',exact:true}).click();
+  await first.page.getByRole('heading',{name:'Suggestions for this part of your trip.',exact:true}).waitFor();await settleTheme(first.page,'FR');await noOverflow(first.page,'adaptive-resumed-trip-390');await snapshot(first.page,'adaptive-resumed-trip-390');
+  const retained=await first.page.evaluate(()=>sessionStorage.getItem('travel.adaptive-plan.v1'));assert.equal(JSON.parse(retained).planId,id);
+  await first.page.getByRole('link',{name:'Saved trips',exact:true}).click();await first.page.getByRole('link',{name:'Synthetic saved plan',exact:true}).waitFor();
+  assert.equal(await first.page.getByRole('button',{name:/Delete trip|Save this trip|Load for editing/}).count(),0);await noOverflow(first.page,'saved-trips-collection-390');await snapshot(first.page,'saved-trips-collection-390');
+  await first.page.getByRole('link',{name:'Synthetic saved plan',exact:true}).click();await first.page.getByRole('heading',{name:'Your saved trip',exact:true}).waitFor();await first.page.getByText('Saved revision 2',{exact:true}).waitFor();
+  assert.equal(await first.page.evaluate(()=>sessionStorage.getItem('travel.adaptive-plan.v1')),retained);await first.page.getByRole('link',{name:'Back to planner',exact:true}).click();await first.page.getByRole('heading',{name:'Suggestions for this part of your trip.',exact:true}).waitFor();await settleTheme(first.page,'FR');
+  assert.equal(await first.page.evaluate(()=>sessionStorage.getItem('travel.adaptive-plan.v1')),retained);assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);findings.savedTripsNavigation=true;await first.context.close();
+  const cancel=seeded();cancel.currentAvailable=true;const second=await newPage({width:390,production:true,adaptive:cancel});await signIn(second.page);await second.page.getByRole('button',{name:'Stop existing trip',exact:true}).click();
+  assert.equal(cancel.requests.filter(request=>request.method==='POST').length,0);await second.page.getByRole('button',{name:'Yes, stop this trip',exact:true}).click();await second.page.getByText('Stopping this unfinished trip…',{exact:true}).waitFor();
+  assert.ok(cancel.pendingCancel);await cancel.pendingCancel();await second.page.locator('input[name=destination]').waitFor();assert.equal(await second.page.locator('input[name=destination]').inputValue(),'');
+  assert.deepEqual(cancel.requests.filter(request=>request.method==='POST').map(request=>request.path),[`/api/adaptive-plans/${id}/cancel`]);await second.context.close();
+  const capacity=createAdaptiveFixture();capacity.startError='SECTION_CAPACITY_LIMIT';const third=await newPage({width:390,production:true,adaptive:capacity});await signIn(third.page);await submit(third.page);await third.page.getByRole('heading',{name:'Planning is temporarily full.',exact:true}).waitFor();
+  assert.equal(await third.page.getByRole('button',{name:'Resume existing trip',exact:true}).count(),0);await settleTheme(third.page,'JP');await noOverflow(third.page,'adaptive-capacity-limit-390');await snapshot(third.page,'adaptive-capacity-limit-390');assert.equal(capacity.requests.filter(request=>request.method==='POST').length,1);await third.context.close();
+  findings.adaptiveOwnerRecovery=true;
 }

@@ -64,7 +64,7 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
     if(!useAdaptive)return;
     const controller=createAdaptivePlanningController({client:adaptiveClient || createAdaptivePlanningClient(),storage:adaptiveStorage,pollMs:adaptivePollMs,onStateChange:state=>{
       setAdaptiveState(state);
-      if(state.preferences){setForm({...createInitialForm(),...state.preferences});setStep(FINAL_STEP);}
+      if(state.preferences && !state.existingPlan){setForm({...createInitialForm(),...state.preferences});setStep(FINAL_STEP);}
       if(pendingRecovery.current && state.plan?.status==='cancelled'){
         const advice=pendingRecovery.current;pendingRecovery.current=null;
         setRecovery(advice);setStep(advice.editStep===1?1:0);setViewingPreferences(true);
@@ -91,7 +91,7 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   function handleEditDay(day) { refinementRef.current?.reset();setEdited(true);setGeneration(current=>({...current,evidence:null,result:{...current.result,refinementSummary:null,days:current.result.days.map(d=>d.date===day.date?day:d)}})); }
   return <motion.div className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}} transition={{duration:reducedMotion?0:.2}}>
     <a className="skip-link" href="#trip-planner">Skip to trip planner</a>
-    <SiteHeader />
+    <SiteHeader showSavedTrips={signedIn}/>
     <main id="trip-planner" ref={mainRef} tabIndex={-1} className={`layout journey-layout ${showPlan?'journey-layout--plan':''}`}>
       {showPlan && <div className="journey-toolbar"><span className="eyebrow">{form.destination}</span><button className="back-btn" disabled={refinement.loading || jobBusy} onClick={()=>{if(generation.loading)generationRef.current?.reset();setViewingPreferences(true);}}>← Trip preferences</button></div>}
       {!showPlan && <>
@@ -100,7 +100,7 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
         {(generation.result || adaptiveActive) && <button className="preview-btn return-to-plan" onClick={()=>setViewingPreferences(false)}>Return to your itinerary →</button>}</div>
       </>}
       <div className="results-wrap" aria-label="Trip results">
-        {showPlan && adaptiveActive && <AdaptivePlanningStatus {...exportState} onExport={()=>exportRef.current?.download(adaptiveState.plan?.id)} state={adaptiveState} destination={form.destination} onCheck={()=>adaptiveRef.current?.check()} onCancel={()=>{pendingRecovery.current=null;void adaptiveRef.current?.cancel();}} onContinue={()=>adaptiveRef.current?.continue()} onRetry={()=>adaptiveRef.current?.retry()} onLoadPage={cursor=>adaptiveRef.current?.loadPage(cursor)} onEditPreferences={reviewAdaptiveChanges} onNewPlan={()=>{if(adaptiveRef.current?.clear()){setGeneration(emptyRead);setViewingPreferences(true);}}}/> }
+        {showPlan && adaptiveActive && <AdaptivePlanningStatus onResumeExisting={()=>{const result=adaptiveRef.current?.resumeExisting();if(result?.resumed)setViewingPreferences(false);}} onCancelExisting={()=>adaptiveRef.current?.cancelExisting()} {...exportState} onExport={()=>exportRef.current?.download(adaptiveState.plan?.id)} state={adaptiveState} destination={form.destination} onCheck={()=>adaptiveRef.current?.check()} onCancel={()=>{pendingRecovery.current=null;void adaptiveRef.current?.cancel();}} onContinue={()=>adaptiveRef.current?.continue()} onRetry={()=>adaptiveRef.current?.retry()} onLoadPage={cursor=>adaptiveRef.current?.loadPage(cursor)} onEditPreferences={reviewAdaptiveChanges} onNewPlan={()=>{if(adaptiveRef.current?.clear()){setGeneration(emptyRead);setViewingPreferences(true);}}}/> }
         {showPlan && !adaptiveActive && jobWaiting && <PlanningJobStatus state={jobState} destination={form.destination} onCheck={()=>jobRef.current?.check()} onCancel={()=>jobRef.current?.cancel()} onNewPlan={()=>{jobRef.current?.clear();setGeneration(emptyRead);setViewingPreferences(true);}}/>}
         {showPlan && !adaptiveActive && !jobWaiting && <GeneratedItinerary preferences={valid.valid?valid.value:null} {...generation} edited={edited} refinement={refinement} onEditDay={handleEditDay} onRefine={handleRefine} onCancelRefine={()=>refinementRef.current?.reset()} onEditPreferences={advice=>{generationRef.current?.reset();setRecovery(advice || null);setStep(advice?.editStep===1?1:0);setViewingPreferences(true);}} onRetry={handleGenerateItinerary} onCancel={()=>generationRef.current?.reset()}/>}
         {signedIn && !adaptiveActive && !generation.loading && !jobBusy && <SavedItineraries signedIn={signedIn} preferences={valid.valid?valid.value:null} itinerary={generation.result} plannerBusy={generation.loading || refinement.loading || jobBusy} onLoad={record=>{clearResult();setForm({...createInitialForm(),...record.preferences});setGeneration({loading:false,error:'',result:record.itinerary});setStep(FINAL_STEP);setViewingPreferences(false);}}/>}

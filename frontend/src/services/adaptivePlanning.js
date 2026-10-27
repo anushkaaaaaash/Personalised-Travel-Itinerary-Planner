@@ -92,13 +92,17 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
         let money=false;
         if(response.status===400){try{money=(await response.json())?.error?.code==='SECTION_MONEY_INVALID';}catch{}}
         if(money)code='SECTION_MONEY_INVALID';
+        if(response.status===429){code='ADAPTIVE_RATE_LIMITED';try{const reason=(await response.json())?.error?.code;if(['SECTION_OWNER_PLAN_EXISTS','SECTION_CAPACITY_LIMIT'].includes(reason))code=reason;}catch{}}
+        if(response.status===404 && method==='GET' && path==='/current'){try{if((await response.json())?.error?.code==='SECTION_CURRENT_NOT_FOUND')code='ADAPTIVE_CURRENT_NOT_FOUND';}catch{}}
         // Only an authenticated, known-plan GET has definitive absence semantics.
         // Request-only lookup or a missing route does not resolve an uncertain create.
         if(response.status===404 && method==='GET' && id && path===`/${id}?afterSequence=${afterSequence}`){try{if((await response.json())?.error?.code==='SECTION_NOT_FOUND')code='ADAPTIVE_PLAN_UNAVAILABLE';}catch{}}
         throw new AdaptivePlanningError(code,money?'Enter a budget with at most two decimal places in the supported monetary range. This is a number-format check, not a minimum trip budget.':response.status===401?'Sign in again to check this trip.':'This planning request could not be completed. Check its status before trying again.',{confirmed:[400,401,403,404,409,413,422,429].includes(response.status)});
       }
       const body=await response.json();if(controller.signal.aborted)throw Error('aborted');
-      return validateAdaptivePage(body,{id,requestId,afterSequence});
+      const checked=validateAdaptivePage(body,{id,requestId,afterSequence});
+      if(path==='/current'&&!['active','paused'].includes(checked.plan.status))return invalid();
+      return checked;
     } catch(error) {
       if(signal?.aborted)throw new DOMException('Aborted','AbortError');
       if(error instanceof AdaptivePlanningError)throw error;
@@ -107,6 +111,7 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
   }
   const identity=value=>{if(!adaptiveId(value))throw new AdaptivePlanningError('VALIDATION_ERROR','This planning identifier is invalid.',{confirmed:true});return value;};
   return {
+    current(options={}) {return request('/current','GET',null,options);},
     start(preferences,requestId,options={}) {const c=validateTripPreferences(preferences);if(!c.valid)throw new AdaptivePlanningError('VALIDATION_ERROR','Check your trip details.',{confirmed:true});return request('','POST',{preferences:c.value,requestId:identity(requestId)},{...options,requestId});},
     get(id,{afterSequence=0,...options}={}) {identity(id);if(!integer(afterSequence))throw new AdaptivePlanningError('VALIDATION_ERROR','Invalid page.');return request(`/${id}?afterSequence=${afterSequence}`,'GET',null,{...options,id,afterSequence});},
     findRequest(requestId,options={}) {return request(`/requests/${identity(requestId)}`,'GET',null,{...options,requestId});},

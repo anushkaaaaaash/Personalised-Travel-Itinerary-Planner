@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import DestinationLoading from './DestinationLoading.jsx';
 import { tripFailureRecovery } from '../utils/travelMessages.js';
 import { hasProposedConstraintDetails } from '../services/adaptivePlanning.js';
@@ -52,6 +53,9 @@ export function adaptiveRequestRecovery(code) {
   if(code==='AUTH_REQUIRED')return tripFailureRecovery({code});
   if(code==='VALIDATION_ERROR')return tripFailureRecovery({code});
   const categories={
+    SECTION_OWNER_PLAN_EXISTS:['You already have an unfinished trip.','An unfinished trip is still retained for your account. Open that trip before deciding whether to continue it or stop it. Your new trip details do not need to change.'],
+    SECTION_CAPACITY_LIMIT:['Planning is temporarily full.','The service has reached its current planning capacity. No new plan was started. Wait and try again later; changing your dates or budget will not resolve this limit.'],
+    ADAPTIVE_RATE_LIMITED:['Please wait before trying again.','The service is limiting new requests for now. No new plan was started. Your trip details are unchanged; wait before submitting again.'],
     ADAPTIVE_UNAVAILABLE:['We couldn’t check the planning service.','The service could not be reached or is temporarily unavailable. Check this same trip before starting another planning request.'],
     ADAPTIVE_INVALID_RESPONSE:['The planning status couldn’t be verified.','The service returned an unusable checkpoint response. Check this same trip; no replacement request has been started.'],
     ADAPTIVE_NOT_FOUND:['This planning session couldn’t be found.','The service could not locate this planning session. Its outcome is not confirmed; check again before starting another request.'],
@@ -60,6 +64,37 @@ export function adaptiveRequestRecovery(code) {
   };
   const [title,message]=categories[code] || ['Let’s check where planning stopped.','The last request could not be confirmed. Check this same trip before starting another planning request. Your completed sections have not been replaced.'];
   return {code,title,message,retryable:false,editStep:null,recommendations:[]};
+}
+
+function ExistingPlanningRecovery({state,onResumeExisting,onCancelExisting,onCheck}) {
+  const [confirmStop,setConfirmStop]=useState(false);
+  const confirmationId=useId();
+  const {plan,preferences}=state.existingPlan;
+  const busy=state.loading || state.cancelling;
+  const stopUnconfirmed=state.cancelUnconfirmed;
+  const uncertain=stopUnconfirmed || state.needsCheck;
+  const finished=terminal(plan.status),expired=plan.status==='expired';
+  const title={completed:'Your trip has finished planning.',cancelled:'Planning for this trip has stopped.',expired:'Your previous planning session has expired.'}[plan.status] || 'You have an unfinished trip.';
+  const message={completed:'All requested days have a completed plan. Open it to review the result; no new planning request is needed.',cancelled:'Open the retained completed sections to review them. No further sections are being planned.',expired:'The temporary checkpoints are no longer available. Review this session to return to your trip details.'}[plan.status] || 'Open your existing trip to review what is already planned. A new plan cannot start while this trip is unfinished.';
+  const openLabel={completed:'Open completed trip',cancelled:'Open retained trip',expired:'Review expired session'}[plan.status] || 'Resume existing trip';
+  return <section className="adaptive-planning" aria-label="Unfinished trip recovery">
+    <article className="card adaptive-progress">
+      <p className="eyebrow">{preferences.destination}</p><h2>{title}</h2>
+      <p role="status">{state.cancelling?'Stopping this unfinished trip…':stopUnconfirmed?'We couldn’t confirm that planning stopped. Check this trip’s status before trying again.':uncertain?'We couldn’t verify this trip’s latest status. Check it before continuing.':message}</p>
+      <p>Your trip · <time dateTime={preferences.startDate}>{preferences.startDate}</time> to <time dateTime={preferences.endDate}>{preferences.endDate}</time></p>
+      {!expired&&<p><strong>{plan.completedDays} of {plan.totalDays} days planned</strong></p>}
+      <p className="hint">This is a temporary plan kept for 24 hours, not an account-saved itinerary.{!expired&&Number.isFinite(Date.parse(plan.expiresAt))&&<> Available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</>}</p>
+      <div className="step-actions">
+        {uncertain&&onCheck?<button className="generate-btn" disabled={busy} onClick={onCheck}>Check existing trip</button>:onResumeExisting&&<button className="generate-btn" disabled={busy||uncertain} onClick={onResumeExisting}>{openLabel}</button>}
+        {onCancelExisting&&!uncertain&&!finished&&<button className="preview-btn" disabled={busy} aria-expanded={confirmStop} aria-controls={confirmationId} onClick={()=>setConfirmStop(value=>!value)}>Stop existing trip</button>}
+      </div>
+      {confirmStop&&!uncertain&&!finished&&<section id={confirmationId} className="adaptive-export" aria-label="Confirm stopping this trip">
+        <h3>Stop this unfinished trip?</h3>
+        <p>This stops further planning for {preferences.destination}. Completed sections stay available until this temporary plan expires. It does not delete an account-saved itinerary or start a new plan.</p>
+        <div className="step-actions"><button className="preview-btn" disabled={busy} onClick={()=>setConfirmStop(false)}>Keep this trip</button><button className="generate-btn" disabled={busy} onClick={onCancelExisting}>Yes, stop this trip</button></div>
+      </section>}
+    </article>
+  </section>;
 }
 
 function CompletedSection({section,currency}) {
@@ -78,7 +113,8 @@ function CompletedSection({section,currency}) {
   </section>;
 }
 
-export default function AdaptivePlanningStatus({state,destination,onCheck,onCancel,onContinue,onRetry,onLoadPage,onNewPlan,onEditPreferences,onExport,exporting=false,exportError=''}) {
+export default function AdaptivePlanningStatus({state,destination,onCheck,onCancel,onContinue,onRetry,onLoadPage,onNewPlan,onEditPreferences,onResumeExisting,onCancelExisting,onExport,exporting=false,exportError=''}) {
+  if(state.existingPlan)return <ExistingPlanningRecovery key={state.existingPlan.plan.id} state={state} onResumeExisting={onResumeExisting} onCancelExisting={onCancelExisting} onCheck={onCheck}/>;
   const plan=state.plan;
   const uncertain=state.needsCheck || plan?.activeSection?.status==='submission_unknown' || plan?.pauseReason==='SUBMISSION_UNKNOWN';
   const busy=state.loading || state.cancelling;
@@ -87,7 +123,7 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   const requestRecovery=adaptiveRequestRecovery(state.errorCode);
   const needsBudgetEdit=!hasSession&&state.errorCode==='SECTION_MONEY_INVALID';
   const recovery=needsBudgetEdit?requestRecovery:adaptiveRecovery(plan);
-  if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.cancelling?'Stopping planning…':'Your full date range will be planned in small sections.'} onCancel={busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
+  if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.discoveryPending?'Checking for an unfinished trip…':state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.discoveryPending?'Looking for a retained plan in your account. No new plan is being started.':state.cancelling?'Stopping planning…':'Your full date range will be planned in small sections.'} onCancel={state.discoveryPending||busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
   const allowancePause=plan?.status==='paused' && (pauseReason==='RESOURCE_ALLOWANCE_REACHED' || (pauseReason==='SECTION_FAILED'&&plan.remainingCreates===0));
   const sharedStoragePause=plan?.status==='paused' && plan.pauseReason==='STORAGE_LIMIT' && plan.storagePauseScope==='global';
   const proposedRetry=plan?.status==='paused' && pauseReason==='CONSTRAINT_CONFLICT' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && hasProposedConstraintDetails(plan.activeSection);
@@ -114,6 +150,7 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
       {canReview&&recovery.recommendations.length>0&&<ul className="recovery-recommendations">{recovery.recommendations.map((item,index)=><li key={`${item.field}-${index}`}><strong>{item.suggestion}</strong>{item.reason&&<p>{item.reason}</p>}</li>)}</ul>}
       {!uncertain&&proposedRetry&&<p className="hint">Retry this section without changing your preferences. Your completed days are kept; this uses one request from the current allowance.</p>}
       <div className="step-actions">
+        {!uncertain&&state.errorCode==='SECTION_OWNER_PLAN_EXISTS'&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Find my unfinished trip</button>}
         {uncertain&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
         {!uncertain&&allowancePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Continue planning</button>}
         {!uncertain&&sharedStoragePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Check capacity and continue</button>}
