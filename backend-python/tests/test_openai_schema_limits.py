@@ -7,6 +7,22 @@ from app.openai import strict_schema
 from app.refinement_contract import check_shape
 
 
+def assert_pure_refs(node):
+    """OpenAI strict schemas must not put annotations beside a $ref.
+
+    See openai/openai-python src/openai/lib/_pydantic.py ref handling.
+    Keep shared enums referenced rather than inlining and exceeding enum limits.
+    """
+    if isinstance(node, dict):
+        if '$ref' in node:
+            assert set(node) == {'$ref'}, f"Reference has sibling keywords: {set(node) - {'$ref'}}"
+        for value in node.values():
+            assert_pure_refs(value)
+    elif isinstance(node, list):
+        for value in node:
+            assert_pure_refs(value)
+
+
 def enum_count(node):
     if isinstance(node, dict):
         return len(node.get('enum', [])) + sum(enum_count(value) for key, value in node.items() if key != 'enum')
@@ -21,6 +37,7 @@ def test_generation_schema_stays_within_total_enum_limit(payload,days,pace):
     payload.update(endDate=(date.fromisoformat(payload['startDate'])+timedelta(days=days-1)).isoformat(),travelPace=pace)
     contract=GenerationContract(TripPreferences.model_validate(payload))
     schema=strict_schema(contract.schema)
+    assert_pure_refs(schema)
     assert enum_count(schema)<=1000
     gap=schema['$defs']['ActivityProposal']['properties']['gapBeforeMinutes']
     assert gap['$ref']==schema['$defs']['RequiredMainProposal']['properties']['gapBeforeMinutes']['$ref']
