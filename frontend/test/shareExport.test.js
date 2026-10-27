@@ -11,7 +11,7 @@ test('full export roundtrips with explicit preferences while excluding unknown n
   const restored=parseItineraryImport(text);assert.deepEqual(restored.preferences,preferences);assert.equal(restored.userEdited,true);assert.equal(restored.itinerary.days[0].activities[0].title,'Museum');
 });
 test('summary omits notes and preferences but includes dates timing group budget and estimate warning',()=>{
-  const text=compactSummary(plan());for(const s of ['Kyoto','2028-02-28','09:00','60 min','USD 150','not bookings'])assert.ok(text.includes(s));
+  const text=compactSummary(plan());for(const s of ['Kyoto','2028-02-28','09:00','60 min','USD 150','before booking'])assert.ok(text.includes(s));
   for(const s of ['Private dietary','Private mobility','Private activity','Tokyo'])assert.ok(!text.includes(s));
 });
 test('print output escapes text and contains only the compact itinerary',()=>{

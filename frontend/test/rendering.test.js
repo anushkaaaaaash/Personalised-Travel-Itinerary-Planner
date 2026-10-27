@@ -50,7 +50,7 @@ test('router matches private detail parameters and unknown pages',async()=>{
   const { MemoryRouter } = await server.ssrLoadModule('react-router-dom');
   const { default: PlannerRoutes } = await server.ssrLoadModule('/src/components/PlannerRoutes.jsx');
   const renderPath=path=>renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:[path]},React.createElement(PlannerRoutes,{signedIn:true,ownershipEnabled:false})));
-  assert.ok(renderPath('/itineraries/32345678-1234-1234-1234-123456789abc').includes('Private saved itinerary'));
+  assert.ok(renderPath('/itineraries/32345678-1234-1234-1234-123456789abc').includes('Your saved trip'));
   assert.ok(renderPath('/not-a-route').includes('Page not found'));
 });
 
@@ -66,9 +66,9 @@ test('initial page shows only first step, with no save or sample action', () => 
 
 test('saved-only deployment hides legacy history and preference save while keeping full plans',()=>{
   const html=render(PlannerPage,{legacyEnabled:false,signedIn:true});
-  assert.ok(!html.includes('Saved trip history'));assert.ok(html.includes('My saved full itineraries'));
+  assert.ok(!html.includes('Saved trip history'));assert.ok(html.includes('Your saved trips'));
   const review=render(PlannerForm,{...formHandlers,form:createInitialForm(),step:2,allowPreferenceSave:false});
-  assert.ok(!review.includes('>Save trip preferences<'));assert.ok(review.includes('Generate AI day-by-day itinerary'));
+  assert.ok(!review.includes('>Save trip preferences<'));assert.ok(review.includes('Build my trip'));
 });
 
 test('preferences step retains controlled defaults and offers Back/Next only', () => {
@@ -76,7 +76,7 @@ test('preferences step retains controlled defaults and offers Back/Next only', (
   assert.ok(html.includes('value="balanced" selected=""'));
   assert.ok(html.includes('value="" selected=""'));
   assert.ok(html.includes('>Back</button>'));
-  assert.ok(html.includes('Next: Review &amp; save'));
+  assert.ok(html.includes('Next: Review your trip'));
   assert.ok(!html.includes('>Save trip preferences<'));
 });
 
@@ -85,15 +85,17 @@ test('review renders all preferences and explicit non-submit save action', () =>
     startDate: '2028-02-28', endDate: '2028-02-29', dietaryNeeds: 'vegan' };
   const html = render(PlannerForm, { ...formHandlers, form, step: 2 });
   for (const value of ['Kyoto', 'Mumbai', '2028-02-28', '2028-02-29', 'USD', '2500', 'Culture, Food', 'vegan', 'balanced']) assert.ok(html.includes(value));
-  assert.match(html, /class="generate-btn" type="button"/);
+  assert.match(html, /class="generate-btn build-trip" type="button"/);
   assert.ok(!html.includes('type="submit"'));
-  assert.ok(html.includes('Show sample preview (does not save)'));
+  assert.ok(!html.includes('Show sample preview'));
+  assert.ok(html.includes('Build my trip'));
   assert.ok(!html.includes('<input'));
 });
 
 test('saved review disables repeat saves while retaining navigation', () => {
   const html = render(PlannerForm, { ...formHandlers, form: createInitialForm(), step: 2, saved: true });
-  assert.match(html, /disabled="">Preferences saved/);
+  assert.ok(html.includes('Build my trip'));
+  assert.ok(!html.includes('Save trip preferences'));
   assert.ok(html.includes('>Back</button>'));
 });
 
@@ -106,7 +108,7 @@ test('form validation is associated with its input for assistive technology', ()
 test('in-flight form disables fields and exposes the saving status', () => {
   const html = render(PlannerForm, { ...formHandlers, form: createInitialForm(), step: 2, loading: true });
   assert.match(html, /<fieldset class="planner-fields" disabled=""/);
-  assert.ok(html.includes('Saving preferences…'));
+  assert.ok(html.includes('Build my trip'));
   assert.ok(html.includes('aria-busy="true"'));
 });
 
@@ -155,10 +157,10 @@ test('optional prompt controls and review show user preferences without inferrin
 test('AI action is separate from saving and respects both busy states', () => {
   const props = { ...formHandlers, form: createInitialForm(), step: 2 };
   const html = render(PlannerForm, { ...props, recommendationLoading: true });
-  assert.match(html, /disabled="">Save trip preferences/);
-  assert.match(html, /disabled="">Generating AI recommendations/);
+  assert.match(html, /disabled="">Build my trip/);
+  assert.ok(!html.includes('Generate AI recommendations'));
   const saving = render(PlannerForm, { ...props, loading: true });
-  assert.match(saving, /disabled="">Generate AI recommendations/);
+  assert.match(saving, /disabled="">Build my trip/);
 });
 test('AI cards label estimates, categories, and escape generated text', () => {
   const html = render(RecommendationResults, { result: { source: 'ai', destination: 'Goa', provider: 'test', model: 'fixture', currency: 'INR', warnings: ['Verify access'], recommendations: [{ id: 'a', category: 'dining', name: '<script>unsafe</script>', description: 'Restaurant', whyRecommended: 'Food', estimatedGroupCost: 200, interestTags: ['food'], travelStyle: '', dietaryNotes: '', mobilityNotes: '' }] } });
@@ -176,7 +178,7 @@ test('AI loading and errors never show stale recommendations', () => {
 
 test('planner keeps all result panels grouped in one right-side grid column', () => {
   const html = render(PlannerPage);
-  assert.match(html, /<\/form><div class="results-wrap" aria-label="Trip results">/);
+  assert.match(html, /<\/form><\/div><div class="results-wrap" aria-label="Trip results">/);
   assert.match(html, /<\/div><\/main>/);
 });
 
@@ -184,12 +186,12 @@ test('real AI itinerary displays days, budget warnings and local export without 
   const { default: GeneratedItinerary } = await server.ssrLoadModule('/src/components/GeneratedItinerary.jsx');
   const result = { source: 'ai', saved: false, status: 'planned', destination: 'Kyoto <script>', provider: 'fixture', model: 'test', currency: 'USD', travelPace: 'balanced', explanation: 'Plan', warnings: ['Verify prices'], estimatedTotalGroupCost: 100, remainingBudget: 200, days: [{ date: '2028-01-01', mainActivityCount: 2, morning: '<img src=x>', afternoon: 'Garden', evening: 'Rest', dining: 'Dinner', transitAndRest: 'Breaks', dietaryNotes: 'Check menu', mobilityNotes: 'Check stairs', costs: { accommodation: 40, meals: 20, localTransport: 10, activities: 20, departureTravel: 10 } }] };
   const html = render(GeneratedItinerary, { result });
-  for (const text of ['Planning copy · not booked', 'Day 1', 'Estimated whole-trip budget', 'USD 100', 'USD 200', 'Download itinerary JSON', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
+  for (const text of ['Your next chapter', 'Day 1', 'Your estimated budget', 'USD 100', 'USD 200', 'Download summary', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
   assert.ok(!html.includes('Trip preferences saved'));
   const failed = render(GeneratedItinerary, { result, error: 'Not configured' });
-  assert.ok(!failed.includes('Day 1')); assert.ok(failed.includes('Retry itinerary generation'));
+  assert.ok(!failed.includes('Day 1')); assert.ok(failed.includes('Try again'));
   const infeasible = render(GeneratedItinerary, { result: { ...result, status: 'infeasible', days: [] } });
-  assert.ok(infeasible.includes('No day plan was accepted')); assert.ok(!infeasible.includes('Download itinerary JSON'));
+  assert.ok(infeasible.includes('Try adjusting your budget')); assert.ok(!infeasible.includes('Download itinerary JSON'));
 });
 test('saved history labels legacy rows and explicit read-only prefill', async () => {
   const { default: TripHistory } = await server.ssrLoadModule('/src/components/TripHistory.jsx');
@@ -202,13 +204,13 @@ test('saved history labels legacy rows and explicit read-only prefill', async ()
 });
 test('AI itinerary action remains separate and explicit on review', () => {
   const html = render(PlannerForm, { ...formHandlers, form: createInitialForm(), step: 2, itineraryLoading: true });
-  assert.ok(html.includes('Generating AI day plan…')); assert.ok(html.includes('1–14 days'));
-  assert.match(html, /disabled="">Save trip preferences/);
+  assert.ok(html.includes('Putting your trip together…'));
+  assert.match(html, /disabled="">Putting your trip together/);
 });
 test('auth boundary fails closed until backend config is verified', async () => {
   const { default: AuthBoundary } = await server.ssrLoadModule('/src/components/AuthBoundary.jsx');
   const html = render(AuthBoundary);
-  assert.ok(html.includes('Checking planner configuration')); assert.ok(!html.includes('Save trip preferences')); assert.ok(!html.includes('Saved trip history'));
+  assert.ok(html.includes('Getting your planner ready')); assert.ok(!html.includes('Save trip preferences')); assert.ok(!html.includes('Saved trip history'));
 });
 test('JSON export creates a local file, includes non-booking notice and revokes blob URL', async () => {
   const { downloadItinerary } = await server.ssrLoadModule('/src/components/GeneratedItinerary.jsx');
@@ -254,7 +256,7 @@ test('hard activity cap is an explicit control, distinct from free-text feedback
   const html = render(RefinementControls, { result: { days: [] } });
   assert.ok(html.includes('Maximum main activities per day')); assert.ok(html.includes('Keep current'));
   for (const n of [1, 2, 3, 4]) assert.ok(html.includes(`value="${n}">${n}</option>`));
-  assert.ok(html.includes('Free-text feedback and vibes guide suggestions but do not set a numeric limit'));
+  assert.ok(html.includes('Choose how much to fit into each day'));
 });
 test('import UI says local data only with a bounded JSON file selection', async () => {
   const { default: ImportItinerary } = await server.ssrLoadModule('/src/components/ImportItinerary.jsx');
@@ -268,3 +270,22 @@ test('coordinate confirmation is per stop, unchecked, explicit and not a claim o
   assert.ok(html.includes('I checked this specific place on a trusted map')); assert.ok(html.includes('We do not geographically verify'));
   assert.ok(!html.includes('checked=""')); assert.ok(!html.includes('Confirm all'));
 });
+
+test('consumer discovery removes technical imports and keeps a single build action',()=>{
+  const html=render(PlannerPage);
+  for(const text of ['Where will your','Kyoto','Goa','Paris','name="destination"'])assert.ok(html.includes(text),text);
+  for(const text of ['Import itinerary','JSON','AI','not saved','Save trip preferences','Sample preview'])assert.ok(!html.includes(text),text);
+  const review=render(PlannerForm,{...formHandlers,form:createInitialForm(),step:2});
+  assert.equal((review.match(/Build my trip/g)||[]).length,1);
+  assert.ok(!review.includes('Generate AI'));
+});
+test('practical checks label unknowns and expose scoped sourced blockers without live claims',async()=>{
+  const {default:Checks}=await server.ssrLoadModule('/src/components/PracticalChecks.jsx');
+  const unknown=render(Checks,{activity:{id:'stop'},date:'2026-10-27'});
+  for(const value of ['Opening hours','Tickets &amp; reservations','Travel time','Current disruptions','Not checked'])assert.ok(unknown.includes(value));
+  assert.ok(!unknown.includes('Live'));
+  const now=Date.now();const activity={id:'stop',evidence:[{scope:{destinationId:'paris-fr',localDate:'2026-10-27',subjectId:'stop',timeZone:'Europe/Paris',kind:'closure'},status:'verified',severity:'blocker',summary:'Closed for today',fallback:'Check hours',sourceURL:'https://www.louvre.fr/en/visit/hours-admission',checkedAt:new Date(now-1000).toISOString(),expiresAt:new Date(now+60000).toISOString()}]};
+  const checked=render(Checks,{activity,date:'2026-10-27',destinationId:'paris-fr',assessments:activity.evidence});assert.ok(checked.includes('Check before visiting: Closed for today'));assert.ok(checked.includes('rel="noopener noreferrer"'));assert.ok(checked.includes('Source ↗'));
+});
+
+ test('activity-authored evidence cannot mark a check as verified',async()=>{const {default:Checks}=await server.ssrLoadModule('/src/components/PracticalChecks.jsx');const html=render(Checks,{activity:{id:'stop',evidence:[{status:'verified',severity:'blocker',summary:'INJECTED VERIFIED CLAIM'}]},date:'2026-10-27',destinationId:'paris-fr'});assert.ok(!html.includes('INJECTED VERIFIED CLAIM'));assert.ok(html.includes('Not checked'));});

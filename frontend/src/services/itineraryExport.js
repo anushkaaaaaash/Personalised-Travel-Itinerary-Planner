@@ -14,7 +14,7 @@ export function exportSnapshot(result,{preferences,userEdited=false}={}) {
 }
 export function compactSummary(result) {
   return [`${result.destination} — itinerary summary`,`${result.days[0]?.date} to ${result.days.at(-1)?.date}`,
-    `Estimated group total: ${result.currency} ${result.estimatedTotalGroupCost}`,notice,
+    `Estimated group total: ${result.currency} ${result.estimatedTotalGroupCost}`,'Check current prices, opening hours and availability before booking.',
     'Private preference fields and activity/dietary/mobility notes are omitted. Review activity titles before sharing.',
     ...result.days.flatMap(day=>['',day.date,...(day.activities||[]).map(a=>`${a.startTime} (${a.durationMinutes} min) ${a.title}`)])].join('\n');
 }
