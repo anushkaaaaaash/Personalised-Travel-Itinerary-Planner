@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 15
     container: mcr.microsoft.com/playwright:v1.64.1-noble
     env:
-      QA_TOOLS_DIR: ${{ runner.temp }}/travel-visual-tools
+      QA_TOOLS_DIR: /tmp/travel-visual-tools
       QA_ARTIFACT_DIR: ${{ github.workspace }}/visual-qa-artifacts
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
