@@ -147,3 +147,58 @@ def test_query_topic_binding():
     pack=serialize_research_result(parse_research_response(envelope(),query=Q).result)
     pack['query']['researchTopic']='hours'
     with pytest.raises(BackgroundError):validate_research_pack(pack,query=Q)
+
+@pytest.mark.parametrize('action_type',['open_page','find_in_page'])
+def test_actual_open_find_url_counts_as_consulted_not_invented_citation(action_type):
+    e=envelope();e['output'][0]['action']={'type':action_type,'url':URL,**({'pattern':'hours'} if action_type=='find_in_page' else {})}
+    result=parse_research_response(e,query=Q).result
+    assert result.tool_calls==1 and result.sources[0].consulted and result.sources[0].cited
+    e['output'][0]['action']['url']='https://example.com/different'
+    with pytest.raises(BackgroundError):parse_research_response(e,query=Q)
+
+def test_research_final_phase_uses_only_final_text_citation_offsets():
+    from copy import deepcopy
+    e=envelope();final=e['output'][1];final['phase']='final_answer'
+    commentary=deepcopy(final);commentary['phase']='commentary'
+    commentary['content']=[{'type':'output_text','text':'Looking up information.','annotations':[]}]
+    e['output'].insert(0,commentary)
+    result=parse_research_response(e,query=Q).result
+    assert result.text.startswith('Hours need') and result.citations[0].start==0
+
+@pytest.mark.parametrize('url',['http://example.com','https://127.0.0.1','https://example.internal','https://example.com:444'])
+def test_open_action_source_still_obeys_public_https_guard(url):
+    e=envelope();e['output'][0]['action']={'type':'open_page','url':url}
+    with pytest.raises(BackgroundError):parse_research_response(e,query=Q)
+
+@pytest.mark.parametrize('action',[{'type':'open_page'},{'type':'open_page','url':None}])
+def test_optional_open_url_absent_preserves_other_actual_source(action):
+    e=envelope();e['output'].insert(1,{'type':'web_search_call','status':'completed','action':action})
+    result=parse_research_response(e,query=Q).result
+    assert result.tool_calls==2 and result.sources[0].consulted
+
+def test_null_search_sources_needs_other_actual_consultation():
+    e=envelope();e['output'][0]['action']['sources']=None
+    with pytest.raises(BackgroundError):parse_research_response(e,query=Q)
+    e['output'].insert(1,{'type':'web_search_call','status':'completed','action':{'type':'open_page','url':URL}})
+    assert parse_research_response(e,query=Q).result.tool_calls==2
+
+@pytest.mark.parametrize('url',[None,''])
+def test_find_page_url_remains_required(url):
+    e=envelope();e['output'].insert(1,{'type':'web_search_call','status':'completed','action':{'type':'find_in_page','url':url,'pattern':'hours'}})
+    with pytest.raises(BackgroundError):parse_research_response(e,query=Q)
+
+@pytest.mark.parametrize('mutation,reason',[
+ (lambda e:e.update(output='PRIVATE_HOSTILE'), 'research_envelope'),
+ (lambda e:e['output'][0].update(status='PRIVATE_HOSTILE'), 'research_calls'),
+ (lambda e:e['output'][0]['action']['sources'][0].update(url='https://PRIVATE_HOSTILE.internal'), 'research_sources'),
+ (lambda e:e['output'][1]['content'][0]['annotations'][0].update(title='PRIVATE_HOSTILE\n'), 'research_citations'),
+ (lambda e:e['output'][1].update(phase='PRIVATE_HOSTILE'), 'message_phase'),
+])
+def test_research_stage_diagnostics_are_closed_and_preserve_base_reason(mutation,reason):
+    e=envelope();mutation(e)
+    c=BackgroundResearchClient('fake-background-test-key',activation=BackgroundActivation(True,True),cost_approved=True,
+        transport=httpx.MockTransport(lambda _:httpx.Response(200,json=e)))
+    with pytest.raises(BackgroundError) as failure:asyncio.run(c.retrieve('resp_fake',query=Q))
+    metadata=failure.value.safe_metadata()
+    assert metadata['parse_reason']==reason and metadata['http_status']==200
+    assert 'PRIVATE_HOSTILE' not in json.dumps(metadata)

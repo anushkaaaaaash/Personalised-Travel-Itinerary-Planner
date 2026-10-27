@@ -16,6 +16,24 @@ ERROR_CODES = frozenset({'SECTION_SUBMISSION_UNCONFIRMED','SECTION_PROVIDER_REJE
 PAUSE_REASONS = frozenset({'RESOURCE_ALLOWANCE_REACHED','SECTION_FAILED','SUBMISSION_UNKNOWN','CONSTRAINT_CONFLICT','BUDGET_EXHAUSTED','STORAGE_LIMIT'})
 
 
+_WORKER_ERROR_CODES = frozenset({'SECTION_STORAGE_UNCONFIRMED','SECTION_NOT_FOUND_OR_CONFLICT',
+    'SECTION_PREVIEW_CONFLICT','SECTION_PREVIEW_STORAGE_UNCONFIRMED','SECTION_RESOURCE_LIMIT',
+    'SECTIONS_STORAGE_UNAVAILABLE','SECTIONS_SCHEMA_NOT_READY','RESEARCH_STORAGE_UNCONFIRMED',
+    'RESEARCH_NOT_FOUND_OR_CONFLICT','RESEARCH_SCHEMA_NOT_READY','REVISION_STORAGE_UNCONFIRMED',
+    'REVISION_NOT_FOUND_OR_CONFLICT','REVISION_SCHEMA_NOT_READY'})
+
+
+def _worker_diagnostic(error):
+    """Fixed categories only; logging must never change worker control flow."""
+    try:
+        family='repository' if isinstance(error,JobRepositoryError) else 'timeout' if isinstance(error,TimeoutError) else 'unexpected'
+        code=getattr(error,'code',None) if family=='repository' else None
+        code=code if type(code) is str and code in _WORKER_ERROR_CODES else 'SECTION_WORKER_UNCONFIRMED'
+        logging.getLogger(__name__).warning('Adaptive planning worker unavailable; family=%s code=%s',family,code)
+    except Exception:
+        pass
+
+
 def public_failure_details(value):
     if value is None: return None
     if type(value) is not dict or set(value) != {'applicability','explanation','recommendations'} or value['applicability'] != 'proposed':
@@ -153,13 +171,21 @@ class AdaptiveCoordinator:
         return await self.context(owner,plan_id)
 
     async def run(self, stop, interval_seconds=5):
+        immediate_ticks = 0
         while not stop.is_set():
+            followup = False
             try:
                 await self.verify_ready()
                 await self.worker.tick()
+                followup = getattr(self.worker,'immediate_followup',False) is True
             except asyncio.CancelledError: raise
-            except Exception:
-                logging.getLogger(__name__).warning('Adaptive planning worker unavailable; code=SECTION_WORKER_UNCONFIRMED')
+            except Exception as error:
+                _worker_diagnostic(error)
+            if followup and immediate_ticks < 4:
+                immediate_ticks += 1
+                await asyncio.sleep(0)  # Serial handoff; yield to HTTP/cancel tasks.
+                continue
+            immediate_ticks = 0
             try: await asyncio.wait_for(stop.wait(),timeout=interval_seconds)
             except TimeoutError: pass
 

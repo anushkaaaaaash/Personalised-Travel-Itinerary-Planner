@@ -74,7 +74,7 @@ class GroundedCoordinator(AdaptiveCoordinator):
             section=await self.repository.get_section(owner,plan['active_section'])
             if section['plan_id']!=plan_id:raise JobRepositoryError('SECTION_INVALID_RESULT')
             preview=section.get('stream_preview')
-            if section['status']=='running' and preview:
+            if section['status']=='running' and section.get('error_code')!='SECTION_STREAM_FINAL_ONLY' and preview:
                 if type(preview) is not dict or preview.get('status')!='draft' or preview.get('accepted') is not False:
                     raise JobRepositoryError('SECTION_PREVIEW_INVALID')
                 rows=preview.get('days')

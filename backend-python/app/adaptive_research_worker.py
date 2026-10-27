@@ -23,6 +23,7 @@ class AdaptiveResearchWorker:
             raise ValueError('Explicit research activation and bounded deadline required')
         self.repository,self.plans,self.client=repository,plans,client
         self.clock,self.deadline_seconds,self.worker_id=clock,deadline_seconds,str(uuid4())
+        self.immediate_followup=False
 
     async def schedule_initial(self, owner, plan_id):
         plan=await self.plans.get_plan(owner,plan_id)
@@ -57,6 +58,7 @@ class AdaptiveResearchWorker:
         return await self.repository.transition(job['user_id'],job['id'],job['lease_token'],job['version'],status,**kwargs)
 
     async def tick(self):
+        self.immediate_followup=False
         job=await self.repository.claim_next(self.worker_id)
         if job is None:return None
         query=public_query_from_dict(job['query'])
@@ -94,7 +96,8 @@ class AdaptiveResearchWorker:
         except Exception:
             return await self._transition(job,'failed',error_code='RESEARCH_SOURCES_UNCONFIRMED')
         result=await self._transition(job,'succeeded',sourcepack=pack)
-        await self.repository.continue_researched(job['user_id'],job['plan_id'])
+        successor=await self.repository.continue_researched(job['user_id'],job['plan_id'])
+        self.immediate_followup=successor is not None
         return result
 
 
@@ -104,6 +107,7 @@ class GroundedPlanningWorker:
         self.sections,self.research=section_worker,research_worker
         self.revisions=revision_worker
         self._turn=0
+        self.immediate_followup=False
         self.client=section_worker.client
         self.sections.research_context=research_worker.context_for_section
         self.sections.research_request=research_worker.request_for_section
@@ -116,9 +120,12 @@ class GroundedPlanningWorker:
         return await self.sections.schedule_next(owner,plan_id)
 
     async def tick(self):
+        self.immediate_followup=False
         workers=[self.research,self.sections]+([self.revisions] if self.revisions is not None else [])
         start=self._turn%len(workers);self._turn+=1
         for worker in workers[start:]+workers[:start]:
             result=await worker.tick()
-            if result is not None:return result
+            if result is not None:
+                self.immediate_followup=getattr(worker,'immediate_followup',False) is True
+                return result
         return None

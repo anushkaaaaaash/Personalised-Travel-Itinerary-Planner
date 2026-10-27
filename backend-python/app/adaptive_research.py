@@ -14,7 +14,7 @@ import re
 from urllib.parse import urlsplit
 import httpx
 from .openai_background import (BackgroundActivation, BackgroundError, OpenAIBackgroundClient,
-                                _parse, _response_id)
+                                _parse, _response_id, _answer_messages)
 from .openai import ENDPOINT
 
 MAX_BYTES = 262144
@@ -169,31 +169,43 @@ class ResearchResponse:
 
 def parse_research_response(data, *, query, phase='initial', checked_at=None, expected_id=None, discard_output=False):
     """Actual Responses tool items + URL annotations, not URLs invented in prose."""
+    reason='research_envelope'
     try:
         if type(query) is not PublicResearchQuery or type(data) is not dict: _invalid()
         if len(json.dumps(data,allow_nan=False).encode())>MAX_BYTES: _invalid()
         output=data.get('output',[])
         if type(output) is not list or len(output)>32: _invalid()
+        reason='research_calls'
         calls=[item for item in output if type(item) is dict and item.get('type')=='web_search_call']
         if len(calls)>_cap(phase): _invalid()
         clean={**data,'output':[i for i in output if i not in calls]}
         base=_parse(json.dumps(clean),expected_id,discard_output=discard_output)
         if discard_output or base.status!='completed' or base.refused:
             return ResearchResponse(base.response_id,base.status,refused=base.refused)
+        reason='research_calls'
         if not calls: _invalid()
         sources={}
         for call in calls:
+            reason='research_calls'
             action=call.get('action')
             if call.get('status')!='completed' or type(action) is not dict or action.get('type') not in {'search','open_page','find_in_page'}: _invalid()
-            rows=action.get('sources',[])
+            reason='research_sources'
+            # Actual completed open/find tool actions attest consultation too.
+            # https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_function_web_search.py
+            if action['type']=='find_in_page' or (action['type']=='open_page' and action.get('url') is not None):
+                url=_url(action.get('url'));sources[url]=ResearchSource(url,consulted=True)
+            rows=action.get('sources')
+            if rows is None: rows=[]
             if type(rows) is not list or len(rows)>32: _invalid()
             for source in rows:
                 if type(source) is not dict or source.get('type')!='url': _invalid()
                 url=_url(source.get('url'));sources[url]=ResearchSource(url,consulted=True)
+        reason='text_limit'
         text=base.output_text
         if len(text)>MAX_TEXT: _invalid()
+        reason='research_citations'
         citations=[]
-        for item in clean['output']:
+        for item in _answer_messages(clean['output']):
             if item.get('type')!='message': continue
             for part in item['content']:
                 if part.get('type')!='output_text':continue
@@ -209,13 +221,16 @@ def parse_research_response(data, *, query, phase='initial', checked_at=None, ex
                     sources[url]=ResearchSource(url,title,consulted=bool(prior and prior.consulted),cited=True)
                     citations.append(ResearchCitation(start,end,url,title))
         if not sources or not citations or len(sources)>48: _invalid()
+        reason='research_pack'
         now=checked_at or datetime.now(timezone.utc)
         if not isinstance(now,datetime) or now.tzinfo is None or now.utcoffset() is None: _invalid()
         result=ResearchResult(query,now.astimezone(timezone.utc).isoformat(),(now.astimezone(timezone.utc)+timedelta(hours=24)).isoformat(),len(calls),text,tuple(sources.values()),tuple(citations))
         validate_research_pack(json.loads(json.dumps(asdict(result))),query=query,phase=phase,now=now)
         return ResearchResponse(base.response_id,base.status,result)
+    except BackgroundError as error:
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=error.parse_reason or reason) from None
     except (ValueError,TypeError,KeyError,AttributeError,UnicodeError,RecursionError,OverflowError):
-        raise BackgroundError('BACKGROUND_INVALID_RESPONSE') from None
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=reason) from None
 
 
 class BackgroundResearchClient(OpenAIBackgroundClient):
@@ -250,21 +265,21 @@ class BackgroundResearchClient(OpenAIBackgroundClient):
                     async with client.stream(method,url,json=payload,headers={'Authorization':'Bearer '+self._api_key,'Content-Type':'application/json'}) as response:
                         if response.status_code!=200:
                             raise BackgroundError('BACKGROUND_HTTP_FAILED',ambiguous_create=creating and response.status_code not in {400,401,403,404,413,422,429},phase=operation,http_status=response.status_code)
-                        if response.headers.get('content-type','').split(';')[0].strip().lower()!='application/json': _invalid()
+                        if response.headers.get('content-type','').split(';')[0].strip().lower()!='application/json': raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason='content_type')
                         body=bytearray()
                         async for chunk in response.aiter_bytes(chunk_size=16384):
                             body.extend(chunk)
-                            if len(body)>MAX_BYTES:_invalid()
+                            if len(body)>MAX_BYTES:raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason='envelope_limit')
             return parse_research_response(json.loads(body),query=query,phase=phase,expected_id=expected_id,discard_output=discard_output)
         except BackgroundError as error:
             if error.code=='BACKGROUND_HTTP_FAILED':raise
-            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation) from None
+            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation,http_status=200,parse_reason=error.parse_reason) from None
         except (httpx.TimeoutException,TimeoutError):
             raise BackgroundError('BACKGROUND_TRANSPORT_FAILED',ambiguous_create=creating,phase=operation,transport_kind='timeout') from None
         except httpx.HTTPError:
             raise BackgroundError('BACKGROUND_TRANSPORT_FAILED',ambiguous_create=creating,phase=operation,transport_kind='transport') from None
         except (ValueError,TypeError,UnicodeError,RecursionError):
-            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation) from None
+            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation,http_status=200,parse_reason='research_envelope') from None
 
 
 def public_query_from_dict(value):

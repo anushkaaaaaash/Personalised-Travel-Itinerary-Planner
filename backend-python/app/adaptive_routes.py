@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Request, Query
 from pydantic import BaseModel, ConfigDict, Field
 from .models import TripPreferences
-from .auth import bearer, AuthError, auth_error
+from .auth import bearer, AuthError, auth_error, verified_request_user
 from .trip_routes import fail
 from .planning_repository import JobRepositoryError
 
@@ -28,7 +28,7 @@ def build_adaptive_router(auth_service, engine=None):
         from .adaptive_activation import route_enabled
         if not route_enabled(engine): return fail(404,'NOT_FOUND','This planning option is not available.')
         try:
-            user = await auth_service.verify(bearer(request.scope))
+            user = await verified_request_user(auth_service, request.scope)
             return await operation(str(user.id))
         except AuthError as error: return auth_error(error)
         except JobRepositoryError as error:

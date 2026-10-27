@@ -26,6 +26,7 @@ TERMINAL_STATUSES = STATUSES - {'queued', 'in_progress'}
 DIAGNOSTIC_CODES = frozenset({'BACKGROUND_NOT_APPROVED','BACKGROUND_INVALID_RESPONSE_ID',
     'BACKGROUND_INVALID_RESPONSE','BACKGROUND_NOT_CONFIGURED','BACKGROUND_INVALID_TIMEOUT',
     'BACKGROUND_INVALID_REQUEST','BACKGROUND_HTTP_FAILED','BACKGROUND_TRANSPORT_FAILED'})
+PARSE_REASONS = frozenset({'json','envelope','identity','status','usage','output_shape','message_phase','content','text_limit','final_text','incomplete_reason','content_type','envelope_limit','research_envelope','research_calls','research_sources','research_citations','research_pack'})
 DIAGNOSTIC_PHASES = frozenset({'create','retrieve','cancel'})
 
 
@@ -42,6 +43,9 @@ def background_error_metadata(error, phase):
         status = error.http_status
         if type(status) is int and 100 <= status <= 599:
             metadata['http_status'] = status
+        reason = error.parse_reason
+        if type(reason) is str and reason in PARSE_REASONS:
+            metadata['parse_reason'] = reason
         kind = error.transport_kind
         if type(kind) is str and kind in {'timeout','transport'}:
             metadata['transport'] = kind
@@ -49,8 +53,9 @@ def background_error_metadata(error, phase):
 
 
 class BackgroundError(Exception):
-    def __init__(self, code, *, ambiguous_create=False, phase=None, http_status=None, transport_kind=None):
+    def __init__(self, code, *, ambiguous_create=False, phase=None, http_status=None, transport_kind=None, parse_reason=None):
         super().__init__(code)
+        self.parse_reason = parse_reason
         self.code = code
         self.ambiguous_create = ambiguous_create
         self.phase, self.http_status, self.transport_kind = phase, http_status, transport_kind
@@ -88,20 +93,43 @@ def _response_id(value):
     return value
 
 
+def _answer_messages(output):
+    """Official output-message phase: commentary is never final plan content.
+
+    https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_output_message.py
+    Legacy unphased output remains subject to the existing single-text rule.
+    """
+    messages = [item for item in output if type(item) is dict and item.get('type') == 'message']
+    phases = [item.get('phase') for item in messages]
+    if any(type(phase) is not str or phase not in {'commentary','final_answer'} for phase in phases if phase is not None):
+        raise ValueError()
+    if any(phase is not None for phase in phases):
+        finals = [item for item in messages if item.get('phase') == 'final_answer']
+        if None in phases or len(finals) > 1:
+            raise ValueError()
+        return finals
+    return messages
+
+
 def _parse(body, expected_id=None, *, discard_output=False):
+    reason = 'json'
     try:
         data = json.loads(body)
+        reason = 'envelope'
         if type(data) is not dict or data.get('object') != 'response':
             raise ValueError()
+        reason = 'identity'
         rid = _response_id(data.get('id'))
         status = data.get('status')
         if expected_id is not None and rid != expected_id:
             raise ValueError()
+        reason = 'status'
         if type(status) is not str or status not in STATUSES:
             raise ValueError()
         error = data.get('error')
         if error is not None and (type(error) is not dict or status != 'failed'):
             raise ValueError()
+        reason = 'usage'
         usage = data.get('usage')
         safe_usage = {}
         if usage is not None:
@@ -113,10 +141,14 @@ def _parse(body, expected_id=None, *, discard_output=False):
                     if type(value) is not int or not 0 <= value <= 10**9:
                         raise ValueError()
                     safe_usage[key] = value
+        reason = 'output_shape'
         output = data.get('output', [])
         if type(output) is not list:
             raise ValueError()
-        texts, refused = [], False
+        reason = 'message_phase'
+        answers = _answer_messages(output)
+        reason = 'content'
+        texts, all_texts, refused = [], [], False
         for item in output:
             if type(item) is not dict:
                 raise ValueError()
@@ -133,24 +165,29 @@ def _parse(body, expected_id=None, *, discard_output=False):
                 if part.get('type') == 'refusal':
                     refused = True
                 elif part.get('type') == 'output_text' and type(part.get('text')) is str:
-                    texts.append(part['text'])
+                    all_texts.append(part['text'])
+                    if any(item is answer for answer in answers):
+                        texts.append(part['text'])
                 else:
                     raise ValueError()
         text = ''.join(texts)
-        if len(text.encode('utf-8')) > MAX_TEXT_BYTES:
+        reason = 'text_limit'
+        if sum(len(value.encode('utf-8')) for value in all_texts) > MAX_TEXT_BYTES:
             raise ValueError()
+        reason = 'final_text'
         if status == 'completed' and not refused and (len(texts) != 1 or not text.strip()):
             raise ValueError()
         if status == 'incomplete':
+            reason = 'incomplete_reason'
             details = data.get('incomplete_details')
-            if type(details) is not dict or details.get('reason') not in {'max_output_tokens', 'content_filter'}:
+            if type(details) is not dict or details.get('reason') not in {'max_output_tokens', 'max_messages', 'content_filter', 'steered', None}:
                 raise ValueError()
-            refused = refused or details['reason'] == 'content_filter'
+            refused = refused or details.get('reason') == 'content_filter'
         return BackgroundResponse(rid, status,
             text if status == 'completed' and not refused and not discard_output else None,
             safe_usage, refused)
     except (ValueError, TypeError, UnicodeError, RecursionError, BackgroundError):
-        raise BackgroundError('BACKGROUND_INVALID_RESPONSE') from None
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE', parse_reason=reason) from None
 
 
 class OpenAIBackgroundClient:
@@ -218,16 +255,16 @@ class OpenAIBackgroundClient:
                                 ambiguous_create=creating and response.status_code not in {400, 401, 403, 404, 413, 422, 429},
                                 phase=phase, http_status=response.status_code)
                         if response.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
-                            raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200)
+                            raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200, parse_reason='content_type')
                         body = bytearray()
                         async for chunk in response.aiter_bytes(chunk_size=16384):
                             body.extend(chunk)
                             if len(body) > MAX_ENVELOPE_BYTES:
-                                raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200)
+                                raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200, parse_reason='envelope_limit')
                 try:
                     return _parse(body, expected_id, discard_output=discard_output)
-                except BackgroundError:
-                    raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200) from None
+                except BackgroundError as error:
+                    raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200, parse_reason=error.parse_reason) from None
         except (httpx.TimeoutException, TimeoutError):
             raise BackgroundError('BACKGROUND_TRANSPORT_FAILED', ambiguous_create=creating, phase=phase, transport_kind='timeout') from None
         except httpx.HTTPError:

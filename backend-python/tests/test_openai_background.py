@@ -195,3 +195,40 @@ def test_error_diagnostic_allowlist_rejects_malicious_metadata():
     assert error.safe_metadata()=={'phase':'unknown','code':'BACKGROUND_UNCLASSIFIED','ambiguous_create':False}
     assert background_error_metadata(RuntimeError('private body'),'create')=={
         'phase':'create','code':'BACKGROUND_UNCLASSIFIED','ambiguous_create':True}
+
+# Official phase/terminal reasons: openai-python response_output_message.py and
+# response.py (IncompleteDetails), checked 2026-10-27; no provider calls.
+def test_phased_final_excludes_commentary_and_retains_refusal_and_limits():
+    from copy import deepcopy
+    from app.openai_background import _parse, MAX_TEXT_BYTES
+    final=envelope('completed')['output'][0];final['phase']='final_answer'
+    commentary=deepcopy(final);commentary['phase']='commentary';commentary['content'][0]['text']='Not JSON: private commentary'
+    body=envelope('completed',output=[commentary,final])
+    assert _parse(json.dumps(body)).output_text=='{}'
+    commentary['content']=[{'type':'refusal','refusal':'No'}]
+    assert _parse(json.dumps(body)).refused is True
+    commentary['content']=[{'type':'output_text','text':'x'*MAX_TEXT_BYTES}]
+    with pytest.raises(BackgroundError) as failure:_parse(json.dumps(body))
+    assert failure.value.parse_reason=='text_limit'
+
+@pytest.mark.parametrize('phases',[['commentary'],['final_answer','final_answer'],[None,'final_answer'],['secret-raw-phase']])
+def test_ambiguous_or_commentary_only_completion_never_accepted(phases):
+    from copy import deepcopy
+    from app.openai_background import _parse
+    items=[]
+    for phase in phases:
+        item=deepcopy(envelope('completed')['output'][0]);item['phase']=phase;items.append(item)
+    with pytest.raises(BackgroundError):_parse(json.dumps(envelope('completed',output=items)))
+
+@pytest.mark.parametrize('reason',['max_messages','steered',None])
+def test_documented_incomplete_is_terminal_without_accepting_partial_text(reason):
+    from app.openai_background import _parse
+    result=_parse(json.dumps(envelope('incomplete',incomplete_details={'reason':reason})))
+    assert result.status=='incomplete' and result.output_text is None
+
+def test_closed_parse_reason_survives_transport_without_raw_details():
+    provider=client(lambda _:httpx.Response(200,json=envelope('completed',output=[])))
+    with pytest.raises(BackgroundError) as failure:run(provider.retrieve('resp_test123'))
+    assert failure.value.safe_metadata()['parse_reason']=='final_text'
+    failure.value.parse_reason='PRIVATE_RAW_PROVIDER_DATA'
+    assert 'PRIVATE' not in json.dumps(failure.value.safe_metadata())

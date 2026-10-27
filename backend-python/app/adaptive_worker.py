@@ -49,6 +49,7 @@ class AdaptivePlanningWorker:
         self.research_context = research_context
         self.research_request = research_request
         self.preview_store = preview_store
+        self.immediate_followup = False
 
     async def _transition(self, section, status, **kwargs):
         return await self.repository.transition(section['user_id'], section['id'], section['lease_token'],
@@ -67,6 +68,7 @@ class AdaptivePlanningWorker:
         return None
 
     async def tick(self):
+        self.immediate_followup = False
         section = await self.repository.claim_next(self.worker_id)
         if section is None: return None
         plan = await self.repository.get_plan(section['user_id'], section['plan_id'])
@@ -121,18 +123,18 @@ class AdaptivePlanningWorker:
             response = await self.client.retrieve(section['provider_response_id'])
         except Exception as error:
             _provider_diagnostic('retrieve', error=error)
-            return await self._transition(section, 'running', error_code='SECTION_POLL_UNCONFIRMED')
+            return await self._transition(section, 'running', error_code='SECTION_STREAM_FINAL_ONLY' if section.get('error_code')=='SECTION_STREAM_FINAL_ONLY' else 'SECTION_POLL_UNCONFIRMED')
         if (self.clock()-submitted).total_seconds() >= self.deadline_seconds:
             return await self._transition(section, 'failed', error_code='SECTION_DEADLINE_REACHED')
         if response.response_id != section['provider_response_id']:
             return await self._transition(section, 'failed', error_code='SECTION_RESPONSE_MISMATCH')
         if response.status in {'queued', 'in_progress'}:
-            if self.preview_store is not None:
+            if self.preview_store is not None and section.get('error_code')!='SECTION_STREAM_FINAL_ONLY':
                 state = await self.preview_store.load(section['user_id'],section['plan_id'],section['id'],section['lease_token'],section['version'])
                 stream = self.client.resume_stream(section['provider_response_id'],starting_after=state.cursor,prior_text_bytes=len(state.output_text.encode()))
                 lease_left = (datetime.fromisoformat(section['lease_until'].replace('Z','+00:00'))-self.clock()).total_seconds()
                 return await self._consume_stream(section, stream, state,stop=monotonic()+max(0,min(30,lease_left-5,self.deadline_seconds-(self.clock()-submitted).total_seconds())))
-            return await self._transition(section, 'running')
+            return await self._transition(section, 'running',error_code='SECTION_STREAM_FINAL_ONLY' if section.get('error_code')=='SECTION_STREAM_FINAL_ONLY' else None)
         _timing('provider_wait', (self.clock()-submitted).total_seconds(), status=response.status)
         if response.status != 'completed' or response.refused:
             _provider_diagnostic('retrieve', status=response.status, refused=response.refused)
@@ -154,7 +156,8 @@ class AdaptivePlanningWorker:
         result = await self._transition(section, 'succeeded', checkpoint=checkpoint)
         # A crash here must be recoverable by coordinator reconciliation using
         # deterministic next identity, not by regenerating this checkpoint.
-        await self.schedule_next(section['user_id'], section['plan_id'])
+        successor = await self.schedule_next(section['user_id'], section['plan_id'])
+        self.immediate_followup = successor is not None
         return result
 
 
@@ -169,7 +172,7 @@ class AdaptivePlanningWorker:
                 # could not be yielded. Never turn that into another create.
                 known = getattr(error,'response_id',None)
                 if known:
-                    return await self._transition(section,'running',provider_response_id=known)
+                    return await self._transition(section,'running',provider_response_id=known,error_code='SECTION_STREAM_FINAL_ONLY' if getattr(error,'code',None)=='STREAM_FINAL_ONLY' else None)
                 ambiguous = getattr(error,'ambiguous_create',True)
                 return await self._transition(section,'submission_unknown' if ambiguous else 'failed',
                     error_code='SECTION_SUBMISSION_UNCONFIRMED' if ambiguous else 'SECTION_PROVIDER_REJECTED')
@@ -187,6 +190,7 @@ class AdaptivePlanningWorker:
         cursor = state.cursor
         delta = ''
         pending = None
+        terminal_committed = False
 
         async def flush():
             nonlocal state,delta,last_flush
@@ -218,9 +222,13 @@ class AdaptivePlanningWorker:
                 cursor=event.sequence_number
                 if event.kind=='text_delta': delta+=event.text_delta
                 if len(delta.encode())>=4096 or monotonic()-last_flush>=0.5 or event.kind=='terminal': await flush()
-                if event.kind=='terminal': break
+                if event.kind=='terminal':
+                    terminal_committed = True
+                    break
             await flush()
         except (OutputStreamError,TimeoutError,ConnectionError) as error:
+            if getattr(error,'code',None)=='STREAM_FINAL_ONLY':
+                return await self._transition(section,'running',error_code='SECTION_STREAM_FINAL_ONLY')
             if getattr(error,'code',None)=='STREAM_INVALID_RESPONSE':
                 return await self._transition(section,'failed',error_code='SECTION_INVALID_RESULT')
             # Interruptions preserve the last committed prefix and provider ID.
@@ -240,4 +248,6 @@ class AdaptivePlanningWorker:
                 pending.cancel()
                 with suppress(asyncio.CancelledError,Exception): await pending
             with suppress(Exception): await stream.aclose()
-        return await self._transition(section,'running')
+        result = await self._transition(section,'running')
+        self.immediate_followup = terminal_committed
+        return result
