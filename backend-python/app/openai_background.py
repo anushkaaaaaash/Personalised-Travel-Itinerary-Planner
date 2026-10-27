@@ -26,7 +26,7 @@ TERMINAL_STATUSES = STATUSES - {'queued', 'in_progress'}
 DIAGNOSTIC_CODES = frozenset({'BACKGROUND_NOT_APPROVED','BACKGROUND_INVALID_RESPONSE_ID',
     'BACKGROUND_INVALID_RESPONSE','BACKGROUND_NOT_CONFIGURED','BACKGROUND_INVALID_TIMEOUT',
     'BACKGROUND_INVALID_REQUEST','BACKGROUND_HTTP_FAILED','BACKGROUND_TRANSPORT_FAILED'})
-PARSE_REASONS = frozenset({'json','envelope','identity','status','usage','output_shape','message_phase','content','text_limit','final_text','incomplete_reason','content_type','envelope_limit','research_envelope','research_calls','research_sources','research_citations','research_pack'})
+PARSE_REASONS = frozenset({'json','envelope','identity','status','usage','output_shape','message_phase','content','text_limit','final_text','incomplete_reason','content_type','envelope_limit','research_envelope','research_calls','research_sources','research_citations','research_pack','citation_shape','citation_span','citation_title','citation_url','citation_unconsulted','citation_missing','citation_source_count'})
 DIAGNOSTIC_PHASES = frozenset({'create','retrieve','cancel'})
 
 
@@ -40,6 +40,8 @@ def background_error_metadata(error, phase):
             metadata['code'] = code
         if type(error.ambiguous_create) is bool:
             metadata['ambiguous_create'] = error.ambiguous_create
+        if error.confirmed_terminal is True:
+            metadata['confirmed_terminal'] = True
         status = error.http_status
         if type(status) is int and 100 <= status <= 599:
             metadata['http_status'] = status
@@ -53,8 +55,9 @@ def background_error_metadata(error, phase):
 
 
 class BackgroundError(Exception):
-    def __init__(self, code, *, ambiguous_create=False, phase=None, http_status=None, transport_kind=None, parse_reason=None):
+    def __init__(self, code, *, ambiguous_create=False, phase=None, http_status=None, transport_kind=None, parse_reason=None, confirmed_terminal=False):
         super().__init__(code)
+        self.confirmed_terminal = confirmed_terminal is True
         self.parse_reason = parse_reason
         self.code = code
         self.ambiguous_create = ambiguous_create

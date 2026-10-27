@@ -6,6 +6,7 @@ from uuid import uuid4, uuid5, NAMESPACE_URL
 from .adaptive_research import build_public_query, public_query_from_dict, serialize_research_result, validate_research_pack
 from .planning_worker import _provider_diagnostic as _diagnostic
 from .planning_repository import JobRepositoryError
+from .openai_background import BackgroundError
 
 
 def _provider_diagnostic(phase, **metadata):
@@ -83,6 +84,11 @@ class AdaptiveResearchWorker:
         try:response=await self.client.retrieve(job['provider_response_id'],query=query,phase=job['phase'])
         except Exception as error:
             _provider_diagnostic('retrieve',error=error)
+            # A verified same-ID completed response cannot gain missing evidence
+            # by polling again. Preserve accepted work and offer explicit recovery;
+            # transport/identity/status uncertainty still retains the paid handle.
+            if isinstance(error,BackgroundError) and getattr(error,'confirmed_terminal',False) is True:
+                return await self._transition(job,'failed',error_code='RESEARCH_SOURCES_UNCONFIRMED')
             return await self._transition(job,'running',error_code='RESEARCH_POLL_UNCONFIRMED')
         if response.response_id!=job['provider_response_id']:
             return await self._transition(job,'failed',error_code='RESEARCH_RESPONSE_MISMATCH')

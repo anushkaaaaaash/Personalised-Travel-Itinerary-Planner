@@ -13,7 +13,7 @@ SCHEDULE_NOTICE=('Schedule times are computed from AI-proposed ordered activitie
     'they are not bookings or verified opening/transport times. Confirm feasibility before travel.')
 
 class GenerationContract:
-    def __init__(self,preferences, *, travel_day_dates=()):
+    def __init__(self,preferences, *, travel_day_dates=(), nested_proposal=False):
         from .itineraries import ItineraryPayload
         from .openai import strict_schema
         self.preferences=preferences
@@ -73,8 +73,9 @@ class GenerationContract:
             f'Every day requires {self.minimum}-{self.maximum} real main experiences, including arrival and departure. Travel-only or rest-only days do not satisfy this pace rule. '
         )
         self.instructions=(
-            '\nGENERATION PROPOSAL CONTRACT: Return one complete JSON object with ALL four root fields: days, status, explanation, warnings. '
-            'Write the complete days array first; an explanation and warnings alone are never a planned itinerary. '
+            ('\nGENERATION PROPOSAL CONTRACT: The proposal object must contain ALL four fields: days, status, explanation, warnings. Follow the enclosing section schema for root fields. '
+             if nested_proposal else '\nGENERATION PROPOSAL CONTRACT: Return one complete JSON object with ALL four root fields: days, status, explanation, warnings. ')
+            + 'Write the complete days array first within that object; an explanation and warnings alone are never a planned itinerary. '
             'Each day object must contain date, morning, afternoon, evening, dining, dietaryNotes, mobilityNotes, transitAndRest, interestTags, costs, dayStart, requiredMainActivities and activities. '
             'Each activity must contain id, title, durationMinutes, notes, latitude, longitude, kind, gapBeforeMinutes and sequence. '
             'Do not output destination, currency, travelStyle, travelPace, vibe, mainActivityCount, startTime or fixedTime fields. '

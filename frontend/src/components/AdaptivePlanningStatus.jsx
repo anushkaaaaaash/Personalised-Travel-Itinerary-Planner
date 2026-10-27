@@ -117,7 +117,8 @@ function CompletedSection({section,currency}) {
     {itinerary.days.map(day=><details className="adaptive-day" key={day.date}>
       <summary><time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
       <ol className="activity-list timeline">{day.activities.map(activity=><li key={activity.id}><div className="activity-meta"><time>{activity.startTime}</time><span>{activity.durationMinutes} min</span>{activity.fixedTime&&<span className="tag">Fixed time</span>}</div><strong>{activity.title}</strong><p>{activity.notes}</p></li>)}</ol>
-      <div className="day-notes"><p><strong>Getting around & taking a break</strong><br/>{day.transitAndRest}</p><p><strong>Dietary arrangements · confirm with venues</strong><br/>{day.dietaryNotes}</p><p><strong>Access · confirm with venues</strong><br/>{day.mobilityNotes}</p></div>
+      <div className="day-notes"><p><strong>Dining</strong><br/>{day.dining}</p><p><strong>Getting around & taking a break</strong><br/>{day.transitAndRest}</p><p><strong>Dietary arrangements · confirm with venues</strong><br/>{day.dietaryNotes}</p><p><strong>Access · confirm with venues</strong><br/>{day.mobilityNotes}</p></div>
+      <details className="secondary-tools"><summary>Day outline</summary><p><strong>Morning</strong><br/>{day.morning}</p><p><strong>Afternoon</strong><br/>{day.afternoon}</p><p><strong>Evening</strong><br/>{day.evening}</p></details>
       <details className="secondary-tools"><summary>Day expense breakdown</summary><p className="hint">Estimated costs for the whole group, not per person.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,Math.round(day.costs[key]*100))}</span></li>)}</ul></details>
     </details>)}
   </section>;

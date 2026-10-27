@@ -11,7 +11,7 @@ from .adaptive_planning import SectionSpec, SectionContract, AdaptiveError
 from .section_repository import validate_checkpoint
 from .planning_repository import JobRepositoryError
 from .planning_worker import _provider_diagnostic
-from .prompts import build_itinerary_prompt
+from .adaptive_prompts import build_adaptive_prompt
 from .openai_output_stream import OutputStreamError
 
 
@@ -84,7 +84,7 @@ class AdaptivePlanningWorker:
         except Exception as error:
             return await self._transition(section, 'failed', error_code=error.code if isinstance(error,AdaptiveError) else 'SECTION_INVALID_RESULT')
         if section['status'] == 'queued':
-            prompt = build_itinerary_prompt(spec.preferences)
+            prompt = build_adaptive_prompt(spec)
             research_text = ''
             if plan.get('research_required') or plan.get('research_latest') or section.get('research_source_id'):
                 try:

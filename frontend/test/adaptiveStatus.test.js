@@ -64,6 +64,27 @@ test('adaptive status shows only authoritative completed-day counts and honest s
   }finally{await server.close();}
 });
 
+test('completed day cards retain dining advice and optional outlines alongside timelines, access and expenses',async()=>{
+  const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});let renderer;
+  try{
+    const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');
+    const fixture=createAdaptiveFixture();fixture.preferences={...preferences,travelers:2,startDate:'2028-01-01',endDate:'2028-01-24'};fixture.requestId='22345678-1234-1234-1234-123456789abc';
+    const value=validateAdaptivePage(fixture.snapshot()),original=structuredClone(value),day=value.sections[0].checkpoint.itinerary.days[0];
+    await act(async()=>{renderer=create(React.createElement(Status,{state:state(value),...actions}));});
+    const text=node=>typeof node==='string'?node:Array.isArray(node)?node.map(text).join(''):node?.children?node.children.map(text).join(''):'';
+    const days=renderer.root.findAll(node=>node.type==='details'&&node.props.className==='adaptive-day');
+    const first=days[0];
+    for(const content of [day.dining,day.transitAndRest,day.dietaryNotes,day.mobilityNotes,...day.activities.map(item=>item.notes)])assert.ok(text(first).includes(content),`Missing retained content: ${content}`);
+    assert.match(text(first),/USD 15\.00 per person \(USD 30\.00 for the whole group\)/);
+    assert.match(text(first),/Confirm prices, opening hours and dietary arrangements; not booked/);
+    const outline=first.findAllByType('details').find(node=>node.findAllByType('summary').some(summary=>text(summary)==='Day outline'));
+    assert.ok(outline);assert.equal(Boolean(outline.props.open),false);
+    for(const slot of ['morning','afternoon','evening'])assert.ok(text(outline).includes(day[slot]));
+    assert.match(text(first),/Day expense breakdown/);assert.equal(renderer.root.findAllByType('table').length,0);
+    assert.deepEqual(value,original);
+  }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
+});
+
 test('allowance continuation and retry are explicit; unknown or unconfirmed cancellation never creates again',async()=>{
   const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});let renderer;
   try{
