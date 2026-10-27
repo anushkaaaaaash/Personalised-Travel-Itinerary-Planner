@@ -6,7 +6,7 @@ from collections import deque
 from fastapi.responses import JSONResponse
 from .cors import configured_frontend_origins
 
-AI_PATHS={'/api/recommendations','/api/itineraries/generate','/api/itineraries/refine'}
+AI_PATHS={'/api/planning-jobs','/api/recommendations','/api/itineraries/generate','/api/itineraries/refine'}
 PUBLIC_PATHS={'/api/health','/api/auth/config','/api/auth/login','/api/auth/register'}
 
 def settings(auth):

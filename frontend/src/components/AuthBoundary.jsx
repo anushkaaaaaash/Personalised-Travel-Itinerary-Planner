@@ -31,8 +31,8 @@ export default function AuthBoundary() {
       if (value.session) {
         const s = value.session;
         if (typeof s.access_token !== 'string' || !s.access_token || s.token_type !== 'bearer' || !Number.isFinite(s.expires_at) || s.expires_at * 1000 <= Date.now() || !value.user?.id) throw new PlannerRequestError('Account session could not be verified.');
-        setSession({ ...s, user: value.user }); setNotice('Signed in. Session stays in memory and ends on refresh or expiry.');
-      } else if (value.pending_confirmation === true) setNotice('Check your email for any required confirmation, then sign in. This response does not confirm a new account or verified email.');
+        setSession({ ...s, user: value.user }); setNotice('Welcome back.');
+      } else if (value.pending_confirmation === true) setNotice('Check your email, then sign in to continue.');
       else throw new PlannerRequestError('No active session was returned. Confirm your email and try signing in.');
     } catch (e) { if (!controller.signal.aborted && mounted.current) setError(e instanceof PlannerRequestError ? e.message : 'Account request could not be completed.'); }
     finally { if (active.current === controller) { active.current = null; if (mounted.current) { setBusy(false); setPassword(''); } } }
@@ -46,17 +46,17 @@ export default function AuthBoundary() {
     try { await pending; } catch { if (mounted.current) setNotice('Local session cleared. Server sign-out could not be confirmed; the previous session may remain active until expiry.'); }
     finally { if (active.current === controller) { active.current = null; if (mounted.current) setBusy(false); } }
   }
-  if (!config) return <main className="page"><section className="card"><h1>Travel planner</h1>{configError ? <><p role="alert">{configError}</p><button className="preview-btn" onClick={loadConfig}>Retry connection</button></> : <p role="status">Checking planner configuration…</p>}</section></main>;
+  if (!config) return <main className="page"><section className="card"><h1>Travel planner</h1>{configError ? <><p role="alert">{configError}</p><button className="preview-btn" onClick={loadConfig}>Retry connection</button></> : <p role="status">Getting your planner ready…</p>}</section></main>;
   const savedOnly = config.saved_only === true;
   const allowed = (savedOnly && Boolean(session)) || (config.mode === 'local' && !config.ownership_enabled) || (config.ownership_enabled && Boolean(session));
   return <>
-    <aside className="account-shell card" aria-label="Account access"><h2>{config.mode === 'local' ? 'Private local planner' : 'Your planner account'}</h2>
-      <p className="hint">{config.mode === 'local' && !config.ownership_enabled ? 'Local mode is for one trusted operator. Legacy preference-only history is project-wide. My saved full itineraries uses separate account-scoped storage. Public deployment is not configured.' : 'Account access is required. Sessions are kept in memory only.'}</p>
-      {config.mode === 'production' && !config.ownership_enabled && !savedOnly && <p role="alert">Planner access is blocked until owner-scoped storage is configured.</p>}
-      {config.enabled && (session ? <div><p>Signed in as {session.user.email || 'your account'}</p><button className="preview-btn" onClick={logout} disabled={busy}>Sign out and clear planner</button></div> : <details open={config.mode === 'production' || config.ownership_enabled}><summary>Sign in or register</summary><form onSubmit={submit} className="account-form"><label className="field">Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label><label className="field">Password<input type="password" required minLength={8} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label><button className="generate-btn" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register account'}</button><button type="button" className="preview-btn" disabled={busy} onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setPassword(''); }}>{mode === 'login' ? 'Switch to registration' : 'Switch to sign in'}</button></form></details>)}
-      {!config.enabled && <p className="hint">Account registration and sign-in are not configured.</p>}
+    {(config.enabled || !allowed || error || notice) && <aside className="account-shell card" aria-label="Account access"><h2>Your travel space</h2>
+
+      {config.mode === 'production' && !config.ownership_enabled && !savedOnly && <p role="alert">Your planner is temporarily unavailable. Please try again later.</p>}
+      {config.enabled && (session ? <div><p>Signed in as {session.user.email || 'your account'}</p><button className="preview-btn" onClick={logout} disabled={busy}>Sign out</button></div> : <details open={config.mode === 'production' || config.ownership_enabled}><summary>Sign in or register</summary><form onSubmit={submit} className="account-form"><label className="field">Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></label><label className="field">Password<input type="password" required minLength={8} maxLength={128} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label><button className="generate-btn" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register account'}</button><button type="button" className="preview-btn" disabled={busy} onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setNotice(''); setPassword(''); }}>{mode === 'login' ? 'Switch to registration' : 'Switch to sign in'}</button></form></details>)}
+
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    </aside>
-    {allowed && <PlannerRoutes savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} />}
+    </aside>}
+    {allowed && <PlannerRoutes savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} jobsEnabled={config.planning_jobs_enabled === true} />}
   </>;
 }

@@ -1,4 +1,6 @@
 """Local FastAPI replacement; leave the Express server stopped while using port 5000."""
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, APIRouter
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -54,8 +56,29 @@ class JsonBoundary:
             return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
         await self.app(scope, replay, send)
 
-def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None):
-    app = FastAPI(title='Travel planner API', version='0.4.0')
+def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None, planning_engine=None):
+    @asynccontextmanager
+    async def lifespan(_app):
+        from .planning_activation import route_enabled
+        _app.state.planning_lifespan_active = True
+        stop = asyncio.Event()
+        runner = None
+        if route_enabled(planning_engine) and callable(getattr(planning_engine, 'run', None)):
+            if callable(getattr(planning_engine, 'verify_ready', None)):
+                await planning_engine.verify_ready()
+            runner = asyncio.create_task(planning_engine.run(stop))
+        try:
+            yield
+        finally:
+            _app.state.planning_lifespan_active = False
+            stop.set()
+            if runner is not None:
+                runner.cancel()
+                await asyncio.gather(runner, return_exceptions=True)
+            if planning_engine is not None and callable(getattr(planning_engine, 'close', None)):
+                await planning_engine.close()
+    app = FastAPI(title='Travel planner API', version='0.4.0', lifespan=lifespan)
+    app.state.planning_lifespan_active = False
     storage = store if store is not None else SupabaseTripStore()
     app.add_middleware(JsonBoundary)
     authentication = auth_service if auth_service is not None else SupabaseAuthService()
@@ -64,7 +87,14 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
         allow_credentials=False, allow_methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
         allow_headers=['Authorization','Content-Type'])
     app.add_middleware(NoStoreBoundary)
-    app.include_router(build_auth_router(authentication))
+    def planning_capability():
+        from .planning_activation import route_enabled
+        from .planning_coordinator import DurablePlanningCoordinator
+        return (app.state.planning_lifespan_active and isinstance(planning_engine, DurablePlanningCoordinator)
+            and route_enabled(planning_engine) and planning_engine.capability_ready())
+    app.include_router(build_auth_router(authentication, planning_capability))
+    from .planning_routes import build_planning_router
+    app.include_router(build_planning_router(authentication, planning_engine))
     from .saved_itineraries import build_saved_itinerary_router
     app.include_router(build_saved_itinerary_router(authentication,saved_client_factory))
 

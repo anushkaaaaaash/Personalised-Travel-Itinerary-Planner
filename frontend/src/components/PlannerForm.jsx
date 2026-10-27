@@ -20,8 +20,8 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
   return (
     <form className="card planner-form" onSubmit={onSubmit} noValidate aria-busy={loading}>
       <div className="card__intro">
-        <h2>Plan your trip</h2>
-        <p>Capture your preferences. Saving does not generate an itinerary.</p>
+        <p className="eyebrow">Your next chapter</p><h2>{step === 0 ? "Let’s go somewhere." : step === 1 ? "Make it feel like you." : "A good trip starts here."}</h2>
+        <p>{step === 0 ? "Start with the place and the dates. We’ll bring the days together." : step === 1 ? "A few little details make a big difference." : "One last look, then let the planning begin."}</p>
       </div>
 
       <ol className="step-progress" aria-label="Planning progress">
@@ -159,26 +159,17 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
             <dt>Travel style</dt><dd>{form.travelStyle || 'No specific preference'}</dd>
             <dt>Mobility preferences</dt><dd>{form.mobilityConcerns || 'Not specified'}</dd>
           </dl>
-          <p className="hint">{allowPreferenceSave ? 'Use Back to edit. Saving stores these preferences only; it does not generate an itinerary.' : 'Use Back to edit. Generate and review a plan, then explicitly save it in My saved full itineraries.'}</p>
+          <p className="hint">Everything look right? You can go back to change any detail.</p>
         </section>}
         <div className="step-actions">
           {step > 0 && <button className="back-btn" type="button" onClick={onBack} disabled={loading}>Back</button>}
           {step < FINAL_STEP && <button className="generate-btn" type="submit" disabled={loading}>Next: {PLANNER_STEPS[step + 1].title}</button>}
         </div>
         {step === FINAL_STEP && <>
-        {allowPreferenceSave && <button className="generate-btn" type="button" onClick={onSave} disabled={loading || saved || recommendationLoading || itineraryLoading}>
-          {loading ? 'Saving preferences…' : saved ? 'Preferences saved' : 'Save trip preferences'}
-        </button>}
-        <button className="generate-btn" type="button" onClick={onRecommendations} disabled={loading || recommendationLoading || itineraryLoading}>
-          {recommendationLoading ? 'Generating AI recommendations…' : 'Generate AI recommendations (does not save)'}
+        <button className="generate-btn build-trip" type="button" onClick={onGenerateItinerary} disabled={loading || recommendationLoading || itineraryLoading}>
+          {itineraryLoading ? 'Putting your trip together…' : 'Build my trip →'}
         </button>
-        <button className="generate-btn" type="button" onClick={onGenerateItinerary} disabled={loading || recommendationLoading || itineraryLoading}>
-          {itineraryLoading ? 'Generating AI day plan…' : 'Generate AI day-by-day itinerary (does not save)'}
-        </button>
-        <p className="hint">AI generation supports 1–14 days and sends these preferences to the configured AI provider. Saving is separate.</p>
-        <button className="preview-btn" type="button" onClick={onPreview} disabled={loading}>
-          Show sample preview (does not save)
-        </button>
+        <p className="hint">A day-by-day plan shaped around your dates, interests and pace.</p>
         </>}
       </fieldset>
     </form>

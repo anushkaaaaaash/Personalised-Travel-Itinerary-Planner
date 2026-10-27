@@ -1,3 +1,4 @@
+import { travelError } from '../utils/travelMessages.js';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -13,13 +14,13 @@ export function SavedTripEditor({tripID}) {
   function edit(patch){setConfirm(null);controller.current?.edit(patch);}
   async function commit(){const action=confirm;setConfirm(null);if(action)await controller.current?.run(action);}
   return <motion.main className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}}>
-    <Link to="/" onClick={e=>{if(state.dirty&&!window.confirm('Leave this page and discard unsaved local edits?'))e.preventDefault();}}><ArrowLeft size={16} aria-hidden="true"/> Back to planner</Link>
-    <section className="card"><h1>Private saved itinerary</h1><p>This address requires the owning account. Sharing its URL does not grant access. Back/Forward navigation loads the saved revision; save local edits before navigating.</p>
-    {state.busy&&<p role="status">Waiting for a validated response.</p>}{state.error&&<p role="alert">{state.error}</p>}{state.notice&&<p role="status">{state.notice}</p>}
+    <Link to="/" onClick={e=>{if(state.dirty&&!window.confirm('Leave this page and discard your current edits?'))e.preventDefault();}}><ArrowLeft size={16} aria-hidden="true"/> Back to planner</Link>
+    <section className="card"><h1>Your saved trip</h1><p>Only you can open this trip. Use a summary to share your plans.</p>
+    {state.busy&&<p role="status">Getting your trip ready…</p>}{state.error&&<p role="alert">{travelError(state.error)}</p>}{state.notice&&<p role="status">{state.notice.startsWith('Updated') ? 'Your changes are saved.' : state.notice.startsWith('New local') ? 'Your new plan is ready.' : state.notice.includes('canceled') ? 'Your previous plan is ready to explore.' : state.notice}</p>}
     {!state.record&&!state.busy&&<button onClick={()=>controller.current?.run('load')}>Retry loading saved itinerary</button>}
-    {state.record&&<><p>Saved revision {state.record.version}{state.dirty?' — local changes not saved':''}</p><label className="field">Itinerary title<input maxLength={120} value={state.title} disabled={state.busy} onChange={e=>edit({title:e.target.value})}/></label>
-      <div className="step-actions"><button disabled={state.busy} onClick={()=>setConfirm('update')}><Save size={16} aria-hidden="true"/> Update this saved itinerary</button><button disabled={state.busy} onClick={()=>setConfirm('generate')}><RefreshCw size={16} aria-hidden="true"/> Regenerate local plan</button><button disabled={state.busy} onClick={()=>setConfirm('load')}>Reload saved revision</button></div>
-      {confirm&&<div role="group" aria-label="Confirm detail operation"><p>{confirm==='generate'?'Request a new AI plan using the saved preferences? The current plan stays until a validated response arrives. Nothing is saved automatically.':confirm==='load'?'Reload the saved revision and discard current local edits?':'Replace this saved revision with the current plan and title? A conflict will keep your local edits.'}</p><button disabled={state.busy} onClick={commit}>Confirm {confirm}</button><button disabled={state.busy} onClick={()=>setConfirm(null)}>Cancel</button></div>}
+    {state.record&&<><p>Saved revision {state.record.version}{state.dirty?' · editing':''}</p><label className="field">Itinerary title<input maxLength={120} value={state.title} disabled={state.busy} onChange={e=>edit({title:e.target.value})}/></label>
+      <div className="step-actions"><button disabled={state.busy} onClick={()=>setConfirm('update')}><Save size={16} aria-hidden="true"/> Update this saved itinerary</button><button disabled={state.busy} onClick={()=>setConfirm('generate')}><RefreshCw size={16} aria-hidden="true"/> Build a fresh plan</button><button disabled={state.busy} onClick={()=>setConfirm('load')}>Reload saved revision</button></div>
+      {confirm&&<div role="group" aria-label="Confirm detail operation"><p>{confirm==='generate'?'Build a fresh plan with these trip preferences?':confirm==='load'?'Reload the saved revision and discard current local edits?':'Save your changes to this trip?'}</p><button disabled={state.busy} onClick={commit}>Confirm {confirm}</button><button disabled={state.busy} onClick={()=>setConfirm(null)}>Cancel</button></div>}
     </>}
     </section>
     {state.plan&&<GeneratedItinerary result={state.plan} preferences={state.record.preferences} edited={state.dirty} refinement={detailRefinementState(state)} onCancelRefine={isAiAction(state.activeAction)?()=>controller.current?.cancel():undefined} onRefine={input=>controller.current?.run('refine',input)} onEditDay={day=>edit({plan:{...state.plan,refinementSummary:null,days:state.plan.days.map(d=>d.date===day.date?day:d)}})}/>}

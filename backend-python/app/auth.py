@@ -222,12 +222,13 @@ class AccessBoundary:
         return await self.app(scope, receive, send)
 
 
-def build_auth_router(service):
+def build_auth_router(service, planning_capability=None):
     router = APIRouter(prefix='/api/auth', tags=['Authentication'])
 
     @router.get('/config')
     async def config():
-        return {'enabled': service.configured(), 'mode': 'production' if production_mode() else 'local', 'ownership_enabled': ownership_enabled(), 'saved_only': production_mode()}
+        return {'enabled': service.configured(), 'mode': 'production' if production_mode() else 'local', 'ownership_enabled': ownership_enabled(), 'saved_only': production_mode(),
+                'planning_jobs_enabled': bool(planning_capability and planning_capability())}
 
     @router.post('/register', response_model=AuthResult)
     async def register(credentials: Credentials):

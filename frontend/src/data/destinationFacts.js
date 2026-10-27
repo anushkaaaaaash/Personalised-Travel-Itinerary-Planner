@@ -29,6 +29,28 @@ const tips = [
   { title: 'Leave room for a detour', text: 'Keep a little unscheduled time for a neighborhood walk, a longer lunch or an unexpected discovery.' },
   { title: 'Check before you set off', text: 'Confirm opening hours, reservations and accessibility directly with venues before you travel.' },
   { title: 'Make the journey part of the day', text: 'Allow time between activities for transport, rest and finding your way.' },
+  { title: 'A small offline safety net', text: 'Download a map of your destination and keep your accommodation address available offline.' },
+  { title: 'Start with one great anchor', text: 'Choose one experience you really want each day, then let smaller discoveries fill the gaps.' },
+  { title: 'Your first day can be lighter', text: 'Allow a little breathing room after arrival for getting settled, a meal and a short walk.' },
+  { title: 'Keep the essentials close', text: 'Pack medication, charging cables and a change of clothes in your carry-on where permitted.' },
+  { title: 'Reservations deserve a reminder', text: 'Check cancellation deadlines and set a reminder for any timed tickets or restaurant bookings.' },
+  { title: 'Plan for a change of weather', text: 'Keep an indoor alternative in mind for an outdoor day, and check the forecast close to departure.' },
+  { title: 'Make room for your own rhythm', text: 'A slower morning or an afternoon break can be part of a great itinerary, not time lost.' },
+  { title: 'Keep a useful address card', text: 'Save your accommodation name and address in the local writing system when available.' },
+  { title: 'A few words go a long way', text: 'Learn a greeting, “please” and “thank you” in the language used at your destination.' },
+  { title: 'Check the whole journey', text: 'Before reserving an early activity, check how you will get there and how much time the trip needs.' },
+  { title: 'Leave a cushion in the budget', text: 'Set aside some spending money for small extras, transport changes and spontaneous discoveries.' },
+  { title: 'Travel light on a day out', text: 'Bring water, a charged phone and the essentials you need, rather than carrying everything all day.' },
+  { title: 'Make a little meeting plan', text: 'If your group splits up, agree on a meeting place and time in case someone loses their connection.' },
+  { title: 'Check what a ticket includes', text: 'Look for entry times, included areas, identification requirements and re-entry rules before booking.' },
+  { title: 'Save space for a favorite', text: 'You do not have to see everything. Returning to a place you love can be just as rewarding.' },
+  { title: 'Think beyond the entrance', text: 'For access needs, check the route to the venue as well as entrances, lifts and rest facilities.' },
+  { title: 'A pocket-size backup', text: 'Keep essential booking references somewhere you can reach even without a mobile connection.' },
+  { title: 'Ask before you photograph', text: 'Check posted photography rules and ask permission before taking close-up photographs of people.' },
+  { title: 'Give departure day some space', text: 'Leave a generous buffer for packing, check-out and the journey to your departure point.' },
+  { title: 'A meal can be the main event', text: 'Keep time for a relaxed meal instead of treating every stop as something to rush through.' },
+  { title: 'Know your must-haves', text: 'Make a short list of what matters most to your group so changes are easier to agree on.' },
+
 ];
 export function destinationCards(destination = '') {
   const normalized = String(destination).trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ');
@@ -36,5 +58,22 @@ export function destinationCards(destination = '') {
   const generalTips = tips.map(tip => ({ ...tip, label: 'General travel tip' }));
   if (!key) return generalTips;
   if (Object.hasOwn(extraFacts, key)) return [{ ...extraFacts[key], label: 'Destination fact' }, ...generalTips];
-  return facts[key].map(fact => ({ ...fact, label: 'Destination fact', sourceLabel: 'UNESCO' }));
+  return [...facts[key].map(fact => ({ ...fact, label: 'Destination fact', sourceLabel: 'UNESCO' })), ...generalTips];
+}
+
+// Each mounted planning run consumes this finite deck once. Never wrap to the start.
+export function createLoadingDeck(destination = '', random = Math.random) {
+  const cards = destinationCards(destination).map(card => ({ ...card }));
+  for (let i = cards.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [cards[i], cards[j]] = [cards[j], cards[i]];
+  }
+  // Ground the first impression in the chosen destination whenever a source exists.
+  const firstFact = cards.findIndex(card => card.source);
+  if (firstFact > 0) [cards[0], cards[firstFact]] = [cards[firstFact], cards[0]];
+  return [...cards, {
+    label: 'While you wait',
+    title: 'A little space for anticipation',
+    text: 'Your trip is still taking shape. Think of the one experience you most want to bring home a memory of.',
+  }];
 }

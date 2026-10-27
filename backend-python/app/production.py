@@ -14,4 +14,5 @@ def create_production_app():
     try:create_provider(configuration=lambda:dict(os.environ))
     except Exception:raise RuntimeError('Production AI configuration is invalid. No provider request was made.') from None
     from .main import create_app
-    return create_app()
+    from .planning_activation import build_production_planning
+    return create_app(planning_engine=build_production_planning())
