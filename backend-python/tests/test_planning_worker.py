@@ -238,3 +238,44 @@ def test_stale_worker_cannot_cancel_after_expiry_cas_lost(payload):
         with pytest.raises(JobRepositoryError): await stale.tick()
         assert repo.row['status'] == 'running' and not client.cancels
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('phase',['create','retrieve','cancel'])
+def test_worker_logs_only_bounded_safe_provider_diagnostics(payload,caplog,phase):
+    from app.openai_background import BackgroundError
+    async def scenario():
+        repo,client=Repository(payload),Client()
+        error=BackgroundError('BACKGROUND_HTTP_FAILED',phase=phase,http_status=429,ambiguous_create=False)
+        error.args=('private body secret destination resp_secret',)
+        if phase=='create':
+            client.create_error=error
+            await worker(repo,client).tick()
+        elif phase=='retrieve':
+            await worker(repo,client).tick()
+            client.read_error=error
+            await worker(repo,client).tick()
+        else:
+            async def fail_cancel(identity): raise error
+            client.cancel=fail_cancel
+            assert await worker(repo,client).cancel({'provider_response_id':'resp_secret'}) is False
+    asyncio.run(scenario())
+    messages=[record.getMessage() for record in caplog.records if record.name=='app.planning_worker']
+    assert len(messages)==1
+    metadata=json.loads(messages[0].split(': ',1)[1])
+    assert metadata=={'phase':phase,'code':'BACKGROUND_HTTP_FAILED','http_status':429,'ambiguous_create':False}
+    assert all(forbidden not in messages[0] for forbidden in ('private','secret','destination','resp_'))
+
+
+@pytest.mark.parametrize('status,refused',[('failed',False),('incomplete',False),('completed',True)])
+def test_terminal_diagnostics_distinguish_failure_incomplete_and_refusal(payload,caplog,status,refused):
+    async def scenario():
+        repo,client=Repository(payload),Client()
+        await worker(repo,client).tick()
+        client.response.status=status;client.response.refused=refused
+        client.response.output_text='private body'
+        await worker(repo,client).tick()
+    asyncio.run(scenario())
+    record=next(r for r in caplog.records if r.name=='app.planning_worker')
+    metadata=json.loads(record.getMessage().split(': ',1)[1])
+    assert metadata=={'phase':'retrieve','code':'BACKGROUND_TERMINAL','status':status,'refused':refused}
+    assert 'private' not in record.getMessage()

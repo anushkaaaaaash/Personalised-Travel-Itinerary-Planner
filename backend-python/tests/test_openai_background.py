@@ -164,3 +164,34 @@ def test_invalid_or_oversized_request_prevents_submission():
     for system, schema in [('', SCHEMA), ('x'*MAX_ENVELOPE_BYTES, SCHEMA), ('system', [])]:
         with pytest.raises(BackgroundError, match='BACKGROUND_INVALID_REQUEST'):
             run(client(forbidden).create(system, 'user', schema))
+
+
+@pytest.mark.parametrize('status',[400,401,429,500])
+@pytest.mark.parametrize('phase',['create','retrieve','cancel'])
+def test_safe_http_diagnostics_distinguish_status_without_reading_error_body(status,phase):
+    def handler(request):
+        return httpx.Response(status,json={'error':{'message':'private destination key secret','code':'made_up_schema_diagnosis'}})
+    provider=client(handler)
+    call=provider.create('system','private preferences',SCHEMA) if phase=='create' else getattr(provider,phase)('resp_private_id')
+    with pytest.raises(BackgroundError) as caught: run(call)
+    metadata=caught.value.safe_metadata()
+    assert metadata=={'code':'BACKGROUND_HTTP_FAILED','phase':phase,'http_status':status,
+        'ambiguous_create':phase=='create' and status==500}
+    assert 'private' not in str(metadata) and 'schema' not in str(metadata)
+
+
+@pytest.mark.parametrize('failure,kind',[(httpx.ReadTimeout,'timeout'),(httpx.ConnectError,'transport')])
+def test_transport_diagnostics_distinguish_timeouts_without_raw_exception(failure,kind):
+    def handler(request): raise failure('private-key-and-destination',request=request)
+    with pytest.raises(BackgroundError) as caught: run(client(handler).create('system','user',SCHEMA))
+    assert caught.value.safe_metadata()=={'code':'BACKGROUND_TRANSPORT_FAILED','phase':'create',
+        'transport':kind,'ambiguous_create':True}
+    assert 'private' not in str(caught.value)
+
+
+def test_error_diagnostic_allowlist_rejects_malicious_metadata():
+    from app.openai_background import background_error_metadata
+    error=BackgroundError('private-code',phase='private-phase',http_status='private-status',transport_kind='private-transport',ambiguous_create='private-flag')
+    assert error.safe_metadata()=={'phase':'unknown','code':'BACKGROUND_UNCLASSIFIED','ambiguous_create':False}
+    assert background_error_metadata(RuntimeError('private body'),'create')=={
+        'phase':'create','code':'BACKGROUND_UNCLASSIFIED','ambiguous_create':True}

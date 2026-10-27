@@ -88,10 +88,10 @@ client-provided evidence from being laundered into a trusted saved plan.
 ## Tests versus unverified external stages
 
 Offline Python/frontend/build, fake-provider HTTP end-to-end, and pinned PGlite
-SQL execution run locally. The new disposable PostgreSQL CI concurrency test is
-not yet run until authorized publication/CI; PGlite is single-connection and not
-proof of cross-process locking. Hosted grants/PostgREST/Cron, exact model acceptance,
-paid latency and real-source accuracy require their own explicit verified results.
+SQL execution run locally. Disposable PostgreSQL 17.11 CI now passes real independent-connection claims,
+locked-row SKIP LOCKED, cancellation/stale-CAS and uncertain-abandonment recovery.
+PGlite remains single-connection, not the concurrency proof. Exact model acceptance,
+paid latency and real-source accuracy remain unverified; no paid acceptance call ran.
 
 ## Earlier credential option — rejected for this rollout
 
@@ -191,3 +191,17 @@ cancelled jobs until ten minutes from job creation (not a strict provider billin
 or active-compute bound), then releases the slot. Without explicit abandonment,
 uncertain jobs remain quarantined until retention cleanup. Operators should use
 the owner-facing stop flow rather than delete queue rows or reset jobs to queued.
+
+
+## Release verification checkpoint
+
+PR18 passed full application checks, disposable PostgreSQL checks and six synthetic
+real-component browser screenshots at desktop/mobile sizes. Parent inspected all
+six screenshots and found no clipping/readability blocker. This is visual/layout
+acceptance, not proof of a successful actual generation. Temporary QA pages, capture
+tools and screenshot workflow must be removed before main deployment.
+
+Parent reports additive004, restricted credential provisioning and hardened hosted
+role audit ready. Activation flags are still off pending coordinated release. The
+actual Render pooled TLS/application-startup check remains a release gate; no
+secret belongs in this source or recovery archive.
