@@ -49,7 +49,7 @@ test('chosen country follows loading, error, edited destination and new result w
   const review=async()=>{await act(async()=>env.props().onSubmit({preventDefault(){}}));await act(async()=>env.props().onSubmit({preventDefault(){}}));};
   await review();await act(async()=>env.props().onGenerateItinerary());env.theme('JP');assert.match(env.text(),/Your trip is taking shape/);
   await act(async()=>finish({status:502,json:async()=>({error:{code:'AI_PROVIDER_FAILED'}})}));
-  env.theme('JP');assert.match(env.text(),/We couldn’t build this trip/);assert.doesNotMatch(env.text(),/needs a little more time/);
+  env.theme('JP');assert.match(env.text(),/The planning service couldn’t finish/);assert.doesNotMatch(env.text(),/needs a little more time/);
   await env.click('Edit trip details');assert.equal(env.props().step,0);assert.equal(env.props().form.destination,'Japan');env.theme('JP');
   await env.change('destination','Paris, France');env.theme('FR');await review();
   await act(async()=>env.props().onGenerateItinerary());env.theme('FR');
@@ -78,8 +78,8 @@ test('date-range guidance is accessible and invalid-date recovery edits details 
   assert.match(form,/id="trip-length-hint">Plan 1–14 days at a time/);
   assert.match(form,/name="startDate"[^>]*aria-describedby="trip-length-hint"/);
   assert.match(form,/name="endDate"[^>]*aria-describedby="endDate-error trip-length-hint"/);
-  const invalid=renderToStaticMarkup(React.createElement(env.Generated,{error:'Choose a trip of 1–14 days.',onRetry(){},onEditPreferences(){}}));
-  assert.match(invalid,/Let’s check your dates/);assert.match(invalid,/Edit trip details/);assert.doesNotMatch(invalid,/Try again|needs a little more time/);
+  const invalid=renderToStaticMarkup(React.createElement(env.Generated,{error:'Choose a trip of 1–14 days.',errorCode:'ITINERARY_DURATION_UNSUPPORTED',onRetry(){},onEditPreferences(){}}));
+  assert.match(invalid,/cannot handle the whole date range/);assert.match(invalid,/Edit trip details/);assert.doesNotMatch(invalid,/Try again|needs a little more time/);
   const transient=renderToStaticMarkup(React.createElement(env.Generated,{error:'The request timed out.',onRetry(){},onEditPreferences(){}}));
   assert.match(transient,/Try again/);assert.match(transient,/Edit trip details/);assert.doesNotMatch(transient,/needs a little more time/);
 }));

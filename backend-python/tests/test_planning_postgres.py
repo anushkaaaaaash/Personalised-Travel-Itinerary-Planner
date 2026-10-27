@@ -109,7 +109,7 @@ def test_admin_or_overprivileged_role_denied_before_operation(audit):
     async def scenario():
         conn=Connection(audit=audit); api,_=gateway(conn)
         with pytest.raises(JobRepositoryError) as caught: await api.request('POST','rpc/planning_queue_health',payload={})
-        assert caught.value.status==403 and len(conn.queries)==3
+        assert caught.value.status==403 and len(conn.queries)==4
     asyncio.run(scenario())
 
 
@@ -296,3 +296,59 @@ try {
     result=subprocess.run(['node','--input-type=module','-e',script,str(module),ROLE_AUDIT],capture_output=True,text=True,timeout=60)
     assert result.returncode==0,result.stderr
     assert 'PASS exact platform metadata compatibility' in result.stdout
+
+
+@pytest.mark.parametrize('phase', ['connect','session_setup','role_audit','operation','commit'])
+def test_closed_storage_diagnostics_preserve_failure_stage(phase, caplog):
+    class PrivateFailure(Exception):
+        sqlstate = '42809'
+        def __str__(self):
+            raise AssertionError('Exception text must never be rendered')
+    class FailingConnection(Connection):
+        async def execute(self, query, params=None):
+            at = 'session_setup' if query.startswith('SET LOCAL') else 'role_audit' if query == ROLE_AUDIT else 'operation'
+            if phase == at: raise PrivateFailure()
+            return await super().execute(query, params)
+        async def __aexit__(self, *args):
+            if phase == 'commit' and args[0] is None: raise PrivateFailure()
+    async def scenario():
+        calls = []
+        async def factory(**kwargs):
+            calls.append(True)
+            if phase == 'connect': raise PrivateFailure()
+            return FailingConnection()
+        api = PlanningPostgresGateway(URL, enabled=True, connection_factory=factory)
+        with pytest.raises(JobRepositoryError):
+            await api.request('POST','rpc/planning_queue_health',payload={})
+        assert len(calls) == 1
+    asyncio.run(scenario())
+    assert f'phase={phase} family=database sqlstate=42809' in caplog.text
+    assert 'PrivateFailure' not in caplog.text and 'fixture-password' not in caplog.text
+
+
+def test_unknown_metadata_is_not_logged(caplog):
+    from app.planning_postgres import _log_storage_failure
+    error = RuntimeError('PRIVATE message')
+    error.sqlstate = 'PRIVATE sqlstate'
+    _log_storage_failure('PRIVATE phase', error)
+    assert 'phase=unknown family=unknown sqlstate=unknown' in caplog.text
+    assert 'PRIVATE' not in caplog.text
+
+
+def test_fixed_subclass_audit_and_local_search_path():
+    class Specialized(PlanningPostgresGateway):
+        role_audit = 'FIXED TEST AUDIT'
+    class SpecializedConnection(Connection):
+        async def execute(self, query, params=None):
+            if query == Specialized.role_audit:
+                self.queries.append((query,params))
+                return Cursor([(json.dumps(self.audit),)])
+            return await super().execute(query,params)
+    async def scenario():
+        conn=SpecializedConnection()
+        api=Specialized(URL,enabled=True,connection_factory=Factory(conn))
+        await api.request('POST','rpc/planning_queue_health',payload={})
+        queries=[query for query,_ in conn.queries]
+        assert queries[:4] == ["SET LOCAL search_path=''", "SET LOCAL statement_timeout='10s'", "SET LOCAL lock_timeout='3s'", Specialized.role_audit]
+        assert conn.exited
+    asyncio.run(scenario())

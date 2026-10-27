@@ -1,3 +1,4 @@
+import { validAdaptivePolicy } from '../services/adaptivePlanning.js';
 import EmailConfirmation from './EmailConfirmation.jsx';
 import { getConfirmationCallback } from '../services/confirmationCallback.js';
 import BrandWelcome from './BrandWelcome.jsx';
@@ -72,6 +73,6 @@ export default function AuthBoundary() {
 
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     </aside>}
-    {allowed && <PlannerRoutes savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} jobsEnabled={config.planning_jobs_enabled === true} />}
+    {allowed && <PlannerRoutes savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} jobsEnabled={config.planning_jobs_enabled === true} adaptiveEnabled={config.adaptive_planning_enabled === true && validAdaptivePolicy(config.adaptive_planning_policy)} adaptivePolicy={validAdaptivePolicy(config.adaptive_planning_policy)?config.adaptive_planning_policy:null} />}
   </>;
 }

@@ -26,7 +26,7 @@ test('focused journey handles repeated generation, cancellation, late responses 
     await act(async()=>freshFinish({status:200,json:async()=>plan()}));assert.match(text(),/Make the days your own/);
     await click('Trip preferences');
     for(const [status,body] of [[502,{error:{code:'AI_PROVIDER_FAILED',message:'PRIVATE_DETAIL'}}],[429,{error:{code:'AI_RATE_LIMITED'}}],[200,{...plan(),warnings:[]}]]){
-      await start();const count=calls.length;await act(async()=>finish({status,json:async()=>body}));assert.match(text(),/couldn’t finish this plan|planner is busy/);assert.doesNotMatch(text(),/PRIVATE_DETAIL|AI provider|not saved/);assert.equal(calls.length,count);await click('Trip preferences');
+      await start();const count=calls.length;await act(async()=>finish({status,json:async()=>body}));assert.match(text(),/planning service couldn’t finish|planner is busy|returned plan didn’t pass/);assert.doesNotMatch(text(),/PRIVATE_DETAIL|AI provider|not saved/);assert.equal(calls.length,count);await click('Trip preferences');
     }
     assert.equal(calls.length,6);
   }finally{if(renderer)await act(async()=>renderer.unmount());globalThis.fetch=original;await server.close();}

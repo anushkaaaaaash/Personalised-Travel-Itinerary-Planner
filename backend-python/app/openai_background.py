@@ -179,7 +179,7 @@ class OpenAIBackgroundClient:
         if any(type(p) is not str or not p.strip() for p in (system_prompt, user_prompt)):
             raise BackgroundError('BACKGROUND_INVALID_REQUEST')
         try:
-            payload = {'model': self.model, 'background': True, 'store': False, 'stream': False,
+            payload = {'model': self.model, 'service_tier': 'default', 'background': True, 'store': False, 'stream': False,
                 'reasoning': {'effort': self.reasoning_effort}, 'max_output_tokens': MAX_OUTPUT_TOKENS,
                 'input': [{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}],
                 'text': {'format': {'type': 'json_schema', 'name': 'travel_response',

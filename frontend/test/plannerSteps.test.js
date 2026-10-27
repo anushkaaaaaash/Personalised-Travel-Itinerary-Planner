@@ -79,3 +79,10 @@ test('planning duration is inclusive across month/year/leap boundaries',()=>{
   for(const [start,end] of [['2026-12-25','2027-01-07'],['2028-02-20','2028-03-04'],['2026-10-27','2026-10-27']])assert.equal(validatePlannerStep({...validForm(),startDate:start,endDate:end},0).endDate,undefined);
   assert.match(validatePlannerStep({...validForm(),startDate:'2026-12-25',endDate:'2027-01-08'},0).endDate,/15 days/);
 });
+
+test('adaptive capability accepts all valid requested dates while legacy limit stays enforced',()=>{
+  const long={...createInitialForm(),destination:'Kyoto',departureCity:'Tokyo',startDate:'2028-01-01',endDate:'9999-12-31'};
+  assert.equal(validatePlannerStep(long,0,{adaptiveEnabled:true}).endDate,undefined);
+  assert.match(validatePlannerStep(long,0).endDate,/14/);
+  assert.match(validatePlannerStep(long,0,{adaptiveEnabled:'true'}).endDate,/14/);
+});

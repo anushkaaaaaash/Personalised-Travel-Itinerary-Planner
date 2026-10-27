@@ -1,10 +1,11 @@
 import { sessionFetch } from './session.js';
 /** Cancellable, duplicate-safe read/generation request. Never writes preferences. */
 export class PlannerRequestError extends Error {
-  constructor(message, { status, code } = {}) {
+  constructor(message, { status, code, reason } = {}) {
     super(message);
     if (Number.isInteger(status) && status >= 400 && status <= 599) this.status = status;
-    if (['VALIDATION_ERROR','REQUEST_TOO_LARGE'].includes(code)) this.code = code;
+    if (PUBLIC_ERROR_CODES.has(code)) this.code = code;
+    if (code === 'AI_INVALID_RESPONSE' && DIAGNOSTIC_REASONS.has(reason)) this.reason = reason;
   }
 }
 export function createReadRequest({ request, onStateChange }) {
@@ -27,7 +28,7 @@ export function createReadRequest({ request, onStateChange }) {
       } catch (error) {
         if (disposed || controller.signal.aborted || active !== controller) return { ignored: true };
         const message = error instanceof PlannerRequestError ? error.message : 'The response could not be verified. Please try again.';
-        publish({ loading: false, error: message, result: null });
+        publish({ loading: false, error: message, result: null, ...(error instanceof PlannerRequestError && error.code ? { errorCode: error.code } : {}), ...(error instanceof PlannerRequestError && error.reason ? { errorReason: error.reason } : {}) });
         return { error: message };
       } finally { if (active === controller) active = null; }
     },
@@ -36,6 +37,7 @@ export function createReadRequest({ request, onStateChange }) {
 }
 
 const DIAGNOSTIC_CODES = new Set(['ITINERARY_DURATION_UNSUPPORTED', 'AI_PROVIDER_FAILED', 'AI_SCHEMA_REJECTED', 'AI_INVALID_RESPONSE', 'AI_OUTPUT_TRUNCATED', 'AI_RATE_LIMITED', 'REFINEMENT_PACE_CONFLICT', 'REFINEMENT_FIXED_CONFLICT', 'VALIDATION_ERROR', 'REQUEST_TOO_LARGE']);
+const PUBLIC_ERROR_CODES = new Set([...DIAGNOSTIC_CODES, 'TRANSPORT_TIMEOUT', 'TRANSPORT_UNAVAILABLE', 'UNREADABLE_RESPONSE', 'SERVICE_UNAVAILABLE', 'AUTH_REQUIRED', 'REQUEST_FAILED']);
 const DIAGNOSTIC_REASONS = new Set(['FORMAT_SCHEMA', 'PREFERENCE_MISMATCH', 'DATE_COVERAGE', 'PACE', 'BUDGET', 'TIMELINE', 'VIBE_MISMATCH', 'FIXED_COMMITMENT']);
 // Only these enums cross the transport boundary. Never pass through server messages,
 // provider output, arbitrary fields, or unknown codes/reasons to the UI.
@@ -64,17 +66,17 @@ export async function requestJson(path, { method = 'GET', payload, fetchImpl = s
       let diagnostic = { kind: 'http' };
       try { diagnostic = safeDiagnostic(await response.json()); } catch { /* Unknown error body stays masked. */ }
       if (controller.signal.aborted) throw new Error('Canceled');
-      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status, code: diagnostic.code });
+      throw new PlannerRequestError(failure(response.status, diagnostic), { status: response.status, code: diagnostic.code || ({401:'AUTH_REQUIRED',403:'AUTH_REQUIRED',429:'AI_RATE_LIMITED',503:'SERVICE_UNAVAILABLE',504:'TRANSPORT_TIMEOUT'}[response.status]) || 'REQUEST_FAILED', reason: diagnostic.reason });
     }
     let body;
     try { body = await response.json(); }
-    catch { throw new PlannerRequestError(failure(502, { kind: 'invalid_json' })); }
+    catch { throw new PlannerRequestError(failure(502, { kind: 'invalid_json' }), { code: 'UNREADABLE_RESPONSE' }); }
     if (controller.signal.aborted) throw new Error('Canceled');
     return body;
   } catch (error) {
     if (signal?.aborted) throw error;
-    if (timedOut) throw new PlannerRequestError(failure(504, { kind: 'timeout' }));
+    if (timedOut) throw new PlannerRequestError(failure(504, { kind: 'timeout' }), { code: 'TRANSPORT_TIMEOUT' });
     if (error instanceof PlannerRequestError) throw error;
-    throw new PlannerRequestError(failure(502, { kind: 'network' }));
+    throw new PlannerRequestError(failure(502, { kind: 'network' }), { code: 'TRANSPORT_UNAVAILABLE' });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }

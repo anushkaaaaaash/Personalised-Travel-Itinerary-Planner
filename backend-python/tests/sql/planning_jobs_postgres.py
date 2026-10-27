@@ -120,3 +120,34 @@ sql("update planning_jobs set created_at=now()-interval '11 minutes',expires_at=
 assert claim()[0]['id'] == next_job['id']
 assert sql('set role service_role; select status from enqueue_planning_job('+literal(json.dumps(uncertain[0]))+'::jsonb);') == 'cancelled'
 print('PASS: explicit owner abandonment of unknown submission; replay remains cancelled; capacity preserved until 10-minute reserve elapses.')
+
+# Adaptive queue: the same disposable loopback database, separate new tables.
+sql(Path(__file__).resolve().parents[2].joinpath('migrations/005_adaptive_section_checkpoints_REVIEW_ONLY.sql').read_text())
+third_owner=str(uuid4());owners.append(third_owner)
+sql('insert into auth.users values ('+literal(third_owner)+'::uuid);')
+adaptive_preferences={'destination':'Goa','departureCity':'Mumbai','startDate':'2028-01-01','endDate':'2028-01-24','budget':5000,'currency':'INR'}
+def adaptive_plan(owner,request=None):
+    return value('set role service_role; select row_to_json(p) from adaptive_create_plan('+','.join([
+        literal(owner)+'::uuid',literal(request or uuid4())+'::uuid',literal(json.dumps(adaptive_preferences))+'::jsonb',
+        literal('b'*64),'500000','12'])+') p;')
+def adaptive_claim():
+    return value('set role service_role; select coalesce(json_agg(s),\'[]\'::json) from adaptive_claim_next('+literal(uuid4())+'::uuid) s;')
+request=str(uuid4())
+with ThreadPoolExecutor(max_workers=2) as pool:
+    same=list(pool.map(lambda _:adaptive_plan(owners[0],request),range(2)))
+assert same[0]['id']==same[1]['id']
+plans=[same[0],adaptive_plan(owners[1]),adaptive_plan(owners[2])]
+# claim_next reconstructs queued sections after a crash between manifest/queue writes.
+with ThreadPoolExecutor(max_workers=3) as pool:
+    claimed=list(pool.map(lambda _:adaptive_claim(),range(3)))
+active=[row for result in claimed for row in result]
+assert len(active)==2 and len({row['id'] for row in active})==2
+# Claimed queued work counts toward paid admission before provider submission.
+assert adaptive_claim()==[]
+section=active[0]
+sql('set role service_role; select id from adaptive_cancel_plan('+literal(section['user_id'])+'::uuid,'+literal(section['plan_id'])+'::uuid);')
+assert sql('set role service_role; select count(*) from adaptive_transition_section('+','.join([
+    literal(section['user_id'])+'::uuid',literal(section['id'])+'::uuid',literal(section['lease_token'])+'::uuid',str(section['version']),
+    "'submitting'",'null','null','null','null'])+');')=='0'
+assert sql('select status from adaptive_sections where id='+literal(section['id'])+'::uuid;')=='cancelled'
+print('PASS: adaptive independent-connection create deduplication, two claimed-queue admission slots, and cancellation/CAS.')

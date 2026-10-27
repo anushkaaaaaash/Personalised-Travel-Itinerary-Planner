@@ -76,10 +76,10 @@ const failure = (status, diagnostic = {}) => {
 };
 export async function generateItinerary(payload, options = {}) {
   const validation = validateTripPreferences(payload);
-  if (!validation.valid) throw new PlannerRequestError(failure(400));
-  if (!itineraryDates(validation.value).length) throw new PlannerRequestError(failure(400, { code: 'ITINERARY_DURATION_UNSUPPORTED' }));
+  if (!validation.valid) throw new PlannerRequestError(failure(400), { code: 'VALIDATION_ERROR' });
+  if (!itineraryDates(validation.value).length) throw new PlannerRequestError(failure(400, { code: 'ITINERARY_DURATION_UNSUPPORTED' }), { code: 'ITINERARY_DURATION_UNSUPPORTED' });
   const body = await requestJson('/itineraries/generate', { ...options, timeoutMs: options.timeoutMs ?? AI_REQUEST_TIMEOUT_MS, method: 'POST', payload: validation.value, failure });
-  if (!validItinerary(body, validation.value)) throw new PlannerRequestError(clientValidationFailure);
+  if (!validItinerary(body, validation.value)) throw new PlannerRequestError(clientValidationFailure, { code: 'AI_INVALID_RESPONSE', reason: 'FORMAT_SCHEMA' });
   return body;
 }
 
@@ -90,7 +90,7 @@ export async function refineItinerary({ preferences, previous, targetDate = null
     || ![null, 'relaxed', 'adventure', 'luxury', 'budget'].includes(vibe)
     || (targetDate !== null && !previous.days.some(d => d.date === targetDate))) throw new PlannerRequestError('Check your edited activities and enter feedback before regenerating.');
   const body = await requestJson('/itineraries/refine', { ...options, timeoutMs: options.timeoutMs ?? AI_REQUEST_TIMEOUT_MS, method: 'POST', payload: { preferences: validation.value, previous, targetDate, feedback, vibe, maxMainActivitiesPerDay }, failure });
-  if (!validItinerary(body, validation.value) || body.vibe !== vibe) throw new PlannerRequestError(clientValidationFailure);
+  if (!validItinerary(body, validation.value) || body.vibe !== vibe) throw new PlannerRequestError(clientValidationFailure, { code: 'AI_INVALID_RESPONSE', reason: 'FORMAT_SCHEMA' });
   if (!validRefinementSummary(body, { targetDate, maxMainActivitiesPerDay })) throw new PlannerRequestError('The returned activity limit or count summary could not be verified. Your previous plan is unchanged.');
   if (targetDate && previous.days.some(d => d.date !== targetDate && JSON.stringify(canonicalDay(d)) !== JSON.stringify(canonicalDay(body.days.find(n => n.date === d.date))))) throw new PlannerRequestError('The response changed another day. Your previous itinerary has been retained.');
   return body;
