@@ -52,7 +52,7 @@ class ItineraryDay(StrictModel):
     dietaryNotes: str = Field(min_length=1, max_length=500)
     mobilityNotes: str = Field(min_length=1, max_length=500)
     transitAndRest: str = Field(min_length=1, max_length=500)
-    mainActivityCount: int = Field(ge=1, le=4)
+    mainActivityCount: int = Field(ge=0, le=4)
     interestTags: list[str] = Field(max_length=8)
     costs: DayCosts
     activities: list[ItineraryActivity] = Field(min_length=1, max_length=8, description='At most 8 total chronological entries per day across ALL kinds combined, not 8 per kind. For a two-main-activity cap, include exactly two main entries at balanced pace and at most six supporting entries. Rest can be left as gaps described in transitAndRest; do not hide excursions in supporting entries.')
@@ -131,7 +131,13 @@ def check_text(value):
                 continue
             check_text(item)
 
-def validate_itinerary(raw, p, provider, model):
+def is_adaptive_travel_day(day_date, activities, eligible_dates):
+    """Explicit opt-in: original endpoint plus substantial transport, never a chunk edge."""
+    def field(a,key): return a[key] if isinstance(a,dict) else getattr(a,key)
+    return day_date in eligible_dates and sum(field(a,'durationMinutes') for a in activities if field(a,'kind')=='transfer')>=120
+
+
+def validate_itinerary(raw, p, provider, model, *, travel_day_dates=()):
     p = TripPreferences.model_validate(p.model_dump())
     count = (date.fromisoformat(p.endDate) - date.fromisoformat(p.startDate)).days + 1
     if count > MAX_DAYS:
@@ -163,7 +169,10 @@ def validate_itinerary(raw, p, provider, model):
             lo, hi = {'relaxed': (1,2), 'balanced': (2,3), 'fast': (3,4)}[p.travelPace]
             for day in parsed.days:
                 reason = 'PACE'
-                if not lo <= day.mainActivityCount <= hi or len(day.activities) < day.mainActivityCount:
+                minimum = 0 if is_adaptive_travel_day(day.date, day.activities, travel_day_dates) else lo
+                if not minimum <= day.mainActivityCount <= hi or len(day.activities) < day.mainActivityCount:
+                    raise ValueError()
+                if travel_day_dates and sum(a.kind=='main' for a in day.activities)!=day.mainActivityCount:
                     raise ValueError()
                 reason = 'PREFERENCE_MISMATCH'
                 if p.interests and not set(day.interestTags).intersection(p.interests):

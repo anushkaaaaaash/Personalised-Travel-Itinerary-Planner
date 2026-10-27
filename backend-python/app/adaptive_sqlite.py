@@ -18,7 +18,7 @@ from uuid import uuid4, UUID
 
 from .planning_repository import JobRepositoryError, identity
 from .section_repository import (_bounded_json, _cents, _limit, validate_checkpoint,
-    GLOBAL_STORAGE_BYTES, PLAN_STORAGE_BYTES)
+    GLOBAL_STORAGE_BYTES, PLAN_STORAGE_BYTES, proposed_constraint_retryable)
 
 _SCHEMA = """
 CREATE TABLE plans(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,request_id TEXT NOT NULL,
@@ -66,6 +66,7 @@ def _rollback(conn):
 
 class AdaptiveSQLiteGateway:
     elevated = True
+    supports_proposed_constraint_retry = True
 
     def __init__(self, path, *, enabled=False, initialize=False, clock=None):
         if enabled is not True: _error('SECTIONS_DISABLED',503)
@@ -210,7 +211,8 @@ class AdaptiveSQLiteGateway:
                 if prior[0]['retry_of']!=s['id'] or prior[0]['requested_days']!=a['section_days']:_error()
                 return prior
             if s['status']!='failed' or p['active_section']!=s['id'] or p['status'] not in ('active','paused') or not p['remaining_creates']:return []
-            if s['error_code'] in ('SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'):return []
+            if s['error_code']=='SECTION_BUDGET_EXHAUSTED':return []
+            if s['error_code']=='SECTION_CONSTRAINT_CONFLICT' and not proposed_constraint_retryable(s):return []
             p.update(status='active',pause_reason=None,active_section=None);self._save(c,'plans',p)
             rows=self._next(c,dict(owner=owner,plan=p['id'],request_id=a['request_id'],section_days=a['section_days']),now)
             if rows: rows[0]['retry_of']=s['id'];self._save(c,'sections',rows[0])

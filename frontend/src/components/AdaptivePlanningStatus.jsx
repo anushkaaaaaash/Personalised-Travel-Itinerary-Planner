@@ -1,5 +1,6 @@
 import DestinationLoading from './DestinationLoading.jsx';
 import { tripFailureRecovery } from '../utils/travelMessages.js';
+import { hasProposedConstraintDetails } from '../services/adaptivePlanning.js';
 
 const adviceSteps = {budget:1,travelPace:1,destination:0,departureCity:0,mobilityConcerns:1,dietaryNeeds:1};
 const money = (currency,value) => `${currency} ${(value/100).toLocaleString(undefined,{maximumFractionDigits:2})}`;
@@ -89,7 +90,8 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.cancelling?'Stopping planning…':'Your full date range will be planned in small sections.'} onCancel={busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
   const allowancePause=plan?.status==='paused' && (pauseReason==='RESOURCE_ALLOWANCE_REACHED' || (pauseReason==='SECTION_FAILED'&&plan.remainingCreates===0));
   const sharedStoragePause=plan?.status==='paused' && plan.pauseReason==='STORAGE_LIMIT' && plan.storagePauseScope==='global';
-  const canRetry=plan?.status==='paused' && plan.pauseReason==='SECTION_FAILED' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && !['SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'].includes(plan.activeSection.errorCode);
+  const proposedRetry=plan?.status==='paused' && pauseReason==='CONSTRAINT_CONFLICT' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && hasProposedConstraintDetails(plan.activeSection);
+  const canRetry=proposedRetry || plan?.status==='paused' && plan.pauseReason==='SECTION_FAILED' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && !['SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'].includes(plan.activeSection.errorCode);
   const canReview=needsBudgetEdit || plan?.status==='paused' && ['CONSTRAINT_CONFLICT','BUDGET_EXHAUSTED'].includes(pauseReason);
   const expired=plan?.status==='expired';
   const currency=state.preferences?.currency || 'USD';
@@ -103,19 +105,20 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   else if(plan?.status==='paused'){title=recovery.title;message=recovery.message;}
   return <section className="adaptive-planning" aria-label="Section-by-section trip planning">
     <article className="card adaptive-progress"><p className="eyebrow">{state.preferences?.destination || destination || 'Your trip'}</p><h2>{state.cancelling?'Stopping planning…':title}</h2>
-      <p role="status">{message}</p>
+      <p role="status">{plan?.status==='paused'&&'Planning is paused. '}{message}</p>
       {state.preferences&&<p className="hint">Your full trip · <time dateTime={state.preferences.startDate}>{state.preferences.startDate}</time> to <time dateTime={state.preferences.endDate}>{state.preferences.endDate}</time></p>}
       {plan?.pauseReason==='STORAGE_LIMIT'&&Number.isFinite(Date.parse(plan.expiresAt))&&<p className="hint">Completed sections remain available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</p>}
       {!expired&&Number.isSafeInteger(plan?.totalDays)&&plan.totalDays>0&&<div className="adaptive-progress__count"><strong>{plan.completedDays} of {plan.totalDays} days planned</strong><progress aria-label="Days with completed plans" max={plan.totalDays} value={plan.completedDays}/><p className="hint">Only completed sections count toward this total—not time spent waiting.</p></div>}
       {!expired&&Number.isSafeInteger(plan?.spentCents)&&<p className="hint">Completed-section estimates: {money(currency,plan.spentCents)} of your {money(currency,plan.totalBudgetCents)} total group budget.{plan.completedDays<plan.totalDays&&' Unplanned days still need a budget allocation.'}</p>}
       {canReview&&recovery.proposed&&<p className="hint">These are planning suggestions to review, not verified prices, availability or travel restrictions.</p>}
       {canReview&&recovery.recommendations.length>0&&<ul className="recovery-recommendations">{recovery.recommendations.map((item,index)=><li key={`${item.field}-${index}`}><strong>{item.suggestion}</strong>{item.reason&&<p>{item.reason}</p>}</li>)}</ul>}
+      {!uncertain&&proposedRetry&&<p className="hint">Retry this section without changing your preferences. Your completed days are kept; this uses one request from the current allowance.</p>}
       <div className="step-actions">
         {uncertain&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
         {!uncertain&&allowancePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Continue planning</button>}
         {!uncertain&&sharedStoragePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Check capacity and continue</button>}
-        {!uncertain&&canRetry&&onRetry&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onRetry}>Try this section again</button>}
-        {!uncertain&&canReview&&onEditPreferences&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={()=>onEditPreferences(recovery)}>{needsBudgetEdit?'Review budget format':'Stop planning and review changes'}</button>}
+        {!uncertain&&canRetry&&onRetry&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onRetry}>{proposedRetry?'Retry remaining section':'Try this section again'}</button>}
+        {!uncertain&&canReview&&onEditPreferences&&<button className={proposedRetry?'preview-btn':'generate-btn'} disabled={busy||state.cancelRequested} onClick={()=>onEditPreferences(recovery)}>{needsBudgetEdit?'Review budget format':'Stop planning and review changes'}</button>}
         {hasSession&&!terminal(plan?.status)&&onCancel&&<button className="preview-btn" disabled={state.cancelling||state.cancelRequested} onClick={onCancel}>Stop planning</button>}
         {(terminal(plan?.status)||!hasSession)&&onNewPlan&&<button className="preview-btn" disabled={busy} onClick={onNewPlan}>Back to trip details</button>}
       </div>

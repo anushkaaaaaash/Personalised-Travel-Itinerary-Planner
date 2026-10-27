@@ -125,7 +125,9 @@ class AdaptiveCoordinator:
     async def retry(self, owner, plan_id, section_id, request_id):
         await self.verify_ready()
         section = await self.repository.get_section(owner,section_id)
-        if section['plan_id'] != plan_id or section['status'] != 'failed' or section.get('error_code') in {'SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'}:
+        from .section_repository import proposed_constraint_retryable
+        proposed_retry = (getattr(getattr(self.repository,'gateway',None),'supports_proposed_constraint_retry',False) is True and proposed_constraint_retryable(section))
+        if section['plan_id'] != plan_id or section['status'] != 'failed' or section.get('error_code')=='SECTION_BUDGET_EXHAUSTED' or (section.get('error_code')=='SECTION_CONSTRAINT_CONFLICT' and not proposed_retry):
             raise JobRepositoryError('SECTION_RETRY_NOT_ALLOWED',409)
         days = (date.fromisoformat(section['end_date'])-date.fromisoformat(section['start_date'])).days+1
         # An explicit retry of an oversized/invalid result gets less work, never

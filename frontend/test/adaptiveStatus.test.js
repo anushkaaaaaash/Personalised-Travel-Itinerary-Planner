@@ -33,11 +33,13 @@ test('allowance continuation and retry are explicit; unknown or unconfirmed canc
     const render=async value=>act(async()=>{if(renderer)renderer.update(React.createElement(Status,{state:value,...actions,onContinue:()=>continues++,onCheck:()=>checks++}));else renderer=create(React.createElement(Status,{state:value,...actions,onContinue:()=>continues++,onCheck:()=>checks++}));});
     const buttons=()=>renderer.root.findAllByType('button');
     await render(state({plan:plan({status:'paused',pauseReason:'RESOURCE_ALLOWANCE_REACHED',remainingCreates:0})}));
+    assert.match(JSON.stringify(renderer.toJSON()),/Planning is paused/);
     assert.equal(continues,0);const next=buttons().find(node=>node.children.join('')==='Continue planning');assert.ok(next);
     await act(async()=>next.props.onClick());assert.equal(continues,1);
     await render(state({needsCheck:true,cancelRequested:true,cancelUnconfirmed:true,plan:plan({status:'paused',pauseReason:'SUBMISSION_UNKNOWN',activeSection:{status:'submission_unknown',errorCode:null}})}));
     assert.equal(buttons().some(node=>/Continue planning|Try this section/.test(node.children.join(''))),false);
     const check=buttons().find(node=>node.children.join('')==='Check planning status');assert.equal(Boolean(check.props.disabled),false);await act(async()=>check.props.onClick());assert.equal(checks,1);assert.equal(continues,1);
+    await render(state({plan:plan({status:'active'})}));assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/Planning is paused/);
   }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
 });
 
@@ -152,6 +154,21 @@ test('retained-plan downloads disclose partial scope and expiry without claiming
     await act(async()=>renderer.update(React.createElement(Status,{...props,exportError:'The download was interrupted. No file was saved.'})));assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/No file was saved/);
     for(const [status,completedDays,expected] of [['completed',24,true],['expired',3,false],['active',0,false]]){
       const html=renderToStaticMarkup(React.createElement(Status,{...props,state:state({plan:plan({status,completedDays})})}));assert.equal(html.includes('Download retained plan (.txt)'),expected);if(expected)assert.match(html,/Full-date snapshot/);
+    }
+  }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
+});
+
+test('proposed constraints permit one explicit remaining-section retry, never unknown or exhausted cases',async()=>{
+  const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});let renderer;
+  try{
+    const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');let retries=0;
+    const failed=plan({status:'paused',completedDays:6,totalDays:9,pauseReason:'SECTION_FAILED',remainingCreates:1,activeSection:{status:'failed',errorCode:'SECTION_CONSTRAINT_CONFLICT',failureDetails:{applicability:'proposed',explanation:'Review this travel day.',recommendations:[{field:'travelPace',reason:'Time is needed for travel.',suggestion:'Consider allowing fewer activities.'}]}}});
+    await act(async()=>{renderer=create(React.createElement(Status,{state:state({plan:failed}),...actions,onRetry:()=>retries++}));});
+    assert.equal(retries,0);assert.match(JSON.stringify(renderer.toJSON()),/completed days are kept; this uses one request/);
+    await act(async()=>renderer.root.findAllByType('button').find(node=>node.children.join('')==='Retry remaining section').props.onClick());assert.equal(retries,1);
+    assert.ok(renderer.root.findAllByType('button').some(node=>node.children.join('')==='Stop planning and review changes'));
+    for(const patch of [{needsCheck:true},{plan:{...failed,remainingCreates:0}},{plan:{...failed,activeSection:{...failed.activeSection,status:'submission_unknown'}}},{plan:{...failed,activeSection:{...failed.activeSection,failureDetails:null}}},{plan:{...failed,activeSection:{...failed.activeSection,failureDetails:{applicability:'proposed'}}}},{plan:{...failed,activeSection:{...failed.activeSection,errorCode:'SECTION_BUDGET_EXHAUSTED'}}}]){
+      const html=renderToStaticMarkup(React.createElement(Status,{state:state({plan:failed,...patch}),...actions}));assert.doesNotMatch(html,/Retry remaining section/);
     }
   }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
 });

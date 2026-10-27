@@ -6,7 +6,7 @@ const sectionId=sequence=>`52345678-1234-1234-1234-${String(sequence).padStart(1
 const dateAt=(start,offset)=>new Date(Date.parse(`${start}T00:00:00Z`)+offset*86400000).toISOString().slice(0,10);
 
 export function createAdaptiveFixture() {
-  const fixture={phase:'active',preferences:null,requestId:null,requests:[],pendingCancel:null};
+  const fixture={phase:'active',preferences:null,requestId:null,requests:[],pendingCancel:null,finalTravelDay:false};
   fixture.snapshot=()=>{
     const p=fixture.preferences;
     const totalDays=(Date.parse(p.endDate)-Date.parse(p.startDate))/86400000+1;
@@ -15,6 +15,10 @@ export function createAdaptiveFixture() {
       const days=Math.min(3,completedDays-index*3),sequence=index+1,startDate=dateAt(p.startDate,index*3),endDate=dateAt(startDate,days-1);
       const result=itinerary();result.destination=p.destination;result.currency=p.currency;result.travelPace=p.travelPace;result.travelStyle=p.travelStyle;result.provider='openai';result.model='gpt-6-luna';
       result.days=Array.from({length:days},(_,day)=>({...structuredClone(result.days[0]),date:dateAt(startDate,day)}));
+      if(fixture.finalTravelDay)for(const day of result.days){
+        if(day.date===p.endDate){day.mainActivityCount=0;day.activities=[{...day.activities[0],id:'return-transfer',title:'Return journey',kind:'transfer',durationMinutes:120}];day.morning='Return travel';day.afternoon='Arrival and rest';day.evening='Rest at home';}
+        else{day.activities.push({...day.activities[0],id:'c',title:'Local experience',startTime:'14:00'});day.mainActivityCount=3;}
+      }
       result.estimatedTotalGroupCost=days*150;result.remainingBudget=p.budget-days*150;result.explanation='A synthetic section with space for activities, transfers and rest.';
       return {id:sectionId(sequence),sequence,startDate,endDate,checkpoint:{itinerary:result,startLocation:sequence===1?p.departureCity:p.destination,endLocation:endDate===p.endDate?p.departureCity:p.destination,spentCents:days*15000,journeyStrategy:{summary:'A synthetic single-destination trip for interface checks.',stays:[{startDate:p.startDate,endDate:p.endDate,location:p.destination}]},provenance:{provider:'openai',model:'gpt-6-luna',validationVersion:'adaptive-section-v1'}}};
     });
@@ -63,6 +67,7 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
     findings.adaptiveExports.push(width);
     await page.getByRole('button',{name:'Continue planning',exact:true}).click();
     await page.getByRole('heading',{name:'Suggestions for this part of your trip.'}).waitFor();
+    await page.getByRole('button',{name:'Retry remaining section',exact:true}).waitFor();assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,2);
     await noOverflow(page,`adaptive-suggestions-${width}`);await snapshot(page,`adaptive-suggestions-${width}`);
     await page.getByRole('button',{name:'Stop planning and review changes',exact:true}).click();
     await page.getByRole('heading',{name:'Stopping planning…'}).waitFor();assert.equal(await page.locator('select[name=travelPace]').count(),0);
@@ -85,11 +90,12 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
   assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);
   await settleTheme(page,'FR');await noOverflow(page,'adaptive-uncertain-390');await snapshot(page,'adaptive-uncertain-390');
   findings.adaptiveUncertainty=true;await context.close();
-  const complete=createAdaptiveFixture();complete.phase='completed';const final=await newPage({width:390,production:true,adaptive:complete});
+  const complete=createAdaptiveFixture();complete.phase='completed';complete.finalTravelDay=true;const final=await newPage({width:390,production:true,adaptive:complete});
   await final.page.goto(origin);await final.page.locator('input[type=email]').fill('traveler@example.test');await final.page.locator('input[type=password]').fill('synthetic-test-only');await final.page.getByRole('button',{name:'Sign in',exact:true}).click();
   await final.page.locator('input[name=destination]').fill('France');await final.page.locator('input[name=departureCity]').fill('Mumbai');await final.page.locator('input[name=startDate]').fill('2028-01-01');await final.page.locator('input[name=endDate]').fill('2028-01-03');
-  await final.page.getByRole('button',{name:/Next:/}).click();await final.page.getByRole('button',{name:/Next:/}).click();await final.page.getByRole('button',{name:'Build my trip →',exact:true}).click();
+  await final.page.getByRole('button',{name:/Next:/}).click();await final.page.locator('select[name=travelPace]').selectOption('fast');await final.page.getByRole('button',{name:/Next:/}).click();await final.page.getByRole('button',{name:'Build my trip →',exact:true}).click();
   await final.page.getByRole('heading',{name:'Your full date range is planned.'}).waitFor();await final.page.getByText('Full-date snapshot.',{exact:true}).waitFor();await settleTheme(final.page,'FR');
+  const travelDay=final.page.locator('.adaptive-day').last();await travelDay.locator('summary').click();await travelDay.getByText('Return journey',{exact:true}).waitFor();assert.match(await travelDay.locator('summary').innerText(),/0 main activities/);findings.adaptiveTravelDay=true;
   await noOverflow(final.page,'adaptive-complete-export-390');await snapshot(final.page,'adaptive-complete-export-390');
   const downloaded=final.page.waitForEvent('download');await final.page.getByRole('button',{name:'Download retained plan (.txt)',exact:true}).click();const download=await downloaded;
   assert.equal(download.suggestedFilename(),`roamora-retained-plan-${id}.txt`);assert.equal(await download.failure(),null);const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=Buffer.concat(chunks).toString('utf8');

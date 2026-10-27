@@ -51,7 +51,7 @@ def _limit(value, maximum):
 
 def validate_checkpoint(checkpoint, section):
     """Defense-in-depth after domain validation; never repair/truncate output."""
-    from .itineraries import ItineraryResponse
+    from .itineraries import ItineraryResponse, is_adaptive_travel_day
     try:
         if type(checkpoint) is not dict or set(checkpoint) != {'itinerary','startLocation','endLocation','spentCents','provenance','journeyStrategy'}:
             raise ValueError()
@@ -69,6 +69,11 @@ def validate_checkpoint(checkpoint, section):
             if type(stay['location']) is not str or not 1<=len(stay['location'].strip())<=200 or stay['location']!=stay['location'].strip(): raise ValueError()
             prior_end=stay_end
         response = ItineraryResponse.model_validate(checkpoint['itinerary'])
+        eligible={strategy['stays'][0]['startDate'],strategy['stays'][-1]['endDate']}
+        lo,hi={'relaxed':(1,2),'balanced':(2,3),'fast':(3,4)}[response.travelPace]
+        for day in response.days:
+            minimum=0 if is_adaptive_travel_day(day.date,day.activities,eligible) else lo
+            if not minimum<=day.mainActivityCount<=hi or sum(a.kind=='main' for a in day.activities)!=day.mainActivityCount: raise ValueError()
         if response.provider!='openai' or response.model!='gpt-6-luna' or response.vibe is not None or response.refinementSummary is not None: raise ValueError()
         start, end = date.fromisoformat(section['start_date']), date.fromisoformat(section['end_date'])
         dates = [(start + timedelta(days=i)).isoformat() for i in range((end-start).days+1)]
@@ -89,6 +94,24 @@ def validate_checkpoint(checkpoint, section):
         return checkpoint
     except Exception:
         raise JobRepositoryError('SECTION_CHECKPOINT_INVALID', 400) from None
+
+
+def proposed_constraint_retryable(section):
+    """A recorded model proposal, not a verified impossibility or unknown create."""
+    try:
+        from .adaptive_planning import RECOMMENDATION_FIELDS
+        from .models import CONTROL
+        d=section.get('failure_details')
+        if section.get('status')!='failed' or section.get('error_code')!='SECTION_CONSTRAINT_CONFLICT': return False
+        if type(d) is not dict or set(d)!={'applicability','explanation','recommendations'} or d['applicability']!='proposed': return False
+        if type(d['explanation']) is not str or not d['explanation'].strip() or not 1<=len(d['explanation'])<=500 or CONTROL.search(d['explanation']): return False
+        if type(d['recommendations']) is not list or not 1<=len(d['recommendations'])<=3: return False
+        for item in d['recommendations']:
+            if type(item) is not dict or set(item)!={'field','reason','suggestion'} or any(type(v) is not str or not v.strip() or not 1<=len(v)<=500 or CONTROL.search(v) for v in item.values()): return False
+            if item['field'] not in RECOMMENDATION_FIELDS: return False
+        _bounded_json(d,8192)
+        return True
+    except Exception: return False
 
 
 class SectionCheckpointRepository:

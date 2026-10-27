@@ -4,6 +4,8 @@ import React from 'react';
 import {act,create} from 'react-test-renderer';
 import {createServer} from 'vite';
 import {fileURLToPath} from 'node:url';
+import {travelPage,travelPreferences} from './adaptiveTravelDayFixture.js';
+import {createAdaptivePlanningClient} from '../src/services/adaptivePlanning.js';
 import {preferences} from './shareFixture.js';
 const id='11111111-1111-4111-8111-111111111111',requestId='22222222-2222-4222-8222-222222222222';
 const prefs={...preferences,startDate:'2028-01-01',endDate:'2028-12-31'};
@@ -17,7 +19,7 @@ async function harness(run){
     const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');
     const values=new Map(),storage={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
     setSession({user:{id:'test-owner'},access_token:'TEST_ONLY_TOKEN',expires_at:Date.now()/1000+3600});
-    const env={mount:async(client,enabled=true)=>act(async()=>{renderer=create(React.createElement(Page,{signedIn:true,adaptiveEnabled:enabled,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12},adaptiveClient:client,adaptiveStorage:storage,adaptivePollMs:10000}));}),text:()=>JSON.stringify(renderer.toJSON()),form:()=>renderer.root.findByType(Form).props,status:()=>renderer.root.findByType(Status).props,prepare:async()=>{await act(async()=>{for(const name of ['destination','departureCity','startDate','endDate','budget','currency','travelers'])env.form().onChange({target:{name,value:prefs[name]}});});await act(async()=>env.form().onSubmit({preventDefault(){}}));await act(async()=>env.form().onSubmit({preventDefault(){}}));}};
+    const env={mount:async(client,enabled=true)=>act(async()=>{renderer=create(React.createElement(Page,{signedIn:true,adaptiveEnabled:enabled,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12},adaptiveClient:client,adaptiveStorage:storage,adaptivePollMs:10000}));}),text:()=>JSON.stringify(renderer.toJSON()),form:()=>renderer.root.findByType(Form).props,status:()=>renderer.root.findByType(Status).props,prepare:async(selected=prefs)=>{await act(async()=>{for(const name of ['destination','departureCity','startDate','endDate','budget','currency','travelers'])env.form().onChange({target:{name,value:selected[name]}});});await act(async()=>env.form().onSubmit({preventDefault(){}}));await act(async()=>env.form().onSubmit({preventDefault(){}}));}};
     await run(env);
   }finally{if(renderer)await act(async()=>renderer.unmount());setSession(null);await server.close();}
 }
@@ -38,4 +40,19 @@ test('review recommendations waits for confirmed cancellation and preserves orig
 test('unconfirmed stop does not navigate to editable preferences or start replacement work',()=>harness(async env=>{
   let starts=0;await env.mount({start:async()=>{starts++;return page();},cancel:async()=>{throw Error('network');}});await env.prepare();await act(async()=>env.form().onGenerateItinerary());
   await act(async()=>env.status().onEditPreferences({editStep:1,recommendations:[]}));assert.equal(env.status().state.needsCheck,true);assert.equal(starts,1);
+}));
+test('validated zero-main international return day renders as completed without demanding extra visits',()=>harness(async env=>{
+ const client=createAdaptivePlanningClient({fetchImpl:async(_,options)=>{const body=travelPage();body.plan.requestId=JSON.parse(options.body).requestId;return{status:200,json:async()=>body};}});
+ await env.mount(client);await env.prepare(travelPreferences);await act(async()=>env.form().onGenerateItinerary());assert.equal(env.status().state.plan.status,'completed');assert.equal(env.status().state.sections[0].checkpoint.itinerary.days[2].mainActivityCount,0);assert.match(env.text(),/Return journey/);assert.equal(env.status().state.needsCheck,false);
+}));
+test('ordinary zero-main day is rejected before a checkpoint reaches mounted results',()=>harness(async env=>{
+ const client=createAdaptivePlanningClient({fetchImpl:async(_,options)=>{const body=travelPage();body.plan.requestId=JSON.parse(options.body).requestId;const days=body.sections[0].checkpoint.itinerary.days;days[1].activities=structuredClone(days[2].activities);days[1].mainActivityCount=0;return{status:200,json:async()=>body};}});
+ await env.mount(client);await env.prepare(travelPreferences);await act(async()=>env.form().onGenerateItinerary());assert.equal(env.status().state.needsCheck,true);assert.deepEqual(env.status().state.sections,[]);assert.doesNotMatch(env.text(),/Your full date range is planned/);
+}));
+test('explicit remaining-section retry keeps six accepted days and duplicate clicks make one request',()=>harness(async env=>{
+ const paused=travelPage();paused.plan={...paused.plan,status:'paused',completedDays:6,remainingCreates:9,spentCents:90000,pauseReason:'CONSTRAINT_CONFLICT',activeSection:{id:'44444444-4444-4444-8444-444444444444',status:'failed',errorCode:'SECTION_CONSTRAINT_CONFLICT',failureDetails:{applicability:'proposed',explanation:'The proposed last section needs a travel-day review.',recommendations:[{field:'travelPace',reason:'Return travel takes time.',suggestion:'Review visits on the return day.'}]}}};
+ const template=structuredClone(paused.sections[0]);paused.sections=[0,1].map(index=>{const section=structuredClone(template);section.id=index?'55555555-5555-4555-8555-555555555555':template.id;section.sequence=index+1;section.startDate=`2028-01-0${index*3+1}`;section.endDate=`2028-01-0${index*3+3}`;section.checkpoint.endLocation='Kyoto';section.checkpoint.itinerary.days=[0,1,2].map(offset=>({...structuredClone(template.checkpoint.itinerary.days[0]),date:`2028-01-0${index*3+offset+1}`}));section.checkpoint.itinerary.remainingBudget=2050-index*450;return section;});
+ const calls=[];let resolveRetry;const client=createAdaptivePlanningClient({fetchImpl:async(url,options)=>{calls.push(url);if(url==='/api/adaptive-plans'){paused.plan.requestId=JSON.parse(options.body).requestId;return{status:200,json:async()=>structuredClone(paused)};}assert.equal(url,`/api/adaptive-plans/${paused.plan.id}/retry`);assert.equal(JSON.parse(options.body).sectionId,paused.plan.activeSection.id);return new Promise(resolve=>{resolveRetry=resolve;});}});
+ await env.mount(client);await env.prepare(travelPreferences);await act(async()=>env.form().onGenerateItinerary());const before=structuredClone(env.status().state.sections);await act(async()=>{env.status().onRetry();env.status().onRetry();});assert.equal(calls.length,2);assert.equal(env.status().state.plan.completedDays,6);assert.deepEqual(env.status().state.sections,before);
+ const continued=structuredClone(paused);continued.plan={...continued.plan,status:'active',pauseReason:null,remainingCreates:8,activeSection:{id:paused.plan.activeSection.id,status:'queued',errorCode:null,failureDetails:null}};await act(async()=>resolveRetry({status:200,json:async()=>continued}));assert.equal(env.status().state.plan.id,paused.plan.id);assert.equal(env.status().state.plan.completedDays,6);assert.deepEqual(env.status().state.sections,before);assert.equal(calls.length,2);
 }));

@@ -7,7 +7,8 @@ def test_sqlite_rollout_is_explicit_staged_and_no_ssh_or_new_credentials():
     assert 'options: [stage, initialize, activate]' in workflow
     assert workflow.index('--preflight-store')<workflow.index('--env ADAPTIVE_PLANNING_ENABLED=true')
     assert workflow.index('--verify\n')<workflow.index('Deploy one Machine with explicit processing state')
-    assert '--verify-attached' in workflow and '--initialize-store' in workflow
+    assert '--verify-after-deploy' in workflow and '--initialize-store' in workflow
+    assert workflow.index('--check-quiescence') < workflow.index('Deploy one Machine with explicit processing state')
     assert '--ha=false --strategy immediate' in workflow
     assert 'fly ssh' not in workflow and 'secrets set' not in workflow
     assert 'persist-credentials: false' in workflow and 'contents: read' in workflow
