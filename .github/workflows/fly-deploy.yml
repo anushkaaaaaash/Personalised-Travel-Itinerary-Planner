@@ -1,0 +1,86 @@
+name: Deploy Fly backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'Full SHA of reviewed main commit to deploy'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fly-travel-planner-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Verify selected commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          case "$EXPECTED_SHA" in
+            *[!0-9a-f]*|'') echo 'Expected SHA must be lowercase hexadecimal.' >&2; exit 1 ;;
+          esac
+          test "${#EXPECTED_SHA}" -eq 40
+          test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+      - name: Check out reviewed commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify approved Fly configuration
+        run: |
+          python3 - <<'PYCODE'
+          import tomllib
+          with open("fly.toml", "rb") as f:
+              config = tomllib.load(f)
+          assert config["app"] == "personalised-travel-itinerary-planner"
+          assert config["primary_region"] == "sin"
+          assert config["build"]["dockerfile"] == "Dockerfile"
+          assert config["vm"] == [{"size": "shared-cpu-1x", "memory": "512mb"}]
+          assert config["http_service"]["internal_port"] == 8080
+          assert config["http_service"]["auto_stop_machines"] == "off"
+          assert config["env"]["PLANNING_JOBS_ENABLED"] == "false"
+          PYCODE
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        with:
+          version: '0.4.123'
+      - name: Check current Machine count
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, subprocess, sys
+          result = subprocess.run(
+              ["flyctl", "machine", "list", "--app", "personalised-travel-itinerary-planner", "--json"],
+              capture_output=True, text=True, timeout=60,
+          )
+          if result.returncode != 0:
+              sys.exit("Could not verify Machine count; deployment stopped.")
+          try:
+              machines = json.loads(result.stdout)
+          except (ValueError, TypeError):
+              sys.exit("Machine count response was not valid JSON; deployment stopped.")
+          if not isinstance(machines, list) or len(machines) > 1:
+              sys.exit("Machine count is not 0 or 1; deployment stopped.")
+          if any(not isinstance(machine, dict) or machine.get("region") != "sin" for machine in machines):
+              sys.exit("Existing Machine region is not verified as Singapore; deployment stopped.")
+          print("Existing Machine count:", len(machines))
+          PYCODE
+      - name: Deploy one Machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -eu
+          test -n "$FLY_API_TOKEN"
+          flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --yes
