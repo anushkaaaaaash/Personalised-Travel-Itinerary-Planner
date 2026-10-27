@@ -28,7 +28,7 @@ MAX_STREAM_EVENTS = 20000
 MAX_STREAM_TEXT_BYTES = 131072
 MAX_SEQUENCE = 2**53 - 1
 _STREAM_ERRORS = frozenset({'STREAM_HTTP_FAILED','STREAM_INVALID_RESPONSE','STREAM_INTERRUPTED',
-                            'STREAM_TIMEOUT','STREAM_TRANSPORT_FAILED'})
+                            'STREAM_TIMEOUT','STREAM_TRANSPORT_FAILED','STREAM_FINAL_ONLY'})
 _TERMINAL = {'response.completed': 'completed', 'response.failed': 'failed',
              'response.incomplete': 'incomplete', 'response.cancelled': 'cancelled'}
 
@@ -200,6 +200,11 @@ class OpenAIOutputStreamClient(OpenAIBackgroundClient):
                             rid = candidate
                         if rid is None:
                             raise ValueError()
+                        item = event.get('item')
+                        if kind in {'response.output_item.added','response.output_item.done'} and type(item) is dict and item.get('type')=='message' and item.get('phase')=='commentary':
+                            # Commentary is not the strict final JSON proposal. Keep
+                            # the known response for authoritative final retrieval.
+                            raise fail('STREAM_FINAL_ONLY')
                         if seq <= starting_after:
                             continue  # Already durably committed before this connection.
                         if seq <= last:

@@ -208,3 +208,19 @@ def test_same_connection_duplicate_is_not_silently_skipped_as_durable():
 def test_resume_old_cursor_event_still_cannot_switch_response_identity():
     with pytest.raises(OutputStreamError):
         asyncio.run(collect(provider(lambda _:reply(wire(created(2,'resp_wrong'),terminal(6)))).resume_stream(RID,starting_after=4)))
+
+
+@pytest.mark.parametrize('kind',['response.output_item.added','response.output_item.done'])
+def test_explicit_commentary_switches_to_known_id_retrieval_without_emitting_text(kind,caplog):
+    requests=[];values=[]
+    def handler(request):
+        requests.append(request)
+        return reply(wire(created(),event(kind,1,item={'type':'message','phase':'commentary','content':[{'type':'output_text','text':'PRIVATE_COMMENTARY'}]}),delta(2,'PRIVATE_COMMENTARY'),terminal(3)))
+    async def consume():
+        async for value in provider(handler).create_stream('system','user',SCHEMA):values.append(value)
+    with pytest.raises(OutputStreamError) as caught:asyncio.run(consume())
+    assert caught.value.code=='STREAM_FINAL_ONLY' and caught.value.response_id==RID
+    assert caught.value.ambiguous_create is False and caught.value.last_sequence==0
+    assert [v.kind for v in values]==['created'] and len(requests)==1
+    assert 'PRIVATE_COMMENTARY' not in repr(values)+str(caught.value)+caplog.text
+    assert caught.value.safe_metadata()['code']=='STREAM_FINAL_ONLY'

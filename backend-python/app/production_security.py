@@ -35,7 +35,7 @@ class ProductionAccess:
         bucket.append(now);return True
 
     async def __call__(self,scope,receive,send):
-        from .auth import bearer,AuthError,auth_error
+        from .auth import bearer,AuthError,auth_error,verified_request_user
         try:host,allowed_origins=settings(self.auth)
         except ValueError:
             return await denied(503,'PUBLIC_DEPLOYMENT_DISABLED','Production setup has not been verified.')(scope,receive,send)
@@ -54,7 +54,7 @@ class ProductionAccess:
         from .frontend_static import public_frontend_request
         if path not in PUBLIC_PATHS and not public_frontend_request(scope):
             try:
-                token=bearer(scope);user=await self.auth.verify(token)
+                token=bearer(scope);user=await verified_request_user(self.auth,scope)
                 scope.setdefault('state',{}).update(auth_user_id=str(user.id),access_token=token)
             except AuthError as exc:return await auth_error(exc)(scope,receive,send)
         ai=path in AI_PATHS

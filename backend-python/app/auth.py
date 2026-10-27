@@ -188,6 +188,21 @@ def bearer(scope):
     return token
 
 
+# This capability exists only inside one ASGI request. It is not a token cache;
+# headers, request bodies and request.state user IDs cannot populate this key.
+_VERIFIED_REQUEST_USER = object()
+
+async def verified_request_user(service, scope):
+    token = bearer(scope)  # Always enforce the same single-header syntax.
+    record = scope.get(_VERIFIED_REQUEST_USER)
+    if (type(record) is tuple and len(record) == 4 and record[0] is scope
+            and record[1] is service and record[2] == token):
+        return record[3]
+    user = await service.verify(token)
+    scope[_VERIFIED_REQUEST_USER] = (scope, service, token, user)
+    return user
+
+
 class AccessBoundary:
     """Local legacy mode OR explicitly verified owner-scoped production. Default deny."""
     def __init__(self, app, auth_service, ownership_supported=False):
@@ -215,7 +230,7 @@ class AccessBoundary:
         if scope['path'] not in {'/api/health', '/api/auth/config', '/api/auth/register', '/api/auth/login'}:
             try:
                 token = bearer(scope)
-                user = await self.auth_service.verify(token)
+                user = await verified_request_user(self.auth_service, scope)
                 scope.setdefault('state', {}).update(auth_user_id=str(user.id), access_token=token)
             except AuthError as exc:
                 return await auth_error(exc)(scope, receive, send)
