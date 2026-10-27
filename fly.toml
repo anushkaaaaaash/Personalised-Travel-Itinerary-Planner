@@ -1,0 +1,46 @@
+# Approved deployment candidate; proposed app availability is checked at creation.
+# Never add secrets here. Keep background disabled pending scoped-storage proof.
+app = "personalised-travel-itinerary-planner"
+primary_region = "sin"
+kill_signal = "SIGTERM"
+kill_timeout = "45s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_MODE = "production"
+  APP_ENV = "production"
+  PORT = "8080"
+  AI_PROVIDER = "openai"
+  OPENAI_MODEL = "gpt-6-luna"
+  OPENAI_REASONING_EFFORT = "max"
+  API_HOST = "personalised-travel-itinerary-planner.fly.dev"
+  FRONTEND_ORIGIN = "https://personalised-travel-itinerary-plann.vercel.app"
+  SAVED_ITINERARIES_SCHEMA_VERIFIED = "false"
+  TRIP_OWNERSHIP_ENABLED = "false"
+  TRIP_OWNERSHIP_SCHEMA_VERIFIED = "false"
+  PLANNING_JOBS_ENABLED = "false"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Approved always-on worker availability; one Machine, not HA.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/health"
+    [http_service.checks.headers]
+      Host = "personalised-travel-itinerary-planner.fly.dev"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
