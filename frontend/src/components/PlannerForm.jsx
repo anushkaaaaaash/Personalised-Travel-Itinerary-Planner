@@ -1,23 +1,30 @@
 import { useTheme } from '../themes/DestinationTheme.jsx';
 import { useEffect, useRef } from 'react';
 import { PLANNER_STEPS, FINAL_STEP } from '../utils/plannerSteps.js';
-import { CURRENCIES, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
+import { CURRENCIES, INTEREST_OPTIONS, isRealIsoDate } from '../../../shared/tripPreferences.mjs';
 
-function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {} }) {
+function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {}, recovery = null, onDismissRecovery, adaptiveEnabled = false, adaptivePolicy = null }) {
   const { theme, countries } = useTheme();
   const headingRef = useRef(null);
+  const recoveryRef = useRef(null);
   const previousStep = useRef(step);
+  const policy = adaptivePolicy?.sectionDays === 3 && Number.isSafeInteger(adaptivePolicy.maxSubmissionsPerRun) && adaptivePolicy.maxSubmissionsPerRun >= 1 && adaptivePolicy.maxSubmissionsPerRun <= 12 ? adaptivePolicy : null;
+  const totalDays = isRealIsoDate(form.startDate) && isRealIsoDate(form.endDate) && form.endDate >= form.startDate ? (Date.parse(`${form.endDate}T00:00:00Z`) - Date.parse(`${form.startDate}T00:00:00Z`)) / 86400000 + 1 : null;
   useEffect(() => {
     if (previousStep.current !== step) {
       headingRef.current?.focus();
       previousStep.current = step;
     }
   }, [step]);
+  useEffect(() => { if (recovery) recoveryRef.current?.focus(); }, [recovery]);
+  const recommendationsFor = name => recovery?.recommendations?.filter(item => item.field === name) || [];
+  const suggestionFor = name => recommendationsFor(name).some(item=>item.suggestion);
   const feedback = (name, hint) => ({
-    'aria-invalid': Boolean(errors[name]),
-    'aria-describedby': [errors[name] ? `${name}-error` : '', hint].filter(Boolean).join(' ') || undefined,
+    'aria-invalid': Boolean(errors[name] || (['VALIDATION_ERROR','SECTION_MONEY_INVALID'].includes(recovery?.code) && suggestionFor(name))),
+    'data-recommended': Boolean(suggestionFor(name)) || undefined,
+    'aria-describedby': [errors[name] ? `${name}-error` : '', suggestionFor(name) ? `${name}-recovery` : '', hint].filter(Boolean).join(' ') || undefined,
   });
-  const errorFor = (name) => errors[name] ? <span className="field-error" id={`${name}-error`}>{errors[name]}</span> : null;
+  const errorFor = name => <>{errors[name] && <span className="field-error" id={`${name}-error`}>{errors[name]}</span>}{suggestionFor(name) && <small className="field-recommendation" id={`${name}-recovery`}>{recommendationsFor(name).map((item,index)=><span className="field-recommendation__item" key={index}><strong>Suggested adjustment: </strong>{item.suggestion}{item.reason&&<><br/><strong>Why: </strong>{item.reason}</>}</span>)}</small>}</>;
 
   return (
     <form className="card planner-form" onSubmit={onSubmit} noValidate aria-busy={loading}>
@@ -34,6 +41,7 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
         ))}
       </ol>
       <h3 ref={headingRef} tabIndex={-1} className="step-heading">Step {step + 1} of {PLANNER_STEPS.length}: {PLANNER_STEPS[step].title}</h3>
+      {recovery && <section className="planning-recovery" ref={recoveryRef} tabIndex={-1} aria-label={recovery.recommendations?.length ? 'Recommended changes' : 'Why planning stopped'}><h4>{recovery.proposed ? 'Suggestions to review' : recovery.recommendations?.length ? 'Recommended changes' : 'Why planning stopped'}</h4><p>{recovery.message}</p>{recovery.proposed&&<p>These are planning suggestions, not verified prices or availability. Review them before deciding what to change.</p>}{onDismissRecovery && <button type="button" className="back-btn" onClick={onDismissRecovery}>Dismiss guidance</button>}</section>}
       {Object.keys(errors).length > 0 && <p role="alert" className="field-error">Please correct the highlighted preferences before continuing.</p>}
       <fieldset key={step} className="planner-fields" disabled={loading}>
         <legend className="sr-only">Trip preferences</legend>
@@ -68,7 +76,7 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
             {errorFor('endDate')}
           </label>
 
-        </div><p className="hint" id="trip-length-hint">Plan 1–14 days at a time, including your start and end dates.</p></>}
+        </div><p className="hint" id="trip-length-hint">{adaptiveEnabled ? 'Choose your full trip dates. Longer trips are planned in small sections, with pauses for you to continue.' : 'Plan 1–14 days at a time, including your start and end dates.'}</p></>}
 
         {step === 1 && <>
         <div className="form-grid">
@@ -164,6 +172,7 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
             <dt>Mobility preferences</dt><dd>{form.mobilityConcerns || 'Not specified'}</dd>
           </dl>
           <p className="hint">Everything look right? You can go back to change any detail.</p>
+          {adaptiveEnabled&&<aside className="planning-disclosure" aria-label="How this trip will be planned"><h4>How planning works</h4>{policy&&totalDays&&<p>Your {totalDays}-day trip starts with an estimated {Math.ceil(totalDays / policy.sectionDays)} {totalDays<=policy.sectionDays?'section':'sections'}, covering up to {policy.sectionDays} days each.</p>}<p>{policy?`Starting this plan allows up to ${policy.maxSubmissionsPerRun} section requests in this batch. Retries use this allowance too. `:'Planning runs in bounded batches. '}You decide whether to continue after the request allowance is reached; your dates stay unchanged.</p><p className="hint">Planning can pause earlier for a budget review, conflicting preferences, a service problem or storage limits. Any proposed changes are yours to review—not automatic edits.</p></aside>}
         </section>}
         <div className="step-actions">
           {step > 0 && <button className="back-btn" type="button" onClick={onBack} disabled={loading}>Back</button>}

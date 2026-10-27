@@ -7,11 +7,23 @@ server queue context, not a database administrator or service-role identity.
 """
 import asyncio
 import json
+import logging
 import os
 import re
 from urllib.parse import urlsplit, unquote
 from uuid import UUID
 from .planning_repository import JobRepositoryError
+
+logger = logging.getLogger(__name__)
+_DIAGNOSTIC_STATES = frozenset({"28P01", "28000", "42501", "42809", "42P01", "42883", "57014", "55P03", "53300", "57P03", "08001", "08006"})
+
+def _log_storage_failure(phase, error):
+    # Never render exception text, arbitrary class names, SQL, or connection data.
+    phase = phase if phase in {"connect", "session_setup", "role_audit", "operation", "commit"} else "unknown"
+    state = getattr(error, "sqlstate", None)
+    state = state if type(state) is str and state in _DIAGNOSTIC_STATES else "unknown"
+    family = "timeout" if isinstance(error, TimeoutError) else "database" if state != "unknown" else "unknown"
+    logger.warning("planning_storage_failure phase=%s family=%s sqlstate=%s", phase, family, state)
 
 MAX_BYTES = 524288
 RPCS = {
@@ -127,6 +139,7 @@ def json_value(value):
 
 class PlanningPostgresGateway:
     elevated = True
+    role_audit = ROLE_AUDIT
 
     def __init__(self, connection_url, *, enabled=False, expected_role='planning_queue_worker',
                  sslrootcert='system', connection_factory=None):
@@ -202,25 +215,38 @@ class PlanningPostgresGateway:
             result.append(value)
         return result
 
+    def _known_error(self, resource, error):
+        if (resource == "rpc/enqueue_planning_job" and getattr(error, "sqlstate", None) == "P0001"
+            and getattr(getattr(error, "diag", None), "message_primary", None) == "Planning admission limit reached"):
+            return JobRepositoryError("JOB_ADMISSION_REJECTED", 429)
+        return None
+
     async def request(self, method, resource, *, params=None, payload=None):
         query, values = self._query(method, resource, params, payload)
+        phase = "connect"
         try:
             async with asyncio.timeout(15):
                 async with await self._connect() as connection:
+                    phase = "session_setup"
+                    await connection.execute("SET LOCAL search_path=''")
                     # Transaction-local settings also cover transaction poolers.
                     await connection.execute("SET LOCAL statement_timeout='10s'")
                     await connection.execute("SET LOCAL lock_timeout='3s'")
-                    audit = await self._rows(await connection.execute(ROLE_AUDIT))
+                    phase = "role_audit"
+                    audit = await self._rows(await connection.execute(self.role_audit))
                     if audit != [{'role': self._role, 'safe': True}]:
                         raise JobRepositoryError('JOB_WORKER_CONTEXT_REQUIRED', 403)
+                    phase = "operation"
                     rows = await self._rows(await connection.execute(query, values))
+                    phase = "commit"
                 # Context exit confirms COMMIT. Ambiguous commit errors propagate
                 # sanitized; the repository reconciles identity without re-insert.
                 return rows
         except JobRepositoryError:
             raise
         except Exception as error:
-            if (resource=='rpc/enqueue_planning_job' and getattr(error,'sqlstate',None)=='P0001'
-                and getattr(getattr(error,'diag',None),'message_primary',None)=='Planning admission limit reached'):
-                raise JobRepositoryError('JOB_ADMISSION_REJECTED',429) from None
+            known = self._known_error(resource, error)
+            if known is not None:
+                raise known from None
+            _log_storage_failure(phase, error)
             raise JobRepositoryError() from None

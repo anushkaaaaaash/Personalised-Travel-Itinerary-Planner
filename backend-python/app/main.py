@@ -56,27 +56,32 @@ class JsonBoundary:
             return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
         await self.app(scope, replay, send)
 
-def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None, planning_engine=None):
+def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None, planning_engine=None, adaptive_engine=None):
     @asynccontextmanager
     async def lifespan(_app):
         from .planning_activation import route_enabled
         _app.state.planning_lifespan_active = True
         stop = asyncio.Event()
-        runner = None
+        runners = []
         if route_enabled(planning_engine) and callable(getattr(planning_engine, 'run', None)):
             if callable(getattr(planning_engine, 'verify_ready', None)):
                 await planning_engine.verify_ready()
-            runner = asyncio.create_task(planning_engine.run(stop))
+            runners.append(asyncio.create_task(planning_engine.run(stop)))
+        from .adaptive_activation import route_enabled as adaptive_route_enabled
+        if adaptive_route_enabled(adaptive_engine):
+            await adaptive_engine.verify_ready()
+            runners.append(asyncio.create_task(adaptive_engine.run(stop)))
         try:
             yield
         finally:
             _app.state.planning_lifespan_active = False
             stop.set()
-            if runner is not None:
-                runner.cancel()
-                await asyncio.gather(runner, return_exceptions=True)
+            for runner in runners: runner.cancel()
+            if runners: await asyncio.gather(*runners, return_exceptions=True)
             if planning_engine is not None and callable(getattr(planning_engine, 'close', None)):
                 await planning_engine.close()
+            if adaptive_engine is not None:
+                await adaptive_engine.close()
     app = FastAPI(title='Travel planner API', version='0.4.0', lifespan=lifespan)
     app.state.planning_lifespan_active = False
     storage = store if store is not None else SupabaseTripStore()
@@ -92,7 +97,13 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
         from .planning_coordinator import DurablePlanningCoordinator
         return (app.state.planning_lifespan_active and isinstance(planning_engine, DurablePlanningCoordinator)
             and route_enabled(planning_engine) and planning_engine.capability_ready())
-    app.include_router(build_auth_router(authentication, planning_capability))
+    def adaptive_capability():
+        from .adaptive_activation import route_enabled
+        return bool(app.state.planning_lifespan_active and route_enabled(adaptive_engine) and adaptive_engine.capability_ready())
+    app.include_router(build_auth_router(authentication, planning_capability, adaptive_capability,
+        lambda: {'sectionDays':3,'maxSubmissionsPerRun':adaptive_engine.run_allowance}))
+    from .adaptive_routes import build_adaptive_router
+    app.include_router(build_adaptive_router(authentication, adaptive_engine))
     from .planning_routes import build_planning_router
     app.include_router(build_planning_router(authentication, planning_engine))
     from .saved_itineraries import build_saved_itinerary_router

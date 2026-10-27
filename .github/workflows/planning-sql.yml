@@ -1,9 +1,9 @@
 name: Planning queue SQL
 on:
   push:
-    paths: ['backend-python/migrations/*planning_jobs*.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
+    paths: ['backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
   pull_request:
-    paths: ['backend-python/migrations/*planning_jobs*.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
+    paths: ['backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,7 +36,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r backend-python/requirements.txt
       - name: Restricted gateway and PUBLIC privilege exploit regression
-        run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_planning_postgres.py
+        run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_planning_postgres.py backend-python/tests/test_adaptive_postgres.py backend-python/tests/test_adaptive_integration.py
       - name: Independent PostgreSQL connections and stale-CAS tests
         run: python3 backend-python/tests/sql/planning_jobs_postgres.py
         env:

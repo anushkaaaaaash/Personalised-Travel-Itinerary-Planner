@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { COUNTRY_THEMES } from '../src/themes/countryThemes.js';
 import { plan as fixturePlan, detail as fixtureDetail } from '../test/shareFixture.js';
+import { checkAdaptiveVisuals } from './adaptiveVisualFixtures.mjs';
 
 const { chromium } = await import(pathToFileURL(path.join(process.env.QA_NODE_MODULES, 'playwright/index.mjs')).href);
 const dist = path.resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
@@ -26,7 +27,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false, adaptiveWidths:[], adaptiveUncertainty:false, adaptiveExports:[], adaptiveCompleteExport:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;
@@ -39,7 +40,7 @@ result.days[0].activities[1].title = 'A slower walk through the gardens';
 result.days[0].dietaryNotes = 'Confirm ingredients and dietary requirements with each venue.';
 result.days[0].mobilityNotes = 'Check step-free routes with the venues before visiting.';
 
-async function newPage({width=1440,height=1050,production=false,reducedMotion='no-preference',confirmation='verified'}={}) {
+async function newPage({width=1440,height=1050,production=false,reducedMotion='no-preference',confirmation='verified',adaptive=null}={}) {
   const context = await browser.newContext({viewport:{width,height},reducedMotion});
   const page = await context.newPage();
   const generationRequests = [];
@@ -51,7 +52,8 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   });
   await context.route('**/api/**', async route=>{
     const url=new URL(route.request().url());
-    if(url.pathname==='/api/auth/config')return route.fulfill({json:production?liveConfig:localConfig});
+    if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_planning_policy:{sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
+    if(adaptive&&url.pathname.startsWith('/api/adaptive-plans'))return adaptive.handle(route,url);
     if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
     if(url.pathname==='/api/saved-itineraries/32345678-1234-1234-1234-123456789abc')return route.fulfill({json:fixtureDetail()});
     if(url.pathname==='/api/auth/confirmation')return confirmation==='verified' ? route.fulfill({json:{confirmed:true}}) : route.fulfill({status:confirmation==='unverified'?401:503,json:{error:'Synthetic test response'}});
@@ -158,7 +160,7 @@ try {
     await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
     await page.getByRole('button',{name:'Build my trip →',exact:true}).click();await page.getByRole('heading',{name:'Your trip is taking shape'}).waitFor();await settleTheme(page,'FR');
     await pendingGeneration({error:{code:'AI_PROVIDER_FAILED'}},502);pendingGeneration=null;
-    await page.getByRole('heading',{name:'We couldn’t build this trip.'}).waitFor();await settleTheme(page,'FR');
+    await page.getByRole('heading',{name:'The planning service couldn’t finish.'}).waitFor();await settleTheme(page,'FR');
     await noOverflow(page,'generation-error-france-390');await snapshot(page,'generation-error-france-390');
     await page.getByRole('button',{name:'Edit trip details',exact:true}).click();
     assert.equal(await page.locator('input[name=destination]').inputValue(),'France');
@@ -205,6 +207,7 @@ try {
   await page.goto(origin);await page.locator('input[name=destination]').waitFor();await page.locator('input[name=destination]').fill('Kyoto, Japan');await settleTheme(page,'JP');
   const motion=await page.locator('.journey-artwork__route').evaluate(element=>({animation:getComputedStyle(element).animationName,transition:getComputedStyle(element).transitionDuration}));
   assert.equal(motion.animation,'none');assert.equal(motion.transition,'0s');findings.reducedMotion=true;await snapshot(page,'reduced-motion-390');await context.close();
+  await checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   assert.equal(findings.errors.length,0,findings.errors.join('\n'));assert.equal(findings.unexpectedRequests.length,0,findings.unexpectedRequests.join('\n'));
   assert.equal(findings.themes.length,60);
   console.log(JSON.stringify(findings,null,2));

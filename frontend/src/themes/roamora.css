@@ -94,6 +94,25 @@ button:not(:disabled):active, .pill:active { transform: scale(.975); }
 .step-progress span { display: inline-grid; margin-right: 6px; width: 23px; height: 23px; font-size: 10px; }
 .step-progress [aria-current='step'] span { box-shadow: 0 0 0 4px var(--theme-wash); }
 .planner-fields { animation: step-arrive .3s ease-out; }
+.planning-recovery { padding: 16px; margin: 0 0 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--theme-wash); color: var(--ink); }
+.planning-recovery h4 { margin: 0 0 8px; font-size: 15px; }
+.planning-recovery p { margin: 0; font-size: 13px; line-height: 1.7; }
+.field-recommendation { color: var(--sea); font-size: 12px; line-height: 1.6; }
+.field [data-recommended='true']:not([aria-invalid='true']) { border-color: var(--sea); box-shadow: 0 0 0 2px var(--theme-wash); }
+.recovery-recommendations { padding-left: 20px; font-size: 14px; line-height: 1.7; }
+.planning-recovery .back-btn { margin-top: 12px; }
+.adaptive-planning { display: grid; gap: 24px; }
+.adaptive-progress h2 { font-size: clamp(25px, 4vw, 36px); line-height: 1.2; }
+.adaptive-progress > p, .adaptive-section > p { line-height: 1.7; }
+.adaptive-progress__count { display: grid; gap: 10px; margin: 24px 0; }
+.adaptive-progress__count progress { width: 100%; height: 12px; accent-color: var(--sea); }
+.adaptive-section > header { padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.adaptive-section h3 { font-size: clamp(20px, 3vw, 27px); overflow-wrap: anywhere; }
+.adaptive-day { border-top: 1px solid var(--line); padding: 10px 0; }
+.adaptive-day > summary { cursor: pointer; min-height: 44px; padding: 12px 0; color: var(--sea); font-weight: 600; }
+.adaptive-day .timeline { margin-top: 24px; }
+.adaptive-pages { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.adaptive-pages .hint { flex: 1 1 180px; }
 .form-grid { gap: 20px 16px; }
 .field input, .field select, .field textarea, .budget-row select { font-size: 16px; min-height: 48px; border-color: var(--line); }
 .field input::placeholder, .field textarea::placeholder { color: #70766f; opacity: 1; font-size: 13px; }
@@ -317,3 +336,10 @@ button:not([class]):disabled { opacity: .6; cursor: not-allowed; }
 .saved-trips > ul { padding-left: 20px; }
 .saved-trips > ul > li { padding: 12px 0; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .step-actions > button:not([class]) { flex: 1 1 140px; } }
+.planning-disclosure { margin-top: 18px; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: var(--theme-wash); display: grid; gap: 10px; overflow-wrap: anywhere; }
+.planning-disclosure h4 { font-size: 15px; color: var(--sea); }
+.planning-disclosure p { font-size: 12px; line-height: 1.7; }
+.field-recommendation__item { display: block; }
+.field-recommendation__item + .field-recommendation__item { margin-top: 8px; }
+.adaptive-export { display: grid; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.adaptive-export > button { justify-self: start; max-width: 100%; }

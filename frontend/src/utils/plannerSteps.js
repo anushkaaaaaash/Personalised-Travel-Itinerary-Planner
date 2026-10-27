@@ -9,10 +9,10 @@ export const PLANNER_STEPS = Object.freeze([
 export const FINAL_STEP = PLANNER_STEPS.length - 1;
 
 /** Reuse the shared full validator, exposing only errors relevant to this step. */
-export function validatePlannerStep(form, step) {
+export function validatePlannerStep(form, step, options = {}) {
   const validation = buildTripPayload(form);
   const errors = { ...(validation.errors || {}) };
-  const dateError = planningDateError(form);
+  const dateError = planningDateError(form, options);
   if (dateError && !errors.endDate) errors.endDate = dateError;
   if (step === FINAL_STEP) return errors;
   const fields = PLANNER_STEPS[step]?.fields || [];
@@ -25,7 +25,7 @@ export function firstErrorStep(errors) {
   return index < 0 ? FINAL_STEP : index;
 }
 
-export function nextPlannerStep(form, step) {
-  const errors = validatePlannerStep(form, step);
+export function nextPlannerStep(form, step, options = {}) {
+  const errors = validatePlannerStep(form, step, options);
   return { step: Object.keys(errors).length ? step : Math.min(step + 1, FINAL_STEP), errors };
 }
