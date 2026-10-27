@@ -51,7 +51,8 @@ class ProductionAccess:
             return await denied(404,'LEGACY_HISTORY_DISABLED','Legacy preference history is local-only.')(scope,receive,send)
         if path in {'/api/auth/login','/api/auth/register'} and not self.consume(self.auth_requests,30,60):
             return await denied(429,'AUTH_RATE_LIMITED','Too many account requests. Try again later.')(scope,receive,send)
-        if path not in PUBLIC_PATHS:
+        from .frontend_static import public_frontend_request
+        if path not in PUBLIC_PATHS and not public_frontend_request(scope):
             try:
                 token=bearer(scope);user=await self.auth.verify(token)
                 scope.setdefault('state',{}).update(auth_user_id=str(user.id),access_token=token)

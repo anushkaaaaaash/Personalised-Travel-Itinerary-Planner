@@ -12,7 +12,9 @@ CONFIG=tomllib.loads((ROOT/'fly.toml').read_text())
 def test_container_is_backend_only_nonroot_one_process():
     docker=(ROOT/'Dockerfile').read_text()
     copies=[line for line in docker.splitlines() if line.startswith('COPY ')]
-    assert len(copies)==2 and all('backend-python/' in line for line in copies)
+    assert any('--from=frontend-build' in line for line in copies)
+    assert not any(line.startswith('COPY . ') for line in copies)
+    assert 'FRONTEND_SAME_ORIGIN=true VITE_API_BASE_URL=/api' in docker
     assert 'USER 10001:10001' in docker and 'ca-certificates' in docker
     cmd=json.loads(next(line[4:] for line in docker.splitlines() if line.startswith('CMD ')))
     assert cmd[:4]==['python','-m','uvicorn','app.production:create_production_app']
@@ -21,9 +23,9 @@ def test_container_is_backend_only_nonroot_one_process():
     assert '--no-access-log' in cmd and '--reload' not in cmd
     ignore=(ROOT/'.dockerignore').read_text().splitlines()
     assert '**' in ignore
-    assert {line for line in ignore if line.startswith('!')}=={
-        '!Dockerfile','!backend-python/','!backend-python/requirements.txt',
-        '!backend-python/app/','!backend-python/app/*.py'}
+    assert '!backend-python/app/*.py' in ignore and 'backend-python/app/**' in ignore
+    assert 'frontend/src/**' in ignore and '**/.env*' in ignore
+
 
 
 def test_review_config_never_enables_storage_or_new_credentials():
@@ -38,8 +40,11 @@ def test_review_config_never_enables_storage_or_new_credentials():
     assert not any(key in CONFIG for key in ('mounts','release_command','processes'))
 
 
-def fake_verified_environment(monkeypatch):
+def fake_verified_environment(monkeypatch,tmp_path):
     for name,value in CONFIG['env'].items():monkeypatch.setenv(name,value)
+    (tmp_path/'assets').mkdir()
+    (tmp_path/'index.html').write_text('<html>Public app</html>')
+    monkeypatch.setenv('FRONTEND_DIST',str(tmp_path))
     monkeypatch.setenv('API_HOST','approved-api.fly.dev')
     monkeypatch.setenv('SAVED_ITINERARIES_SCHEMA_VERIFIED','true')
     monkeypatch.setenv('SUPABASE_URL','https://synthetic.supabase.co')
@@ -47,9 +52,9 @@ def fake_verified_environment(monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY','synthetic-provider-only')
 
 
-def test_fly_private_health_probe_requires_correct_host_and_keeps_auth(monkeypatch):
+def test_fly_private_health_probe_requires_correct_host_and_keeps_auth(monkeypatch,tmp_path):
     from app.production import create_production_app
-    fake_verified_environment(monkeypatch)
+    fake_verified_environment(monkeypatch,tmp_path)
     with TestClient(create_production_app(),base_url='http://127.0.0.1:8080') as client:
         assert client.get('/api/health').status_code==400
         headers={'Host':'approved-api.fly.dev'}
@@ -59,8 +64,8 @@ def test_fly_private_health_probe_requires_correct_host_and_keeps_auth(monkeypat
         assert client.get('/api/health',headers={**headers,'Origin':'https://unapproved.example'}).status_code==403
 
 
-def test_unreviewed_fly_config_fails_startup(monkeypatch):
+def test_unreviewed_fly_config_fails_startup(monkeypatch,tmp_path):
     from app.production import create_production_app
-    fake_verified_environment(monkeypatch)
+    fake_verified_environment(monkeypatch,tmp_path)
     monkeypatch.setenv('SAVED_ITINERARIES_SCHEMA_VERIFIED','false')
     with pytest.raises(ValueError):create_production_app()

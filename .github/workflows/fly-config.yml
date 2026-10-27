@@ -1,10 +1,10 @@
-name: Fly backend container
+name: Fly full-app container
 on:
   pull_request:
-    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', '.github/workflows/fly-config.yml']
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', '.github/workflows/fly-config.yml']
   push:
     branches: [main]
-    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', '.github/workflows/fly-config.yml']
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', '.github/workflows/fly-config.yml']
 permissions:
   contents: read
 jobs:
@@ -21,13 +21,13 @@ jobs:
           cache-dependency-path: deployment/dockerignore-test/go.sum
       - name: Verify Docker ignore semantics against actual pinned Moby matcher
         run: cd deployment/dockerignore-test && go test -v
-      - name: Build only the Python backend image
+      - name: Build public frontend and Python runtime image
         run: docker build --tag travel-api-offline .
       - name: Production factory smoke test with synthetic settings and no network
         shell: bash
         run: |
           docker run -d --name travel-api-offline --network none \
-            -e API_HOST=api.example.test -e FRONTEND_ORIGIN=https://app.example.test \
+            -e API_HOST=api.example.test -e FRONTEND_ORIGIN=https://api.example.test \
             -e SAVED_ITINERARIES_SCHEMA_VERIFIED=true \
             -e SUPABASE_URL=https://synthetic.supabase.co \
             -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_synthetic \
@@ -38,6 +38,26 @@ jobs:
             sleep 1
           done
           docker exec travel-api-offline python -c 'import os,json,urllib.request; assert os.getuid()==10001; req=urllib.request.Request("http://127.0.0.1:8080/api/auth/config",headers={"Host":"api.example.test"}); result=json.load(urllib.request.urlopen(req)); assert result["planning_jobs_enabled"] is False; assert not os.path.exists("/app/.env"); print("PASS: non-root production health and disabled background capability with no network")'
+      - name: Verify same-origin public UI and protected API in the real image
+        shell: bash
+        run: |
+          docker exec -i travel-api-offline python - <<'PYCODE'
+          import json,re,urllib.request,urllib.error
+          def request(path):
+              return urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080"+path,headers={"Host":"api.example.test"}),timeout=5)
+          html=request("/").read().decode()
+          assert '<div id="root"></div>' in html
+          asset=re.search(r'src="(/assets/[^" ]+\.js)"',html).group(1)
+          js=request(asset).read().decode()
+          assert 'planning_jobs_enabled' in js
+          assert request("/itineraries/synthetic-id").read().decode()==html
+          assert json.load(request("/api/health"))["backend"]=="fastapi"
+          for path in ("/api/saved-itineraries","/api/unknown","/.env","/__qa/index.html"):
+              try:request(path)
+              except urllib.error.HTTPError as error:assert error.code in (401,404)
+              else:raise AssertionError("Protected/private path became public")
+          print("PASS: real React assets and detail route share origin with guarded API")
+          PYCODE
       - name: Remove synthetic container
         if: always()
         run: docker rm -f travel-api-offline || true

@@ -21,8 +21,8 @@ const snapshot=(requestId,status='running')=>({id:jobId,requestId,status,result:
 const response=body=>({status:200,json:async()=>body});
 const tick=()=>act(async()=>{await new Promise(resolve=>setTimeout(resolve,35));});
 test('feature-gated journey submits once and polls real states to a checked itinerary',()=>harness(async env=>{
- let requestId,posts=0,reads=0;const client=env.client(async(url,options)=>{if(options.method==='POST'){assert.equal(url,'/api/planning-jobs');posts++;requestId=JSON.parse(options.body).requestId;return response(snapshot(requestId,'queued'));}reads++;return response(snapshot(requestId,reads>1?'succeeded':'running'));});
- await env.mount(client);const props=await env.prepare();const handlers=props();await act(async()=>{handlers.onGenerateItinerary();handlers.onGenerateItinerary();});assert.equal(posts,1);assert.match(env.text(),/in line/);
+ let requestId,posts=0,reads=0,advance=false;const client=env.client(async(url,options)=>{if(options.method==='POST'){assert.equal(url,'/api/planning-jobs');posts++;requestId=JSON.parse(options.body).requestId;return response(snapshot(requestId,'queued'));}if(!advance)return response(snapshot(requestId,'queued'));reads++;return response(snapshot(requestId,reads>1?'succeeded':'running'));});
+ await env.mount(client);const props=await env.prepare();const handlers=props();await act(async()=>{handlers.onGenerateItinerary();handlers.onGenerateItinerary();});assert.equal(posts,1);assert.match(env.text(),/in line/);advance=true;
  for(let i=0;i<4&&!env.text().includes('Make the days your own');i++)await tick();
  assert.match(env.text(),/Make the days your own/);assert.equal(posts,1);assert.ok(reads>=2);assert.doesNotMatch(env.storage.dump(),/Kyoto|Tokyo|budget|TEST_ONLY_TOKEN|days/);
 }));
