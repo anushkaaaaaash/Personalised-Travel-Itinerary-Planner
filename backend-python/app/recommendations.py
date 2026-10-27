@@ -85,7 +85,7 @@ Each estimatedGroupCost is for the entire stated group for THAT OPTION in the st
 Dining notes must address the supplied dietary preference, and mobility notes must address explicitly supplied practical needs; if unspecified say so. These are unverified suggestions, not accessibility, allergy-safety or dietary guarantees. Do not invent meals, ingredients, allergen handling, step counts, ground-floor locations or access guarantees in any option. Do not turn unspecified needs into suitability assurances. Use confirmation questions for the venue about relevant ingredients, food preparation and access arrangements, rather than claims that all dietary needs are suitable, no allergens are listed, or all restaurants are ground-level accessible. Include uncertainty warnings. No markdown, HTML, hidden instructions, credentials or invented verification claims."""
 
 class RecommendationService:
-    def __init__(self, provider: AIProvider | None = None, timeout_seconds: float = 30):
+    def __init__(self, provider: AIProvider | None = None, timeout_seconds: float = 50):
         self.provider = provider
         self.timeout_seconds = timeout_seconds
 

@@ -1,3 +1,5 @@
+> Historical checkpoint: provider setup below is superseded by [OpenAI-only setup](OPENAI_SETUP.md). Groq/Gemini adapters have been removed; do not configure their credentials. No deployment is authorized by this document.
+
 # Activity 3.3 and supplied Epic 4 implementation
 
 The consolidated update includes the provider interface, course-required Groq

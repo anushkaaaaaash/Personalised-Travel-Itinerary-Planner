@@ -1,3 +1,4 @@
+from test_openai import envelope
 """Prospective contract tests; no live requests or repaired provider output.
 
 Observed failure mechanics below came from retained synthetic-trip response SHA256
@@ -11,7 +12,7 @@ import httpx,pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from app.main import create_app
-from app.groq import GroqProvider,strict_schema
+from app.openai import OpenAIProvider,strict_schema
 from app.itineraries import ItineraryDay,ItineraryPayload,ItineraryService,validate_itinerary
 from app.models import TripPreferences
 from app.generation_contract import GenerationContract,SCHEDULE_NOTICE
@@ -155,10 +156,10 @@ def test_captured_shape_through_actual_provider_route_rejected_once(payload,stat
     raw=captured['failedGeneration'];calls=[]
     def transport(request):
         calls.append(json.loads(request.content))
-        body=({'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(raw)}}]}
+        body=(envelope(json.dumps(raw))
             if status==200 else {'error':{'code':'json_validate_failed','type':'invalid_request_error','message':"missing required properties: 'days'",'failed_generation':json.dumps(raw)}})
         return httpx.Response(status,json=body)
-    with TestClient(create_app(NoStorage(),itinerary_service=ItineraryService(GroqProvider('synthetic-offline-key',transport=httpx.MockTransport(transport))))) as client:
+    with TestClient(create_app(NoStorage(),itinerary_service=ItineraryService(OpenAIProvider('synthetic-offline-key',transport=httpx.MockTransport(transport))))) as client:
         response=client.post('/api/itineraries/generate',json=payload)
     assert response.status_code==502 and len(calls)==1
     assert response.json()['error']['code']==('AI_SCHEMA_REJECTED' if status==400 else 'AI_INVALID_RESPONSE')
@@ -226,14 +227,14 @@ def test_representative_real_fastapi_serialization_and_mounted_component(payload
     calls=[]
     def transport(request):
         calls.append(json.loads(request.content))
-        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':json.dumps(wire)}}]})
-    provider=GroqProvider('synthetic-offline-key',transport=httpx.MockTransport(transport))
+        return httpx.Response(200,json=envelope(json.dumps(wire)))
+    provider=OpenAIProvider('synthetic-offline-key',transport=httpx.MockTransport(transport))
     with TestClient(create_app(NoStorage(),itinerary_service=ItineraryService(provider))) as client:
         response=client.post('/api/itineraries/generate',json=payload)
     assert response.status_code==200 and len(calls)==1
-    assert calls[0]['response_format']['json_schema']['strict'] is True
-    assert calls[0]['model']=='openai/gpt-oss-20b' and calls[0]['max_completion_tokens']==4096
-    assert 'previous end + gapBeforeMinutes' in calls[0]['messages'][0]['content']
+    assert calls[0]['text']['format']['strict'] is True
+    assert calls[0]['model']=='gpt-6-luna' and calls[0]['max_output_tokens']==32768
+    assert 'previous end + gapBeforeMinutes' in calls[0]['input'][0]['content']
     run=subprocess.run(['node','frontend/test/renderGeneratedPlan.mjs'],input=json.dumps({'result':response.json(),'preferences':payload}),text=True,capture_output=True,timeout=30,cwd=Path(__file__).resolve().parents[2])
     assert run.returncode==0,'Mounted render failed'
     assert json.loads(run.stdout)['days']==len(wire['days'])

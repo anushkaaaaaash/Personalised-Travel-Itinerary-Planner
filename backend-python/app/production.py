@@ -8,7 +8,7 @@ def create_production_app():
     from .configuration import ProviderSettings
     try:provider=ProviderSettings.model_validate(dict(os.environ))
     except Exception:raise RuntimeError('Invalid production provider settings.') from None
-    if provider.AI_PROVIDER!='groq' or not provider.GROQ_API_KEY.get_secret_value().strip():
+    if provider.AI_PROVIDER!='openai' or not provider.OPENAI_API_KEY.get_secret_value().strip():
         raise RuntimeError('Production AI configuration is incomplete. No provider request was made.')
     from .providers import create_provider
     try:create_provider(configuration=lambda:dict(os.environ))

@@ -1,3 +1,5 @@
+> Historical checkpoint: provider setup below is superseded by [OpenAI-only setup](OPENAI_SETUP.md). Groq/Gemini adapters have been removed; do not configure their credentials. No deployment is authorized by this document.
+
 > Optional adapter only. The supplied Epic 4 explicitly requires Groq, which is
 > now the default. Follow GROQ_SETUP.md; do not configure Gemini unless explicitly
 > choosing AI_PROVIDER=gemini for a separate optional test.

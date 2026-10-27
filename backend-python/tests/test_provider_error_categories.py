@@ -1,9 +1,9 @@
 import json
 import httpx
 import pytest
-from app.groq import provider_error_detail
+from app.openai import provider_error_detail
 from app.recommendations import RecommendationError
-from test_groq import run
+from test_openai import run
 
 
 @pytest.mark.parametrize('body,reason',[(None,'INVALID_BODY_TYPE'),(b'','EMPTY_BODY'),(b'PRIVATE'*2000,'BODY_TOO_LARGE'),(b'PRIVATE','INVALID_JSON_OR_ENCODING'),(b'\xff','INVALID_JSON_OR_ENCODING'),(b'{}','ERROR_OBJECT_ABSENT'),(b'[]','ERROR_OBJECT_ABSENT')])

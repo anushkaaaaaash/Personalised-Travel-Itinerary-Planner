@@ -1,3 +1,5 @@
+> Historical checkpoint: provider setup below is superseded by [OpenAI-only setup](OPENAI_SETUP.md). Groq/Gemini adapters have been removed; do not configure their credentials. No deployment is authorized by this document.
+
 # Course-required Groq setup — private, after installation
 
 Groq is the default for Activity 4.1. The code uses LLMProvider ABC and async HTTPX

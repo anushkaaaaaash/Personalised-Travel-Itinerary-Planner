@@ -23,12 +23,12 @@ services:
       - key: TRIP_OWNERSHIP_SCHEMA_VERIFIED
         value: "false"
       - key: AI_PROVIDER
-        value: groq
-      - key: GROQ_MODEL
-        value: openai/gpt-oss-20b
-      - key: GROQ_REFINEMENT_MODEL
-        value: openai/gpt-oss-120b
-      - key: GROQ_API_KEY
+        value: openai
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_REASONING_EFFORT
+        value: max
+      - key: OPENAI_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false

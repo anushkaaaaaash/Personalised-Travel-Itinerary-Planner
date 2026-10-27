@@ -8,8 +8,9 @@ categorized AI recommendations, editable daily timelines, estimated route orderi
 and whole-trip/single-day feedback refinement. The original Express backend is
 preserved for reference; root `npm run dev` still starts that legacy backend.
 
-Groq refinement uses `openai/gpt-oss-120b`; generation/recommendations use the configured
-Groq model (default `openai/gpt-oss-20b`). The backend enforces structured constraints,
+All AI recommendations, day plans and refinements use OpenAI `gpt-6-luna` with
+`max` reasoning through the Responses API; there is no alternate-provider fallback.
+See [OpenAI setup and offline verification](backend-python/OPENAI_SETUP.md). The backend enforces structured constraints,
 but AI narrative, costs, opening hours and accessibility remain unverified estimates.
 Itineraries are not saved automatically. Activity 5.1 adds explicit account-scoped full-itinerary CRUD in a separate table; legacy preference history remains project-wide in local mode. Public deployment is not configured. See [Activity 5.1 setup and verification](backend-python/ACTIVITY_5_1.md).
 

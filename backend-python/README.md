@@ -1,3 +1,5 @@
+> Current AI provider setup: [OpenAI only, GPT-6 Luna / max reasoning](OPENAI_SETUP.md). Earlier checkpoint statements below do not describe the current AI routing.
+
 > Current Activity 5.1 full-itinerary storage, local authentication startup, and verification are documented in [ACTIVITY_5_1.md](ACTIVITY_5_1.md). The earlier checkpoints below are historical.
 
 # FastAPI preference capture + structured prompts
