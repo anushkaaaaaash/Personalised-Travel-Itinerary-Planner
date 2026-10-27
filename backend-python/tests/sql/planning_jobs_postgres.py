@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 url = os.environ.get('PLANNING_SQL_TEST_DATABASE_URL', '')
@@ -17,7 +17,14 @@ parsed = urlparse(url)
 if parsed.scheme not in {'postgresql', 'postgres'} or parsed.hostname not in {'localhost', '127.0.0.1'} or parsed.path != '/planning_queue_test' or parsed.query:
     raise SystemExit('Refusing SQL QA: explicit disposable loopback planning_queue_test database required.')
 command = ['psql', '--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--set', 'ON_ERROR_STOP=1']
-environment = {**os.environ, 'PGDATABASE': url}
+# PGDATABASE from the environment is a database name, not reliably expanded as
+# a conninfo URI by every psql/libpq combination. Pass validated loopback fields
+# explicitly; keep even disposable credentials out of command arguments.
+environment = {
+    **os.environ, 'PGHOST': parsed.hostname, 'PGPORT': str(parsed.port or 5432),
+    'PGDATABASE': 'planning_queue_test', 'PGUSER': unquote(parsed.username or 'postgres'),
+    'PGPASSWORD': unquote(parsed.password or ''),
+}
 
 
 def sql(statement):
