@@ -65,6 +65,7 @@ def _rollback(conn):
 
 
 class AdaptiveSQLiteGateway:
+    schema_version = 1
     elevated = True
     supports_proposed_constraint_retry = True
     supports_owner_recovery = True
@@ -88,7 +89,7 @@ class AdaptiveSQLiteGateway:
         try:
             self._identity = self.path.stat().st_dev, self.path.stat().st_ino
             with closing(self._connect()) as conn:
-                if conn.execute('PRAGMA user_version').fetchone()[0]!=1:
+                if conn.execute('PRAGMA user_version').fetchone()[0]!=self.schema_version:
                     _error('SECTIONS_SCHEMA_NOT_READY',503)
                 if conn.execute('PRAGMA quick_check').fetchone()[0]!='ok':
                     _error('SECTIONS_SCHEMA_NOT_READY',503)
@@ -168,6 +169,9 @@ class AdaptiveSQLiteGateway:
 
     def _allocated(self,c):
         return c.execute("SELECT (SELECT COALESCE(SUM(json_extract(data,'$.storage_used_bytes')),0) FROM plans)+(SELECT COALESCE(SUM(json_extract(data,'$.reserved_checkpoint_bytes')),0) FROM sections)").fetchone()[0]
+
+    def _paid_work_count(self,c,now):
+        return c.execute("SELECT COUNT(*) FROM sections WHERE json_extract(data,'$.status') IN ('submitting','running') OR (json_extract(data,'$.status')='queued' AND json_extract(data,'$.lease_until')>?) OR (json_extract(data,'$.status') IN ('submission_unknown','cancelled','failed') AND json_extract(data,'$.submitted_at')>?)",(_stamp(now),_stamp(now-600))).fetchone()[0]
 
     def _dispatch(self,c,op,a,now):
         if op=='checkpoint_health':
@@ -285,7 +289,7 @@ class AdaptiveSQLiteGateway:
             s.update(status='submission_unknown',reserved_checkpoint_bytes=0,error_code='SUBMISSION_UNKNOWN',lease_token=None,lease_until=None);self._save(c,'sections',s)
             p.update(status='paused',pause_reason='SUBMISSION_UNKNOWN');self._save(c,'plans',p);return []
         if s['status'] not in ('queued','running') or _time(s['lease_until'])>now:return []
-        active=c.execute("SELECT COUNT(*) FROM sections WHERE json_extract(data,'$.status') IN ('submitting','running') OR (json_extract(data,'$.status')='queued' AND json_extract(data,'$.lease_until')>?) OR (json_extract(data,'$.status') IN ('submission_unknown','cancelled','failed') AND json_extract(data,'$.submitted_at')>?)",(_stamp(now),_stamp(now-600))).fetchone()[0]
+        active=self._paid_work_count(c,now)
         if s['status']=='queued' and active>=2:return []
         s.update(lease_token=str(uuid4()),lease_until=_stamp(now+60),worker_id=a['worker']);self._save(c,'sections',s);return [s]
 

@@ -66,8 +66,8 @@ class GenerationContract:
         self.shape=strict_schema(self.schema)
         pace_instructions=(
             f'Ordinary days require {self.minimum}-{self.maximum} genuine main experiences. '
-            f'Only ORIGINAL arrival/return dates {sorted(self.travel_day_dates)} may have fewer (including zero) main experiences when explicit kind=transfer entries total at least120 minutes. '
-            'This exception does not apply to intermediate section boundaries. Keep all requiredMainActivities keys; use null for omitted main slots only on qualifying travel days. '
+            f'Only explicitly eligible travel dates {sorted(self.travel_day_dates)} may have fewer (including zero) main experiences when explicit kind=transfer entries total at least120 minutes. '
+            'An intermediate section boundary alone does not qualify; only an explicit higher-level validated route-transition rule may add another eligible date. Keep all requiredMainActivities keys; use null for omitted main slots only on qualifying travel days. '
             'Put explicit transport segments in activities; never relabel sightseeing as transport. Travel costs, realistic timing and rest still apply. '
             if self.travel_day_dates else
             f'Every day requires {self.minimum}-{self.maximum} real main experiences, including arrival and departure. Travel-only or rest-only days do not satisfy this pace rule. '

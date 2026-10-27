@@ -44,7 +44,7 @@ def test_preflight_denied_and_errors_private(monkeypatch):
     config={'ADAPTIVE_PREFLIGHT_APPROVED':'true'}
     assert asyncio.run(cli.preflight(config,initialize=True))['code']=='INITIALIZATION_DISABLED'
     def fail():raise RuntimeError('private fixture path and secret')
-    monkeypatch.setattr(cli,'verify_volume',fail)
+    monkeypatch.setattr(cli,'prepare_existing_storage_user',fail)
     assert asyncio.run(cli.preflight(config))=={'ready':False,'code':'PREFLIGHT_FAILED'}
 
 
@@ -69,3 +69,25 @@ def test_maintenance_precedes_health_and_failure_closes_readiness():
         with pytest.raises(RuntimeError):await engine.verify_ready()
         assert not engine.capability_ready()
     asyncio.run(run())
+
+
+def test_existing_storage_drops_privileges_before_journal_access(monkeypatch):
+    calls=[];uid=[0]
+    monkeypatch.setattr(runtime,'verify_volume',lambda:calls.append('verify') or '/data/checkpoints/planning.sqlite3')
+    monkeypatch.setattr(runtime.os,'geteuid',lambda:uid[0])
+    monkeypatch.setattr(runtime.os,'umask',lambda mode:calls.append(('umask',mode)))
+    monkeypatch.setattr(runtime.os,'setgroups',lambda groups:calls.append(('groups',groups)))
+    monkeypatch.setattr(runtime.os,'setgid',lambda gid:calls.append(('gid',gid)))
+    def setuid(value):calls.append(('uid',value));uid[0]=value
+    monkeypatch.setattr(runtime.os,'setuid',setuid)
+    assert runtime.prepare_existing_storage_user()=='/data/checkpoints/planning.sqlite3'
+    assert calls==['verify',('umask',0o077),('groups',[]),('gid',10001),('uid',10001),'verify']
+
+
+def test_failed_storage_privilege_drop_is_closed(monkeypatch):
+    monkeypatch.setattr(runtime,'verify_volume',lambda:'/data/checkpoints/planning.sqlite3')
+    monkeypatch.setattr(runtime.os,'geteuid',lambda:0)
+    monkeypatch.setattr(runtime.os,'umask',lambda _:None)
+    def denied(_):raise PermissionError('private details')
+    monkeypatch.setattr(runtime.os,'setgroups',denied)
+    with pytest.raises(JobRepositoryError,match='SQLITE_PRIVILEGE_DROP_FAILED'):runtime.prepare_existing_storage_user()

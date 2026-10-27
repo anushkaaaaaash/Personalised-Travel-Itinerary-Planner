@@ -35,6 +35,9 @@ def build_production_adaptive(configuration=None, *, gateway_factory=None, clien
     config = os.environ if configuration is None else configuration
     if config.get('ADAPTIVE_PLANNING_ENABLED') != 'true': return None
     if not approved(config): raise RuntimeError('Adaptive planning approvals and resource policy are incomplete.')
+    if config.get('ADAPTIVE_RESEARCH_ENABLED')=='true':
+        from .grounded_activation import build_grounded
+        return build_grounded(config,gateway_factory=gateway_factory,client_factory=client_factory)
     from .adaptive_postgres import AdaptivePostgresGateway
     from .section_repository import SectionCheckpointRepository
     from .adaptive_worker import AdaptivePlanningWorker
@@ -42,10 +45,10 @@ def build_production_adaptive(configuration=None, *, gateway_factory=None, clien
     try:
         maintenance = None
         if config.get('PLANNING_WORKER_TRANSPORT') == 'sqlite':
-            from .adaptive_sqlite import AdaptiveSQLiteGateway
+            from .adaptive_sqlite_compat import build_legacy_sqlite_gateway
             from .adaptive_sqlite_runtime import verify_volume
             path = verify_volume()
-            gateway = (gateway_factory or AdaptiveSQLiteGateway)(path,enabled=True)
+            gateway = (gateway_factory or build_legacy_sqlite_gateway)(path,enabled=True)
             maintenance = gateway.purge_expired
         else:
             gateway = (gateway_factory or AdaptivePostgresGateway)(config.get('PLANNING_DATABASE_URL',''),enabled=True,

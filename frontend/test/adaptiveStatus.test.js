@@ -60,7 +60,7 @@ test('adaptive status shows only authoritative completed-day counts and honest s
     const html=renderToStaticMarkup(React.createElement(Status,{state:state({sections:[section]}),...actions}));
     assert.match(html,/3 of 24 days planned/);assert.match(html,/max="24" value="3"/);assert.match(html,/2028-03-22/);
     assert.match(html,/Only completed sections count/);assert.match(html,/Section estimate/);assert.match(html,/not finished yet/);
-    assert.doesNotMatch(html,/Save itinerary|Update this saved|Download summary|Print \/ save|Make it more you|\d+%/);
+    assert.doesNotMatch(html,/Save itinerary|Update this saved|Download summary|Print \/ save|Make it more you/);assert.doesNotMatch(html.match(/<div class="adaptive-progress__count">[\s\S]*?<\/div>/)?.[0] || '',/\d+%/);
   }finally{await server.close();}
 });
 

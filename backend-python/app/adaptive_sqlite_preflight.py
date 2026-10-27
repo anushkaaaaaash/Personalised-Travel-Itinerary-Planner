@@ -5,7 +5,7 @@ import json
 import os
 from .planning_repository import JobRepositoryError
 from .section_repository import SectionCheckpointRepository
-from .adaptive_sqlite_runtime import verify_volume, prepare_new_directory
+from .adaptive_sqlite_runtime import verify_volume, prepare_new_directory, prepare_existing_storage_user
 
 async def preflight(configuration=None, *, initialize=False, gateway_factory=None):
     config=os.environ if configuration is None else configuration
@@ -14,8 +14,12 @@ async def preflight(configuration=None, *, initialize=False, gateway_factory=Non
     gateway=None
     try:
         from .adaptive_sqlite import AdaptiveSQLiteGateway
-        path=prepare_new_directory() if initialize else verify_volume()
-        gateway=(gateway_factory or AdaptiveSQLiteGateway)(path,enabled=True,initialize=initialize)
+        path=prepare_new_directory() if initialize else prepare_existing_storage_user()
+        if gateway_factory:gateway=gateway_factory(path,enabled=True,initialize=initialize)
+        elif initialize:gateway=AdaptiveSQLiteGateway(path,enabled=True,initialize=True)
+        else:
+            from .adaptive_sqlite_compat import build_legacy_sqlite_gateway
+            gateway=build_legacy_sqlite_gateway(path,enabled=True)
         verify_volume()
         await gateway.purge_expired()
         await SectionCheckpointRepository(gateway,enabled=True).verify_ready()

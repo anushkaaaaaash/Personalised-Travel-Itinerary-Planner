@@ -29,23 +29,27 @@ class VolumeTests(unittest.TestCase):
             with sqlite3.connect(db) as c:
                 c.execute('CREATE TABLE plans(data TEXT NOT NULL)')
                 c.execute('CREATE TABLE sections(data TEXT NOT NULL)')
+                c.execute('PRAGMA user_version=1')
             runtime = types.ModuleType('app.adaptive_sqlite_runtime')
             runtime.verify_volume = lambda: str(db)
             app = types.ModuleType('app'); app.__path__ = []
             def probe():
                 out = io.StringIO()
-                with patch.dict(sys.modules, {'app': app, 'app.adaptive_sqlite_runtime': runtime}), contextlib.redirect_stdout(out):
+                with patch.dict(sys.modules, {'app': app, 'app.adaptive_sqlite_runtime': runtime}), patch('os.geteuid',return_value=10001), patch('os.umask'), contextlib.redirect_stdout(out):
                     with self.assertRaises(SystemExit) as end: exec(volume.QUIESCENCE_PROBE, {})
                 return end.exception.code, __import__('json').loads(out.getvalue())
             code, result = probe()
             self.assertEqual(code, 0)
-            self.assertEqual(result, {'ready': True, 'code': 'READY', 'counts': {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0}})
+            self.assertEqual(result, {'ready': True, 'code': 'READY', 'counts': {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0, 'submission_unknown':0, **{f'{prefix}_{status}':0 for prefix in ('research','revision') for status in ('queued','submitting','running','submission_unknown')}}})
             for table, status in [('plans','active'),('sections','queued'),('sections','submitting'),('sections','running')]:
                 with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)', ('{"status":"' + status + '","private":"not-output"}',))
                 code, result = probe()
                 self.assertEqual(code, 1); self.assertFalse(result['ready']); self.assertEqual(result['code'], 'PLANNING_IN_PROGRESS')
                 self.assertNotIn('not-output', str(result))
                 with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+            with sqlite3.connect(db) as c: c.execute('INSERT INTO sections(data) VALUES (?)', ('{"status":"submission_unknown"}',))
+            self.assertEqual(probe()[1]['code'],'PLANNING_UNCERTAIN')
+            with sqlite3.connect(db) as c: c.execute('DELETE FROM sections')
             for table in ('plans', 'sections'):
                 for raw in ('{}', '{"status":null}', '{"status":3}', '{"status":"future"}', '{"status":"expired"}', '[]', 'not-json'):
                     with self.subTest(table=table, raw=raw):
@@ -55,8 +59,48 @@ class VolumeTests(unittest.TestCase):
                         self.assertEqual(result, {'ready':False, 'code':'PREFLIGHT_FAILED'})
                         with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
 
+            with sqlite3.connect(db) as c:
+                c.execute('PRAGMA user_version=2')
+            self.assertEqual(probe()[1], {'ready':False,'code':'PREFLIGHT_FAILED'})
+            with sqlite3.connect(db) as c:
+                c.execute('CREATE TABLE research_jobs(data TEXT NOT NULL)')
+                c.execute('CREATE TABLE revision_jobs(data TEXT NOT NULL)')
+                c.execute('CREATE TABLE revision_controls(id TEXT)')
+            self.assertEqual(probe()[0],0)
+            for table in ('research_jobs','revision_jobs'):
+                for status in ('queued','submitting','running'):
+                    with self.subTest(table=table,status=status):
+                        with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)', ('{"status":"'+status+'","private":"not-output"}',))
+                        code,result=probe(); self.assertEqual(code,1); self.assertEqual(result['code'],'PLANNING_IN_PROGRESS'); self.assertNotIn('not-output',str(result))
+                        with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+                with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)', ('{"status":"submission_unknown"}',))
+                self.assertEqual(probe()[1]['code'],'PLANNING_UNCERTAIN')
+                with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+                for raw in ('{}','{"status":null}','{"status":"future"}','[]','not-json'):
+                    with self.subTest(table=table,raw=raw):
+                        with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)',(raw,))
+                        self.assertEqual(probe()[1],{'ready':False,'code':'PREFLIGHT_FAILED'})
+                        with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+
+    def test_quiescence_drops_root_before_open_and_fails_closed(self):
+        runtime = types.ModuleType('app.adaptive_sqlite_runtime')
+        runtime.verify_volume = lambda: '/private/test.sqlite3'
+        app = types.ModuleType('app'); app.__path__ = []
+        def run(uid_values, failure=None):
+            out=io.StringIO()
+            with patch.dict(sys.modules, {'app':app,'app.adaptive_sqlite_runtime':runtime}), patch('os.geteuid',side_effect=uid_values), patch('os.umask') as mask, patch('os.setgroups') as groups, patch('os.setgid') as gid, patch('os.setuid',side_effect=failure) as uid, patch('sqlite3.connect',side_effect=RuntimeError('private')) as connect, contextlib.redirect_stdout(out):
+                with self.assertRaises(SystemExit):exec(volume.QUIESCENCE_PROBE,{})
+            return __import__('json').loads(out.getvalue()),mask,groups,gid,uid,connect
+        result,mask,groups,gid,uid,connect=run([0,0,10001])
+        mask.assert_called_once_with(0o077); groups.assert_called_once_with([]); gid.assert_called_once_with(10001); uid.assert_called_once_with(10001); connect.assert_called_once()
+        self.assertEqual(result,{'ready':False,'code':'PREFLIGHT_FAILED'})
+        result,_,_,_,_,connect=run([0,0],PermissionError('private'))
+        connect.assert_not_called(); self.assertEqual(result,{'ready':False,'code':'PREFLIGHT_FAILED'})
+        result,_,_,_,_,connect=run([1234])
+        connect.assert_not_called(); self.assertEqual(result,{'ready':False,'code':'PREFLIGHT_FAILED'})
+
     def test_quiescence_wrapper_refuses_unavailable_or_active(self):
-        zero = {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0}
+        zero = {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0, 'submission_unknown':0, **{f'{prefix}_{status}':0 for prefix in ('research','revision') for status in ('queued','submitting','running','submission_unknown')}}
         ready = {'exit_code': 0, 'exit_signal': 0, 'stdout': __import__('json').dumps({'ready': True, 'code': 'READY', 'counts': zero})}
         active = dict(zero, active_plans=1)
         bad = [None, {'exit_code': 0, 'stdout': 'private'}, {'exit_code': 0, 'stdout': __import__('json').dumps({'ready': True, 'code': 'READY', 'counts': active})}, {'exit_code': 1, 'stdout': __import__('json').dumps({'ready': False, 'code': 'PLANNING_IN_PROGRESS', 'counts': active})}]
@@ -67,6 +111,33 @@ class VolumeTests(unittest.TestCase):
         with patch.object(volume, 'verify', return_value=MACHINE['id']), patch.object(volume, 'request', return_value=ready) as req:
             volume.check_quiescence()
             self.assertEqual(req.call_args.args[2]['command'], ['env','PYTHONPATH=/app','python','-c',volume.QUIESCENCE_PROBE])
+        unknown = dict(zero, revision_submission_unknown=1)
+        result = {'exit_code':1,'stdout':__import__('json').dumps({'ready':False,'code':'PLANNING_UNCERTAIN','counts':unknown})}
+        with patch.object(volume,'verify',return_value=MACHINE['id']),patch.object(volume,'request',return_value=result):
+            with self.assertRaisesRegex(volume.Stop,'uncertain outcome'):volume.check_quiescence()
+
+    def test_grounded_actions_are_fixed_off_and_fail_closed(self):
+        ok = {'exit_code':0,'exit_signal':0,'stdout':'{"ready":true,"code":"READY"}'}
+        for check in (False,True):
+            with self.subTest(check=check),patch.object(volume,'verify',return_value=MACHINE['id']) as verify,patch.object(volume,'request',return_value=ok) as req:
+                volume.grounded_store_action(check_only=check)
+                verify.assert_called_once_with(require_attached=True,require_disabled=True)
+                command=req.call_args.args[2]['command']
+                self.assertEqual(command[-3:],['--path','/data/checkpoints/planning.sqlite3','--check' if check else '--approve'])
+                self.assertIn('ADAPTIVE_PLANNING_ENABLED=false',command)
+                self.assertIn('ADAPTIVE_RESEARCH_ENABLED=false',command)
+                self.assertIn('ADAPTIVE_STREAMING_ENABLED=false',command)
+                self.assertEqual(req.call_count,1)
+        for result in (None,{'exit_code':0,'stdout':'private'}, {'exit_code':1,'stdout':'{"ready":false,"code":"private"}'}, {'exit_code':0,'stdout':'{"ready":1,"code":"READY"}'}):
+            with self.subTest(result=result),patch.object(volume,'verify',return_value=MACHINE['id']),patch.object(volume,'request',return_value=result) as req:
+                with self.assertRaises(volume.Stop) as error:volume.grounded_store_action()
+                self.assertNotIn('private',str(error.exception));self.assertEqual(req.call_count,1)
+        for check in (False, True):
+            result = {'exit_code':1, 'stderr':'private', 'stdout':'{"ready":false,"code":"SQLITE_PRIVILEGE_DROP_FAILED"}'}
+            with self.subTest(check=check),patch.object(volume,'verify',return_value=MACHINE['id']),patch.object(volume,'request',return_value=result) as req:
+                with self.assertRaises(volume.Stop) as error:volume.grounded_store_action(check_only=check)
+                self.assertIn('SQLITE_PRIVILEGE_DROP_FAILED',str(error.exception))
+                self.assertNotIn('private',str(error.exception));self.assertEqual(req.call_count,1)
 
     def test_workflow_mount_config_guard(self):
         root = path.parents[1]
@@ -84,6 +155,23 @@ class VolumeTests(unittest.TestCase):
                     config + b'\n[[mounts]]\nsource = "extra"\ndestination = "/extra"\n'):
             with self.subTest(bad=bad[-150:]), self.assertRaises(AssertionError): check(bad)
 
+    def test_grounded_workflow_sequence_and_budget(self):
+        workflow = (path.parents[1] / '.github/workflows/fly-deploy.yml').read_text()
+        self.assertIn('options: [stage, upgrade, activate]', workflow)
+        self.assertNotIn('--initialize-store', workflow)
+        gate = workflow.index('run: python3 deployment/fly_checkpoint_volume.py --check-quiescence')
+        upgrade = workflow.index('run: python3 deployment/fly_checkpoint_volume.py --upgrade-grounded-store')
+        check = workflow.index('run: python3 deployment/fly_checkpoint_volume.py --check-grounded-store')
+        deploy = workflow.index('name: Deploy one Machine with explicit processing state')
+        self.assertLess(gate, upgrade); self.assertLess(upgrade, check); self.assertLess(check, deploy)
+        self.assertIn("if: inputs.deployment_action == 'stage' || inputs.deployment_action == 'activate'", workflow)
+        stage = workflow.split('stage)',1)[1].split(';;',1)[0]
+        for key in ('ADAPTIVE_PLANNING_ENABLED','PLANNING_JOBS_ENABLED','ADAPTIVE_RESEARCH_ENABLED','ADAPTIVE_STREAMING_ENABLED'):
+            self.assertIn('--env '+key+'=false', stage)
+        self.assertIn('--env ADAPTIVE_RESEARCH_MAX_TOOLS=6', workflow)
+        self.assertIn('--env ADAPTIVE_RESEARCH_ENABLED=true', workflow)
+        self.assertIn('--env ADAPTIVE_STREAMING_ENABLED=true', workflow)
+
     def test_machine_guards(self):
         volume.validate_machine_list([MACHINE])
         for val in ([], [MACHINE, MACHINE], [None], [{'region': 'iad'}], [{'region':'sin','state':'started','config':{'guest':None}}]):
@@ -91,7 +179,7 @@ class VolumeTests(unittest.TestCase):
         for key, value in [('memory_mb', 1024), ('cpu_kind', 'performance'), ('cpus', 2)]:
             m = copy.deepcopy(MACHINE); m['config']['guest'][key] = value
             with self.assertRaises(volume.Stop): volume.validate_machine_list([m])
-        for env in (None, {'ADAPTIVE_PLANNING_ENABLED': 'true'}, {'PLANNING_JOBS_ENABLED': 'true'}):
+        for env in (None, {'ADAPTIVE_PLANNING_ENABLED': 'true'}, {'PLANNING_JOBS_ENABLED': 'true'}, {'ADAPTIVE_RESEARCH_ENABLED':'true'}, {'ADAPTIVE_STREAMING_ENABLED':'true'}):
             m = copy.deepcopy(MACHINE); m['config']['env'] = env
             with self.assertRaises(volume.Stop): volume.validate_machine_list([m])
 

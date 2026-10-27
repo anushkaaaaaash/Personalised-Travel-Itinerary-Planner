@@ -51,7 +51,7 @@ def _limit(value, maximum):
 
 def validate_checkpoint(checkpoint, section):
     """Defense-in-depth after domain validation; never repair/truncate output."""
-    from .itineraries import ItineraryResponse, is_adaptive_travel_day
+    from .itineraries import ItineraryResponse, is_adaptive_travel_day, adaptive_travel_dates
     try:
         if type(checkpoint) is not dict or set(checkpoint) != {'itinerary','startLocation','endLocation','spentCents','provenance','journeyStrategy'}:
             raise ValueError()
@@ -69,7 +69,7 @@ def validate_checkpoint(checkpoint, section):
             if type(stay['location']) is not str or not 1<=len(stay['location'].strip())<=200 or stay['location']!=stay['location'].strip(): raise ValueError()
             prior_end=stay_end
         response = ItineraryResponse.model_validate(checkpoint['itinerary'])
-        eligible={strategy['stays'][0]['startDate'],strategy['stays'][-1]['endDate']}
+        eligible=adaptive_travel_dates(strategy['stays'][0]['startDate'],strategy['stays'][-1]['endDate'],strategy)
         lo,hi={'relaxed':(1,2),'balanced':(2,3),'fast':(3,4)}[response.travelPace]
         for day in response.days:
             minimum=0 if is_adaptive_travel_day(day.date,day.activities,eligible) else lo
@@ -211,7 +211,9 @@ class SectionCheckpointRepository:
     async def verify_ready(self):
         try:
             rows = await self.gateway.request('POST','rpc/adaptive_checkpoint_health',payload={})
-            if rows != [{'schema_version':1,'rpc_version':1,'cleanup_fresh':True}]: raise ValueError()
+            schema=getattr(self.gateway,'schema_version',1)
+            if schema not in (1,2) or (schema==2 and getattr(self.gateway,'supports_research',False) is not True):raise ValueError()
+            if rows != [{'schema_version':schema,'rpc_version':1,'cleanup_fresh':True}]: raise ValueError()
         except Exception: raise JobRepositoryError('SECTIONS_SCHEMA_NOT_READY') from None
 
     async def transition(self, owner, section_id, lease, version, status, *, provider_response_id=None, error_code=None, checkpoint=None, failure_details=None):

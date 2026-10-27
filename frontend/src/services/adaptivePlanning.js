@@ -1,9 +1,10 @@
 import { sessionFetch } from './session.js';
 import { validateTripPreferences, isRealIsoDate } from '../../../shared/tripPreferences.mjs';
+import { readPublicResearch, readPublicDraft, validGroundedPolicy } from './groundedPlanning.js';
 import { validAdaptiveSectionItinerary } from './adaptiveItineraryValidation.js';
 export const adaptiveId = value => typeof value === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(value);
-const knownErrors = new Set(['SECTION_SUBMISSION_UNCONFIRMED','SECTION_PROVIDER_REJECTED','SECTION_DEADLINE_REACHED','SECTION_POLL_UNCONFIRMED','SECTION_RESPONSE_MISMATCH','SECTION_OUTPUT_LIMIT','SECTION_PROVIDER_INCOMPLETE','SECTION_PROVIDER_FAILED','SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED','SECTION_INVALID_RESULT','SECTION_CONTINUITY_CONFLICT','SECTION_RETURN_MISSING','SECTION_REST_CONFLICT','SECTION_TRAVEL_DOUBLE_COUNT','SECTION_BUDGET_EXCEEDED','SECTION_INVALID_COST','SECTION_CHECKPOINT_INVALID','SECTION_STRATEGY_INVALID','SECTION_STRATEGY_CONFLICT','SECTION_TRANSFER_MISSING','SECTION_REPEAT_CONFLICT']);
-export const validAdaptivePolicy = value => value?.sectionDays === 3 && Number.isInteger(value.maxSubmissionsPerRun) && value.maxSubmissionsPerRun >= 1 && value.maxSubmissionsPerRun <= 12;
+const knownErrors = new Set(['SECTION_SUBMISSION_UNCONFIRMED','SECTION_PROVIDER_REJECTED','SECTION_DEADLINE_REACHED','SECTION_POLL_UNCONFIRMED','SECTION_RESPONSE_MISMATCH','SECTION_OUTPUT_LIMIT','SECTION_PROVIDER_INCOMPLETE','SECTION_PROVIDER_FAILED','SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED','SECTION_INVALID_RESULT','SECTION_CONTINUITY_CONFLICT','SECTION_RETURN_MISSING','SECTION_REST_CONFLICT','SECTION_TRAVEL_DOUBLE_COUNT','SECTION_BUDGET_EXCEEDED','SECTION_INVALID_COST','SECTION_CHECKPOINT_INVALID','SECTION_STRATEGY_INVALID','SECTION_STRATEGY_CONFLICT','SECTION_TRANSFER_MISSING','SECTION_REPEAT_CONFLICT','SECTION_RESEARCH_UNAVAILABLE','SECTION_RESEARCH_REQUESTED']);
+export const validAdaptivePolicy = value => value?.sectionDays === 3 && Number.isInteger(value.maxSubmissionsPerRun) && value.maxSubmissionsPerRun >= 1 && value.maxSubmissionsPerRun <= 12 && (value.selectedDayRevisions===undefined||typeof value.selectedDayRevisions==='boolean') && (value.researchEnabled===undefined||value.researchEnabled===false||validGroundedPolicy(value));
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 const safeText = (value, max=500) => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
 /** Only concrete model-proposed constraint advice permits an explicit remaining-section retry. */
@@ -60,7 +61,7 @@ export function validateAdaptivePage(body, { id, requestId, afterSequence=0 }={}
     if(days>3 || !c || !integer(c.spentCents) || c.spentCents>p.totalBudgetCents || !safeText(c.startLocation,200)||!safeText(c.endLocation,200)
       || !c.itinerary || !Number.isFinite(c.itinerary.remainingBudget)) return invalid();
     const budget=c.itinerary.estimatedTotalGroupCost+c.itinerary.remainingBudget;
-    if(!validAdaptiveSectionItinerary(c.itinerary,{...checked.value,startDate:s.startDate,endDate:s.endDate,budget},checked.value)
+    if(!validAdaptiveSectionItinerary(c.itinerary,{...checked.value,startDate:s.startDate,endDate:s.endDate,budget},checked.value,c.journeyStrategy)
       || Math.abs(c.itinerary.estimatedTotalGroupCost*100-c.spentCents)>.001
       || c.provenance?.provider!=='openai'||c.provenance?.model!=='gpt-6-luna'||c.provenance?.validationVersion!=='adaptive-section-v1') return invalid();
     if(c.journeyStrategy!==undefined){
@@ -77,7 +78,9 @@ export function validateAdaptivePage(body, { id, requestId, afterSequence=0 }={}
     return structuredClone({id:s.id,sequence:s.sequence,startDate:s.startDate,endDate:s.endDate,checkpoint:c});
   });
   if(body.nextCursor!==null && (!integer(body.nextCursor)||body.nextCursor<=afterSequence||body.nextCursor<sequence)) return invalid();
-  return {preferences:checked.value,plan:{id:p.id,requestId:p.requestId,status:p.status,completedDays:p.completedDays,totalDays:p.totalDays,remainingCreates:p.remainingCreates,runAllowance:p.runAllowance,estimatedSections:p.estimatedSections,storageLimitBytes:p.storageLimitBytes,storageUsedBytes:p.storageUsedBytes,globalStorageLimitBytes:p.globalStorageLimitBytes,storagePauseScope:p.storagePauseScope,spentCents:p.spentCents,totalBudgetCents:p.totalBudgetCents,pauseReason:p.pauseReason,expiresAt:p.expiresAt,activeSection},sections,nextCursor:body.nextCursor};
+  let research,draft;
+  try{research=readPublicResearch(body.research);draft=readPublicDraft(body.draft,p,checked.value);}catch{return invalid();}
+  return {research,draft,preferences:checked.value,plan:{id:p.id,requestId:p.requestId,status:p.status,completedDays:p.completedDays,totalDays:p.totalDays,remainingCreates:p.remainingCreates,runAllowance:p.runAllowance,estimatedSections:p.estimatedSections,storageLimitBytes:p.storageLimitBytes,storageUsedBytes:p.storageUsedBytes,globalStorageLimitBytes:p.globalStorageLimitBytes,storagePauseScope:p.storagePauseScope,spentCents:p.spentCents,totalBudgetCents:p.totalBudgetCents,pauseReason:p.pauseReason,expiresAt:p.expiresAt,activeSection},sections,nextCursor:body.nextCursor};
 }
 export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(import.meta.env?.VITE_API_BASE_URL || '/api'),timeoutMs=15000}={}) {
   async function request(path,method,payload,{signal,id,requestId,afterSequence=0}={}) {
@@ -92,6 +95,7 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
         let money=false;
         if(response.status===400){try{money=(await response.json())?.error?.code==='SECTION_MONEY_INVALID';}catch{}}
         if(money)code='SECTION_MONEY_INVALID';
+        if(response.status===409){try{const reason=(await response.json())?.error?.code;if(['RESEARCH_RETRY_NOT_ALLOWED','RESEARCH_ALLOWANCE_REACHED','RESEARCH_PHASE_ALREADY_RESERVED'].includes(reason))code=reason;}catch{}}
         if(response.status===429){code='ADAPTIVE_RATE_LIMITED';try{const reason=(await response.json())?.error?.code;if(['SECTION_OWNER_PLAN_EXISTS','SECTION_CAPACITY_LIMIT'].includes(reason))code=reason;}catch{}}
         if(response.status===404 && method==='GET' && path==='/current'){try{if((await response.json())?.error?.code==='SECTION_CURRENT_NOT_FOUND')code='ADAPTIVE_CURRENT_NOT_FOUND';}catch{}}
         // Only an authenticated, known-plan GET has definitive absence semantics.
@@ -101,7 +105,7 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
       }
       const body=await response.json();if(controller.signal.aborted)throw Error('aborted');
       const checked=validateAdaptivePage(body,{id,requestId,afterSequence});
-      if(path==='/current'&&!['active','paused'].includes(checked.plan.status))return invalid();
+      if(path==='/current'&&!['active','paused','completed'].includes(checked.plan.status))return invalid();
       return checked;
     } catch(error) {
       if(signal?.aborted)throw new DOMException('Aborted','AbortError');
@@ -117,6 +121,7 @@ export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(im
     findRequest(requestId,options={}) {return request(`/requests/${identity(requestId)}`,'GET',null,{...options,requestId});},
     continue(id,requestId,options={}) {return request(`/${identity(id)}/continue`,'POST',{requestId:identity(requestId)},{...options,id});},
     retry(id,requestId,sectionId,options={}) {return request(`/${identity(id)}/retry`,'POST',{requestId:identity(requestId),sectionId:identity(sectionId)},{...options,id});},
+    retryResearch(id,requestId,options={}) {return request(`/${identity(id)}/research/retry`,'POST',{requestId:identity(requestId)},{...options,id});},
     cancel(id,options={}) {return request(`/${identity(id)}/cancel`,'POST',{}, {...options,id});},
   };
 }

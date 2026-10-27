@@ -101,7 +101,7 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
         from .adaptive_activation import route_enabled
         return bool(app.state.planning_lifespan_active and route_enabled(adaptive_engine) and adaptive_engine.capability_ready())
     app.include_router(build_auth_router(authentication, planning_capability, adaptive_capability,
-        lambda: {'sectionDays':3,'maxSubmissionsPerRun':adaptive_engine.run_allowance}))
+        lambda: adaptive_engine.public_policy() if hasattr(adaptive_engine,'public_policy') else {'sectionDays':3,'maxSubmissionsPerRun':adaptive_engine.run_allowance}))
     from .adaptive_routes import build_adaptive_router
     app.include_router(build_adaptive_router(authentication, adaptive_engine))
     from .planning_routes import build_planning_router

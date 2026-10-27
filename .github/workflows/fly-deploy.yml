@@ -8,11 +8,11 @@ on:
         required: true
         type: string
       deployment_action:
-        description: 'Stage code, initialize approved empty store once, or activate verified SQLite'
+        description: 'Stage with planning off, explicitly upgrade verified storage, or activate verified grounded planning'
         required: true
         default: stage
         type: choice
-        options: [stage, initialize, activate]
+        options: [stage, upgrade, activate]
 
 permissions:
   contents: read
@@ -57,6 +57,8 @@ jobs:
           assert config["http_service"]["auto_stop_machines"] == "off"
           assert config["env"]["PLANNING_JOBS_ENABLED"] == "false"
           assert config["env"]["ADAPTIVE_PLANNING_ENABLED"] == "false"
+          assert config["env"].get("ADAPTIVE_RESEARCH_ENABLED", "false") == "false"
+          assert config["env"].get("ADAPTIVE_STREAMING_ENABLED", "false") == "false"
           assert config["mounts"] == [{"source":"planner_checkpoints","destination":"/data","scheduled_snapshots":False}]
           PYCODE
       - name: Install Fly CLI
@@ -93,23 +95,22 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: python3 deployment/fly_checkpoint_volume.py --verify
-      - name: Initialize approved empty store once
-        if: inputs.deployment_action == 'initialize'
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: python3 deployment/fly_checkpoint_volume.py --initialize-store
-      - name: Check persistent store before activation
-        if: inputs.deployment_action == 'activate'
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: python3 deployment/fly_checkpoint_volume.py --preflight-store
       - name: Check for active planning before deployment
-        if: inputs.deployment_action != 'initialize'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: python3 deployment/fly_checkpoint_volume.py --check-quiescence
+      - name: Explicitly upgrade existing checkpoint schema while planning is off
+        if: inputs.deployment_action == 'upgrade'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 deployment/fly_checkpoint_volume.py --upgrade-grounded-store
+      - name: Verify grounded schema before activation
+        if: inputs.deployment_action == 'upgrade' || inputs.deployment_action == 'activate'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 deployment/fly_checkpoint_volume.py --check-grounded-store
       - name: Deploy one Machine with explicit processing state
-        if: inputs.deployment_action != 'initialize'
+        if: inputs.deployment_action == 'stage' || inputs.deployment_action == 'activate'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           DEPLOYMENT_ACTION: ${{ inputs.deployment_action }}
@@ -118,7 +119,9 @@ jobs:
           test -n "$FLY_API_TOKEN"
           case "$DEPLOYMENT_ACTION" in
             stage)
-              flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --strategy immediate --yes
+              flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --strategy immediate --yes \
+                --env ADAPTIVE_PLANNING_ENABLED=false --env PLANNING_JOBS_ENABLED=false \
+                --env ADAPTIVE_RESEARCH_ENABLED=false --env ADAPTIVE_STREAMING_ENABLED=false
               ;;
             activate)
               flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --strategy immediate --yes \
@@ -127,7 +130,10 @@ jobs:
                 --env ADAPTIVE_SCHEMA_VERIFIED=true --env ADAPTIVE_CLEANUP_VERIFIED=true \
                 --env ADAPTIVE_WORKER_VERIFIED=true --env ADAPTIVE_RESOURCE_POLICY_APPROVED=true \
                 --env ADAPTIVE_SQLITE_STORAGE_APPROVED=true --env ADAPTIVE_SQLITE_VOLUME_VERIFIED=true \
-                --env ADAPTIVE_SQLITE_SINGLE_MACHINE_VERIFIED=true --env ADAPTIVE_SQLITE_SNAPSHOTS_DISABLED=true
+                --env ADAPTIVE_SQLITE_SINGLE_MACHINE_VERIFIED=true --env ADAPTIVE_SQLITE_SNAPSHOTS_DISABLED=true \
+                --env ADAPTIVE_RESEARCH_ENABLED=true --env ADAPTIVE_RESEARCH_MAX_TOOLS=6 \
+                --env ADAPTIVE_RESEARCH_COST_APPROVED=true --env ADAPTIVE_RESEARCH_SCHEMA_VERIFIED=true \
+                --env ADAPTIVE_RESEARCH_WORKER_VERIFIED=true --env ADAPTIVE_STREAMING_ENABLED=true
               ;;
             *) echo 'Unknown deployment action; stopped.' >&2; exit 1 ;;
           esac
