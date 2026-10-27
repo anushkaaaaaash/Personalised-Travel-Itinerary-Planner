@@ -1,5 +1,5 @@
 """Strict, bounded, non-saving day-by-day AI generation for the local prototype."""
-import asyncio
+from .ai_timeout import AI_SERVICE_TIMEOUT_SECONDS, wait_for_provider
 import logging
 import json
 import re
@@ -210,7 +210,7 @@ class RefinementRequest(StrictModel):
         return value.strip()
 
 class ItineraryService:
-    def __init__(self, provider=None, timeout_seconds=50):
+    def __init__(self, provider=None, timeout_seconds=AI_SERVICE_TIMEOUT_SECONDS):
         self.provider = provider
         self.timeout_seconds = timeout_seconds
 
@@ -278,7 +278,7 @@ class ItineraryService:
                     'Do not output vibe: no refinement vibe was requested; the server supplies that unset request metadata.')
             messages[0]['content'] += warning_contract.instructions
         try:
-            raw = await asyncio.wait_for(provider.generate(messages, response_schema), self.timeout_seconds)
+            raw = await wait_for_provider(provider.generate(messages, response_schema), self.timeout_seconds)
         except RecommendationError:
             raise
         except TimeoutError:

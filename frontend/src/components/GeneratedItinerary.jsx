@@ -1,3 +1,4 @@
+import DestinationLoading from './DestinationLoading.jsx';
 import RouteSummary from './RouteSummary.jsx';
 import ItineraryEditor from './ItineraryEditor.jsx';
 import RefinementControls from './RefinementControls.jsx';
@@ -6,7 +7,7 @@ import ItinerarySharing from './ItinerarySharing.jsx';
 export { downloadItinerary } from '../services/itineraryExport.js';
 const money = (currency, value) => `${currency} ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 export default function GeneratedItinerary({ loading, error, result, onRetry, onCancel, onEditDay, edited = false, refinement = {}, onRefine, onCancelRefine, optimization = {}, onOptimize, onCancelOptimize, preferences, confirmedCoordinates = [], onConfirmCoordinate }) {
-  if (loading) return <section className="card" aria-busy="true"><h2>Your AI day plan</h2><p role="status">Generating and validating your itinerary…</p><button className="preview-btn" onClick={onCancel}>Cancel generation</button></section>;
+  if (loading) return <DestinationLoading destination={preferences?.destination} onCancel={onCancel} />;
   if (error) return <section className="card results--error"><h2>Your AI day plan</h2><p role="alert">{error}</p><button className="preview-btn" onClick={onRetry}>Retry itinerary generation</button></section>;
   if (!result) return null;
   return <section className="results-wrap generated-itinerary" aria-label="AI-generated itinerary">

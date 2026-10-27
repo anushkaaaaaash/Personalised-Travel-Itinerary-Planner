@@ -1,3 +1,4 @@
+import { AI_REQUEST_TIMEOUT_MS } from './aiRequest.js';
 import { sessionFetch } from './session.js';
 import { validateTripPreferences, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
@@ -34,7 +35,7 @@ const failure = (status) => new RecommendationError(status === 503
   : status === 504 ? 'AI recommendations timed out. Try again later; your saved trip is unchanged.'
   : status === 400 || status === 422 ? 'Check your trip preferences before generating recommendations.'
   : 'AI recommendations could not be verified. Please try again later.');
-export async function getRecommendations(payload, { fetchImpl = sessionFetch, baseUrl = API_BASE_URL, signal, timeoutMs = 65000 } = {}) {
+export async function getRecommendations(payload, { fetchImpl = sessionFetch, baseUrl = API_BASE_URL, signal, timeoutMs = AI_REQUEST_TIMEOUT_MS } = {}) {
   const validated = validateTripPreferences(payload);
   if (!validated.valid) throw failure(400);
   const controller = new AbortController();
