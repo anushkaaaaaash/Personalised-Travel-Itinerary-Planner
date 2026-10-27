@@ -1,0 +1,43 @@
+name: Fly backend container
+on:
+  pull_request:
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', '.github/workflows/fly-config.yml']
+  push:
+    branches: [main]
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', '.github/workflows/fly-config.yml']
+permissions:
+  contents: read
+jobs:
+  offline-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: deployment/dockerignore-test/go.sum
+      - name: Verify Docker ignore semantics against actual pinned Moby matcher
+        run: cd deployment/dockerignore-test && go test -v
+      - name: Build only the Python backend image
+        run: docker build --tag travel-api-offline .
+      - name: Production factory smoke test with synthetic settings and no network
+        shell: bash
+        run: |
+          docker run -d --name travel-api-offline --network none \
+            -e API_HOST=api.example.test -e FRONTEND_ORIGIN=https://app.example.test \
+            -e SAVED_ITINERARIES_SCHEMA_VERIFIED=true \
+            -e SUPABASE_URL=https://synthetic.supabase.co \
+            -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_synthetic \
+            -e OPENAI_API_KEY=synthetic-provider-only \
+            -e PLANNING_JOBS_ENABLED=false travel-api-offline
+          for i in $(seq 1 30); do
+            if docker exec travel-api-offline python -c 'import urllib.request; r=urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080/api/health",headers={"Host":"api.example.test"})); assert r.status==200'; then break; fi
+            sleep 1
+          done
+          docker exec travel-api-offline python -c 'import os,json,urllib.request; assert os.getuid()==10001; req=urllib.request.Request("http://127.0.0.1:8080/api/auth/config",headers={"Host":"api.example.test"}); result=json.load(urllib.request.urlopen(req)); assert result["planning_jobs_enabled"] is False; assert not os.path.exists("/app/.env"); print("PASS: non-root production health and disabled background capability with no network")'
+      - name: Remove synthetic container
+        if: always()
+        run: docker rm -f travel-api-offline || true

@@ -1,0 +1,12 @@
+# Deny by default; reset descendants after each parent-directory exception.
+**
+!Dockerfile
+!backend-python/
+backend-python/**
+!backend-python/requirements.txt
+!backend-python/app/
+backend-python/app/**
+!backend-python/app/*.py
+**/.env*
+**/__pycache__/**
+backend-python/app/*/**
