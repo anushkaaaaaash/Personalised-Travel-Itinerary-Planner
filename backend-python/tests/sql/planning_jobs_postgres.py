@@ -44,6 +44,7 @@ def literal(data):
 
 sql('create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key);')
 sql(Path(__file__).resolve().parents[2].joinpath('migrations/003_planning_jobs_REVIEW_ONLY.sql').read_text())
+sql(Path(__file__).resolve().parents[2].joinpath('migrations/004_abandon_uncertain_planning_jobs_REVIEW_ONLY.sql').read_text())
 owners = [str(uuid4()), str(uuid4())]
 sql('insert into auth.users values ' + ','.join('('+literal(owner)+')' for owner in owners) + ';')
 
@@ -102,3 +103,20 @@ remaining = sql('set role service_role; select count(*) from transition_planning
 assert remaining == '0'
 assert sql('select status from planning_jobs where id='+literal(claimed['id'])+'::uuid;') == 'cancelled'
 print('PASS: real PostgreSQL independent-connection claims, locked-row SKIP LOCKED, and cancellation/stale-worker CAS.')
+
+# Explicitly abandon uncertain submissions; never reset/recreate their request IDs.
+sql('truncate planning_jobs;')
+uncertain = [enqueue(owner) for owner in owners]
+sql("update planning_jobs set status='submission_unknown',error_code='JOB_SUBMISSION_UNCONFIRMED';")
+assert sql('set role service_role; select count(*) from cancel_planning_job('+literal(owners[1])+'::uuid,'+literal(uncertain[0]['id'])+'::uuid);') == '0'
+for pending in uncertain:
+    assert sql('set role service_role; select status from cancel_planning_job('+literal(pending['user_id'])+'::uuid,'+literal(pending['id'])+'::uuid);') == 'cancelled'
+    assert sql('set role service_role; select status from enqueue_planning_job('+literal(json.dumps(pending))+'::jsonb);') == 'cancelled'
+next_job = enqueue(owners[0])
+assert claim() == []
+sql("update planning_jobs set created_at=now()-interval '9 minutes',expires_at=now()+interval '23 hours' where id="+literal(uncertain[0]['id'])+'::uuid;')
+assert claim() == []
+sql("update planning_jobs set created_at=now()-interval '11 minutes',expires_at=now()+interval '23 hours' where id="+literal(uncertain[0]['id'])+'::uuid;')
+assert claim()[0]['id'] == next_job['id']
+assert sql('set role service_role; select status from enqueue_planning_job('+literal(json.dumps(uncertain[0]))+'::jsonb);') == 'cancelled'
+print('PASS: explicit owner abandonment of unknown submission; replay remains cancelled; capacity preserved until 10-minute reserve elapses.')

@@ -6,7 +6,7 @@ export const PLANNING_JOB_STORAGE_KEY = 'travel.planning-job.v1';
 const uuid = value => typeof value === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(value);
 const terminal = status => ['succeeded','failed','cancelled','expired'].includes(status);
 const defaultStorage = () => { try { return globalThis.sessionStorage; } catch { return null; } };
-const empty = () => ({job:null,loading:false,error:'',preferences:null,result:null,evidence:null,resumable:false,needsCheck:false,rejected:false,cancelRequested:false,checking:false,cancelling:false});
+const empty = () => ({job:null,loading:false,error:'',preferences:null,result:null,evidence:null,resumable:false,needsCheck:false,rejected:false,cancelUnconfirmed:false,cancelRequested:false,checking:false,cancelling:false});
 function read(storage, owner) {
   try {
     const raw=storage?.getItem(PLANNING_JOB_STORAGE_KEY);if(!raw)return null;
@@ -31,7 +31,7 @@ export function createPlanningJobController({ client=createPlanningJobsClient(),
   const unsubscribe=subscribe(()=>resetOwner());
   const current=(operation)=>!disposed && operation.epoch===epoch && operation.owner===getOwner() && active===operation && !operation.controller.signal.aborted;
   function schedule(){stopTimer();if(disposed || !handle || state.needsCheck || terminal(state.job?.status))return;timer=setTimeout(()=>{timer=null;void check();},pollMs);}
-  function accept(job,preferences){if(terminal(job.status))cancelRequested=false;handle={owner,requestId:job.requestId,jobId:job.id};persist();const pending=job.status==='submission_unknown';publish({job,preferences:preferences || job.preferences || state.preferences,result:job.status==='succeeded'?job.result:null,evidence:job.status==='succeeded'?(job.evidence || null):null,error:'',loading:!terminal(job.status)&&!pending,resumable:true,needsCheck:pending,cancelRequested,checking:false,cancelling:cancelRequested});}
+  function accept(job,preferences){if(terminal(job.status))cancelRequested=false;handle={owner,requestId:job.requestId,jobId:job.id};persist();const pending=job.status==='submission_unknown';publish({job,preferences:preferences || job.preferences || state.preferences,result:job.status==='succeeded'?job.result:null,evidence:job.status==='succeeded'?(job.evidence || null):null,error:'',loading:!terminal(job.status)&&!pending,resumable:true,needsCheck:pending,cancelUnconfirmed:false,cancelRequested,checking:false,cancelling:cancelRequested});}
   async function run(kind, action){
     if(disposed || resetOwner() || !owner || active)return {ignored:true};
     stopTimer();const operation={kind,controller:new AbortController(),owner,epoch};active=operation;
@@ -47,9 +47,9 @@ export function createPlanningJobController({ client=createPlanningJobsClient(),
         cancelRequested=false;
         publish({...empty(),job:{id:handle.jobId,requestId:handle.requestId,status:'expired',result:null,error:{code:'JOB_NOT_FOUND'}},preferences:state.preferences,resumable:true,error:'This planning session is no longer available. Start a new plan when you’re ready.'});
       }
-      else publish({loading:false,error:kind==='start'?'We couldn’t confirm whether planning started. Check your trip before starting another.':kind==='cancel'?'We couldn’t confirm the stop. Check your trip before trying again.':'Your trip could not be checked. Please check again shortly.',needsCheck:true,resumable:Boolean(handle),cancelRequested,checking:false,cancelling:false});
+      else publish({loading:false,error:kind==='start'?'We couldn’t confirm whether planning started. Check your trip before starting another.':kind==='cancel'?'We couldn’t confirm the stop. Check your trip before trying again.':'Your trip could not be checked. Please check again shortly.',needsCheck:true,resumable:Boolean(handle),cancelUnconfirmed:kind==='cancel' || state.cancelUnconfirmed,cancelRequested,checking:false,cancelling:false});
       return {error:true};
-    } finally {if(active===operation){active=null;if(!disposed){if(cancelRequested && handle?.jobId && !terminal(state.job?.status) && !state.needsCheck)void cancelKnown();else schedule();}}}
+    } finally {if(active===operation){active=null;if(!disposed){if(cancelRequested && handle?.jobId && !terminal(state.job?.status) && (!state.needsCheck || (state.job?.status==='submission_unknown' && !state.cancelUnconfirmed)))void cancelKnown();else schedule();}}}
   }
   async function check(){
     if(disposed || resetOwner() || !handle || active)return {ignored:true};
@@ -79,7 +79,7 @@ export function createPlanningJobController({ client=createPlanningJobsClient(),
       cancelRequested=true;publish({cancelRequested:true,cancelling:true});stopTimer();
       if(active?.kind==='start' || active?.kind==='cancel')return {pending:true};
       if(active){epoch++;active.controller.abort();active=null;}
-      if(handle.jobId && !state.needsCheck)return cancelKnown();
+      if(handle.jobId && (!state.needsCheck || (state.job?.status==='submission_unknown' && !state.cancelUnconfirmed)))return cancelKnown();
       // A lost POST is reconciled read-only before any cancellation is attempted.
       return check();
     },

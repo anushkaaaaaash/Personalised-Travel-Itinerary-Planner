@@ -174,3 +174,20 @@ no known authorized test app owner, so no synthetic auth account or committed te
 trip was created. Actual expired-row deletion was proved only in the isolated SQL
 fixture. Scoped TLS/role connectivity is a guarded deployment-startup check still
 required; local executor network resolution is not evidence of Render reachability.
+
+## Explicit recovery from an uncertain provider submission
+
+Apply additive `004_abandon_uncertain_planning_jobs_REVIEW_ONLY.sql` only after
+review; do not edit or replay applied003. An owner may explicitly stop a known
+`submission_unknown` job. The same job becomes cancelled and retains its request
+identity; replaying that request does not create another provider request. A
+request-only lost response must first be reconciled with read-only lookup. Neither
+stop nor lookup silently starts a replacement; a fresh plan requires a separate
+explicit user action.
+
+An unknown response ID cannot be cancelled upstream, so abandonment does not
+promise stopped computation or a refund. Existing conservative admission reserves
+cancelled jobs until ten minutes from job creation (not a strict provider billing
+or active-compute bound), then releases the slot. Without explicit abandonment,
+uncertain jobs remain quarantined until retention cleanup. Operators should use
+the owner-facing stop flow rather than delete queue rows or reset jobs to queued.

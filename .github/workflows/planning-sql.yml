@@ -1,9 +1,9 @@
 name: Planning queue SQL
 on:
   push:
-    paths: ['backend-python/migrations/003_planning_jobs_REVIEW_ONLY.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
+    paths: ['backend-python/migrations/*planning_jobs*.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
   pull_request:
-    paths: ['backend-python/migrations/003_planning_jobs_REVIEW_ONLY.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
+    paths: ['backend-python/migrations/*planning_jobs*.sql', 'backend-python/tests/sql/**', '.github/workflows/planning-sql.yml']
   workflow_dispatch:
 permissions:
   contents: read

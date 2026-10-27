@@ -132,3 +132,36 @@ def test_durable_route_provider_and_restart_recovery(monkeypatch,payload,planned
         assert 'provider_response_id' not in result.text and 'lease_token' not in result.text
         assert provider_calls==[('POST','/v1/responses'),('GET','/v1/responses/resp_integrated')]
         assert sum(path=='rpc/enqueue_planning_job' for _,path in db_calls)==1
+
+
+def test_unknown_abandonment_does_not_contact_provider(monkeypatch,payload):
+    from app.planning_repository import JobRepositoryError
+    monkeypatch.setenv('PLANNING_JOBS_PREVIEW','true');monkeypatch.setenv('APP_MODE','local')
+    now=datetime.now(timezone.utc)
+    row=dict(id=str(uuid4()),request_id=str(uuid4()),user_id=OWNER,status='submission_unknown',
+        created_at=now.isoformat(),expires_at=(now+timedelta(hours=24)).isoformat(),
+        preferences=payload,provider_response_id=None,result=None)
+    class Repo:
+        async def request_cancel(self,owner,job):
+            if owner!=OWNER or job!=row['id']:raise JobRepositoryError('JOB_NOT_FOUND',404)
+            row.update(status='cancelled',cancel_requested=True)
+            return deepcopy(row)
+        async def enqueue(self,owner,request,preferences):
+            assert owner==OWNER and request==row['request_id']
+            return deepcopy(row)  # Durable deduplication tested in executable SQL.
+        async def claim(self,worker):return None
+    class Provider:
+        async def cancel(self,*args):raise AssertionError('No known upstream ID to cancel.')
+        async def create(self,*args):raise AssertionError('Never recreate an uncertain submission.')
+    repo=Repo();worker=PlanningWorker(repo,Provider(),enabled=True)
+    app=create_app(auth_service=Auth(),planning_engine=DurablePlanningCoordinator(repo,worker,enabled=True))
+    with TestClient(app) as browser:
+        url='/api/planning-jobs/'+row['id']+'/cancel'
+        assert browser.post(url,json={},headers={'Authorization':'Bearer other'}).status_code==404
+        assert row['status']=='submission_unknown'
+        stopped=browser.post(url,json={},headers={'Authorization':'Bearer owner'})
+        assert stopped.status_code==200 and stopped.json()['status']=='cancelled'
+        replay=browser.post('/api/planning-jobs',json={'requestId':row['request_id'],'preferences':payload},
+            headers={'Authorization':'Bearer owner'})
+        assert replay.json()['status']=='cancelled'
+        browser.portal.call(worker.tick)

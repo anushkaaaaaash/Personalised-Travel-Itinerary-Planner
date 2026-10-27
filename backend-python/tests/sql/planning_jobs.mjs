@@ -12,6 +12,7 @@ try {
     create schema auth; create table auth.users(id uuid primary key);`);
   const sql=await fs.readFile(new URL('../../migrations/003_planning_jobs_REVIEW_ONLY.sql',import.meta.url),'utf8');
   await db.exec(sql);
+  await db.exec(await fs.readFile(new URL('../../migrations/004_abandon_uncertain_planning_jobs_REVIEW_ONLY.sql',import.meta.url),'utf8'));
   const owner='11111111-1111-4111-8111-111111111111';
   const other='22222222-2222-4222-8222-222222222222';
   const worker='33333333-3333-4333-8333-333333333333';
@@ -76,5 +77,26 @@ try {
   await assert.rejects(db.query('select * from auth.users'),/permission denied/);
   const flags=(await db.query("select rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls from pg_roles where rolname=current_user")).rows[0];
   assert.ok(Object.values(flags).every(value=>value===false));
-  console.log('PASS: SQL migration; anonymous/authenticated denied; dedup; owner cancellation; lease/CAS; restart quarantine; atomic owner admission; logical purge and heartbeat; restricted-role queue access and legacy/auth denial.');
+  // Explicit abandonment resolves uncertainty without retrying provider creation.
+  await db.exec('reset role; truncate public.planning_jobs; set role service_role');
+  const uncertainA=input('aaaaaaaa-1111-4111-8111-111111111111','aaaaaaaa-2222-4222-8222-222222222222');
+  const uncertainB=input('bbbbbbbb-1111-4111-8111-111111111111','bbbbbbbb-2222-4222-8222-222222222222',other);
+  for (const pending of [uncertainA,uncertainB]) await db.query('select * from public.enqueue_planning_job($1)',[pending]);
+  await db.exec("update planning_jobs set status='submission_unknown',error_code='JOB_SUBMISSION_UNCONFIRMED'");
+  assert.equal((await db.query('select * from cancel_planning_job($1,$2)',[other,uncertainA.id])).rows.length,0);
+  assert.equal((await db.query('select status from planning_jobs where id=$1',[uncertainA.id])).rows[0].status,'submission_unknown');
+  for (const pending of [uncertainA,uncertainB]) {
+    const abandoned=(await db.query('select * from cancel_planning_job($1,$2)',[pending.user_id,pending.id])).rows[0];
+    assert.equal(abandoned.status,'cancelled');assert.equal(abandoned.cancel_requested,true);
+    assert.equal((await db.query('select * from enqueue_planning_job($1)',[pending])).rows[0].status,'cancelled');
+  }
+  const next=input('cccccccc-1111-4111-8111-111111111111','cccccccc-2222-4222-8222-222222222222');
+  await db.query('select * from enqueue_planning_job($1)',[next]);
+  assert.equal((await db.query('select * from claim_planning_job($1)',[worker])).rows.length,0);
+  await db.query("update planning_jobs set created_at=now()-interval '9 minutes',expires_at=now()+interval '23 hours' where id=$1",[uncertainA.id]);
+  assert.equal((await db.query('select * from claim_planning_job($1)',[worker])).rows.length,0);
+  await db.query("update planning_jobs set created_at=now()-interval '11 minutes',expires_at=now()+interval '23 hours' where id=$1",[uncertainA.id]);
+  assert.equal((await db.query('select * from claim_planning_job($1)',[worker])).rows[0].id,next.id);
+  assert.equal((await db.query('select * from enqueue_planning_job($1)',[uncertainA])).rows[0].status,'cancelled');
+  console.log('PASS: SQL migration; anonymous/authenticated denied; dedup; owner cancellation; lease/CAS; restart quarantine; atomic owner admission; logical purge and heartbeat; restricted-role queue access and legacy/auth denial; explicit uncertain abandonment, no replay, conservative 10-minute capacity reservation.');
 } finally { await db.close(); }
