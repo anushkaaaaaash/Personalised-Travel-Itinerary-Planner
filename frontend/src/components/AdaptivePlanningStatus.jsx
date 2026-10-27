@@ -1,3 +1,5 @@
+import AdaptiveCostSummary from './AdaptiveCostSummary.jsx';
+import { COST_LABELS } from '../services/itineraries.js';
 import { useId, useState } from 'react';
 import DestinationLoading from './DestinationLoading.jsx';
 import { tripFailureRecovery } from '../utils/travelMessages.js';
@@ -8,6 +10,8 @@ const money = (currency,value) => `${currency} ${(value/100).toLocaleString(unde
 const terminal = status => ['completed','cancelled','expired'].includes(status);
 const pauseCategory = plan => plan?.pauseReason==='SECTION_FAILED' ? ({SECTION_CONSTRAINT_CONFLICT:'CONSTRAINT_CONFLICT',SECTION_BUDGET_EXHAUSTED:'BUDGET_EXHAUSTED'}[plan.activeSection?.errorCode] || plan.pauseReason) : plan?.pauseReason;
 const sectionFailures = {
+  SECTION_RESEARCH_REQUESTED: ['Checking details for this section.', 'The planner requested outside information before continuing. This is not a problem with your trip preferences.'],
+  SECTION_RESEARCH_UNAVAILABLE: ['Current research is not available for this section.', 'The planner could not use up-to-date research notes, so this section was not added. Your dates and budget have not been identified as a problem.'],
   SECTION_PROVIDER_REJECTED: ['The planning service couldn’t start this section.', 'The service rejected this section request. This does not show that your trip preferences are invalid.'],
   SECTION_DEADLINE_REACHED: ['This section reached its time limit.', 'The section did not finish within the service’s processing time limit. Your trip dates have not been shortened.'],
   SECTION_PROVIDER_FAILED: ['The planning service couldn’t finish this section.', 'The service failed while producing this section. Your trip preferences have not been identified as a problem.'],
@@ -66,6 +70,10 @@ export function adaptiveRequestRecovery(code) {
   return {code,title,message,retryable:false,editStep:null,recommendations:[]};
 }
 
+export function researchQueryRecovery() {
+  return {code:'RESEARCH_QUERY_INVALID',title:'Use public place names for research.',message:'This research request did not start because a destination or departure-city entry was not suitable for a public search. This is a place-name format check, not a problem with your dates or budget.',retryable:false,editStep:0,recommendations:[{field:'destination',reason:'Only public place names can be sent for research.',suggestion:'Review the destination: use a city, region or country name, without a URL, email address or contact details.'},{field:'departureCity',reason:'Transport research may also need a public departure-city name.',suggestion:'Review the departure city: use its place name only, without a URL, email address or contact details.'}]};
+}
+
 function ExistingPlanningRecovery({state,onResumeExisting,onCancelExisting,onCheck}) {
   const [confirmStop,setConfirmStop]=useState(false);
   const confirmationId=useId();
@@ -104,31 +112,44 @@ function CompletedSection({section,currency}) {
       <p>{section.checkpoint.startLocation} → {section.checkpoint.endLocation}</p><p className="hint">Section estimate · {money(currency,section.checkpoint.spentCents)} for the whole group. Check prices and availability before booking.</p>
     </header>
     {itinerary.explanation && <p>{itinerary.explanation}</p>}
+    <details className="secondary-tools"><summary>Section expense breakdown</summary><p className="hint">This section only · estimated costs for the whole group.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,itinerary.days.reduce((total,day)=>total+Math.round(day.costs[key]*100),0))}</span></li>)}</ul></details>
     {itinerary.warnings.length>0 && <details className="practical-checks"><summary>Things to check for this section</summary><ul>{itinerary.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></details>}
     {itinerary.days.map(day=><details className="adaptive-day" key={day.date}>
       <summary><time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
       <ol className="activity-list timeline">{day.activities.map(activity=><li key={activity.id}><div className="activity-meta"><time>{activity.startTime}</time><span>{activity.durationMinutes} min</span>{activity.fixedTime&&<span className="tag">Fixed time</span>}</div><strong>{activity.title}</strong><p>{activity.notes}</p></li>)}</ol>
       <div className="day-notes"><p><strong>Getting around & taking a break</strong><br/>{day.transitAndRest}</p><p><strong>Dietary arrangements · confirm with venues</strong><br/>{day.dietaryNotes}</p><p><strong>Access · confirm with venues</strong><br/>{day.mobilityNotes}</p></div>
+      <details className="secondary-tools"><summary>Day expense breakdown</summary><p className="hint">Estimated costs for the whole group, not per person.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,Math.round(day.costs[key]*100))}</span></li>)}</ul></details>
     </details>)}
   </section>;
 }
 
-export default function AdaptivePlanningStatus({state,destination,onCheck,onCancel,onContinue,onRetry,onLoadPage,onNewPlan,onEditPreferences,onResumeExisting,onCancelExisting,onExport,exporting=false,exportError=''}) {
+function ConfirmResearchRun({allowance,disabled,onContinue}) {
+  const [confirm,setConfirm]=useState(false),id=useId();
+  return <div><button className="generate-btn" disabled={disabled} aria-expanded={confirm} aria-controls={id} onClick={()=>setConfirm(value=>!value)}>Continue with another run</button>
+    {confirm&&<section id={id} className="adaptive-export" aria-label="Confirm another planning run"><h3>Allow another bounded run?</h3><p>This allows up to {allowance} more model requests, including research and retries, plus a fresh allowance of up to 6 search/tool requests. Earlier usage is not refunded. Your dates and completed sections stay unchanged.</p><div className="step-actions"><button className="preview-btn" disabled={disabled} onClick={()=>setConfirm(false)}>Not now</button><button className="generate-btn" disabled={disabled} onClick={onContinue}>Yes, continue this trip</button></div></section>}
+  </div>;
+}
+
+export default function AdaptivePlanningStatus({state,destination,onCheck,onCancel,onContinue,onRetry,onRetryResearch,onLoadPage,onNewPlan,onEditPreferences,onResumeExisting,onCancelExisting,onExport,researchEnabled=false,exporting=false,exportError=''}) {
   if(state.existingPlan)return <ExistingPlanningRecovery key={state.existingPlan.plan.id} state={state} onResumeExisting={onResumeExisting} onCancelExisting={onCancelExisting} onCheck={onCheck}/>;
   const plan=state.plan;
+  const withResearch=researchEnabled===true||Boolean(state.research);
   const uncertain=state.needsCheck || plan?.activeSection?.status==='submission_unknown' || plan?.pauseReason==='SUBMISSION_UNKNOWN';
   const busy=state.loading || state.cancelling;
   const hasSession=Boolean(plan || state.resumable);
   const pauseReason=pauseCategory(plan);
   const requestRecovery=adaptiveRequestRecovery(state.errorCode);
   const needsBudgetEdit=!hasSession&&state.errorCode==='SECTION_MONEY_INVALID';
-  const recovery=needsBudgetEdit?requestRecovery:adaptiveRecovery(plan);
+  const queryInvalid=plan?.status==='paused'&&plan.pauseReason==='RESEARCH_FAILED'&&state.research?.errorCode==='RESEARCH_QUERY_INVALID';
+  const recovery=queryInvalid?researchQueryRecovery():needsBudgetEdit?requestRecovery:adaptiveRecovery(plan);
   if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.discoveryPending?'Checking for an unfinished trip…':state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.discoveryPending?'Looking for a retained plan in your account. No new plan is being started.':state.cancelling?'Stopping planning…':'Your full date range will be planned in small sections.'} onCancel={state.discoveryPending||busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
-  const allowancePause=plan?.status==='paused' && (pauseReason==='RESOURCE_ALLOWANCE_REACHED' || (pauseReason==='SECTION_FAILED'&&plan.remainingCreates===0));
+  const allowancePause=plan?.status==='paused' && (pauseReason==='RESOURCE_ALLOWANCE_REACHED' || (pauseReason==='SECTION_FAILED'&&plan.remainingCreates===0) || (pauseReason==='RESEARCH_ALLOWANCE_REACHED'&&state.research&&!['submitting','running','submission_unknown'].includes(state.research.status)));
+  const researchNeedsCheck=plan?.status==='paused'&&pauseReason==='RESEARCH_FAILED'&&state.research?.status==='failed'&&(plan.remainingCreates<1||state.research.toolCallsReserved>4);
+  const canRetryResearch=plan?.status==='paused'&&pauseReason==='RESEARCH_FAILED'&&state.research?.status==='failed'&&state.research.errorCode!=='RESEARCH_QUERY_INVALID'&&plan.remainingCreates>0&&state.research.toolCallsReserved<=4;
   const sharedStoragePause=plan?.status==='paused' && plan.pauseReason==='STORAGE_LIMIT' && plan.storagePauseScope==='global';
   const proposedRetry=plan?.status==='paused' && pauseReason==='CONSTRAINT_CONFLICT' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && hasProposedConstraintDetails(plan.activeSection);
   const canRetry=proposedRetry || plan?.status==='paused' && plan.pauseReason==='SECTION_FAILED' && plan.remainingCreates>0 && plan.activeSection?.status==='failed' && !['SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'].includes(plan.activeSection.errorCode);
-  const canReview=needsBudgetEdit || plan?.status==='paused' && ['CONSTRAINT_CONFLICT','BUDGET_EXHAUSTED'].includes(pauseReason);
+  const canReview=queryInvalid || needsBudgetEdit || plan?.status==='paused' && ['CONSTRAINT_CONFLICT','BUDGET_EXHAUSTED'].includes(pauseReason);
   const expired=plan?.status==='expired';
   const currency=state.preferences?.currency || 'USD';
   let title='Your trip is taking shape.', message='Planning the next section. Completed sections below are ready to review; the rest of the trip is not finished yet.';
@@ -136,23 +157,28 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   else if(plan?.status==='cancelled'){title='Planning has stopped.';message='No further sections will be created for this plan. The completed sections below are retained as estimates, not verified bookings.';}
   else if(expired){title='This planning session has expired.';message='These checkpoints are no longer available here. Return to your trip details to decide what to do next.';}
   else if(uncertain || state.error){title=requestRecovery.title;message=requestRecovery.message;}
-  else if(allowancePause){title='Ready for the next part?';message=`This batch has reached its planning-request allowance. Your full trip dates are kept. ${Number.isSafeInteger(plan.runAllowance)&&plan.runAllowance>=1&&plan.runAllowance<=12?`Continue only when you want to allow up to ${plan.runAllowance} more section requests.`:'Continue only when you want to allow another bounded batch of section requests.'}`;}
+  else if(allowancePause){title='Ready for the next part?';message=withResearch?'This run has reached a research or model-request allowance. Your full dates and completed sections are kept. Continuing requires your confirmation of another bounded run.':`This batch has reached its planning-request allowance. Your full trip dates are kept. ${Number.isSafeInteger(plan.runAllowance)&&plan.runAllowance>=1&&plan.runAllowance<=12?`Continue only when you want to allow up to ${plan.runAllowance} more section requests.`:'Continue only when you want to allow another bounded batch of section requests.'}`;}
   else if(plan?.pauseReason==='STORAGE_LIMIT'){title=sharedStoragePause?'Planning storage is temporarily full.':'This plan has reached its storage allowance.';message=sharedStoragePause?'Shared planning storage is currently full. You can check capacity and resume this same session; if it is still full, no new section request will be started. Your existing request allowance and dates are unchanged.':'This plan has reached its temporary storage allowance. No further sections can be added in this session. Your dates and budget have not been changed.';}
+  else if(queryInvalid){title=recovery.title;message=recovery.message;}
+  else if(plan?.status==='paused'&&['RESEARCH_FAILED','RESEARCH_SUBMISSION_UNKNOWN','RESEARCH_ALLOWANCE_REACHED'].includes(plan.pauseReason)){title='Research needs attention.';message='This part of the trip is waiting for usable research. See the research status below. Your dates, budget and completed sections have not been changed.';}
   else if(plan?.status==='paused'){title=recovery.title;message=recovery.message;}
+  else if(['queued','submitting','running'].includes(state.research?.status)){title='Researching your journey.';message='Looking for source information before planning the next section. Any completed sections below remain available.';}
   return <section className="adaptive-planning" aria-label="Section-by-section trip planning">
     <article className="card adaptive-progress"><p className="eyebrow">{state.preferences?.destination || destination || 'Your trip'}</p><h2>{state.cancelling?'Stopping planning…':title}</h2>
       <p role="status">{plan?.status==='paused'&&'Planning is paused. '}{message}</p>
       {state.preferences&&<p className="hint">Your full trip · <time dateTime={state.preferences.startDate}>{state.preferences.startDate}</time> to <time dateTime={state.preferences.endDate}>{state.preferences.endDate}</time></p>}
       {plan?.pauseReason==='STORAGE_LIMIT'&&Number.isFinite(Date.parse(plan.expiresAt))&&<p className="hint">Completed sections remain available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</p>}
       {!expired&&Number.isSafeInteger(plan?.totalDays)&&plan.totalDays>0&&<div className="adaptive-progress__count"><strong>{plan.completedDays} of {plan.totalDays} days planned</strong><progress aria-label="Days with completed plans" max={plan.totalDays} value={plan.completedDays}/><p className="hint">Only completed sections count toward this total—not time spent waiting.</p></div>}
-      {!expired&&Number.isSafeInteger(plan?.spentCents)&&<p className="hint">Completed-section estimates: {money(currency,plan.spentCents)} of your {money(currency,plan.totalBudgetCents)} total group budget.{plan.completedDays<plan.totalDays&&' Unplanned days still need a budget allocation.'}</p>}
+      {!expired&&plan&&<AdaptiveCostSummary plan={plan} currency={currency} travelers={state.preferences?.travelers}/>}
       {canReview&&recovery.proposed&&<p className="hint">These are planning suggestions to review, not verified prices, availability or travel restrictions.</p>}
       {canReview&&recovery.recommendations.length>0&&<ul className="recovery-recommendations">{recovery.recommendations.map((item,index)=><li key={`${item.field}-${index}`}><strong>{item.suggestion}</strong>{item.reason&&<p>{item.reason}</p>}</li>)}</ul>}
       {!uncertain&&proposedRetry&&<p className="hint">Retry this section without changing your preferences. Your completed days are kept; this uses one request from the current allowance.</p>}
+      {!uncertain&&canRetryResearch&&<p className="hint">Retrying research uses one model request and reserves 2 search/tool requests from this run’s remaining allowance. Completed sections are kept; no preferences are changed.</p>}
       <div className="step-actions">
         {!uncertain&&state.errorCode==='SECTION_OWNER_PLAN_EXISTS'&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Find my unfinished trip</button>}
-        {uncertain&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
-        {!uncertain&&allowancePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Continue planning</button>}
+        {(uncertain||researchNeedsCheck)&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
+        {!uncertain&&allowancePause&&onContinue&&(withResearch?<ConfirmResearchRun key={`${plan.id}-${plan.remainingCreates}-${state.research?.toolCallsReserved ?? 0}`} allowance={plan.runAllowance} disabled={busy||state.cancelRequested} onContinue={onContinue}/>:<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Continue planning</button>)}
+        {!uncertain&&canRetryResearch&&onRetryResearch&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onRetryResearch}>Retry research</button>}
         {!uncertain&&sharedStoragePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Check capacity and continue</button>}
         {!uncertain&&canRetry&&onRetry&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onRetry}>{proposedRetry?'Retry remaining section':'Try this section again'}</button>}
         {!uncertain&&canReview&&onEditPreferences&&<button className={proposedRetry?'preview-btn':'generate-btn'} disabled={busy||state.cancelRequested} onClick={()=>onEditPreferences(recovery)}>{needsBudgetEdit?'Review budget format':'Stop planning and review changes'}</button>}

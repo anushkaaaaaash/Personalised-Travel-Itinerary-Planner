@@ -5,6 +5,8 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { COUNTRY_THEMES } from '../src/themes/countryThemes.js';
 import { plan as fixturePlan, detail as fixtureDetail } from '../test/shareFixture.js';
+import { checkRevisionVisuals } from './revisionVisualFixtures.mjs';
+import { checkGroundedVisuals } from './groundedVisualFixtures.mjs';
 import { checkAdaptiveVisuals } from './adaptiveVisualFixtures.mjs';
 
 const { chromium } = await import(pathToFileURL(path.join(process.env.QA_NODE_MODULES, 'playwright/index.mjs')).href);
@@ -52,7 +54,7 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   });
   await context.route('**/api/**', async route=>{
     const url=new URL(route.request().url());
-    if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_planning_policy:{sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
+    if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_planning_policy:adaptive.policy || {sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
     if(adaptive&&url.pathname.startsWith('/api/adaptive-plans'))return adaptive.handle(route,url);
     if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
     if(url.pathname==='/api/saved-itineraries'&&route.request().method()==='GET'){const {id,title,version,createdAt,updatedAt}=fixtureDetail();return route.fulfill({json:{items:[{id,title,version,createdAt,updatedAt}],offset:Number(url.searchParams.get('offset') || 0),hasMore:false}});}
@@ -209,6 +211,8 @@ try {
   const motion=await page.locator('.journey-artwork__route').evaluate(element=>({animation:getComputedStyle(element).animationName,transition:getComputedStyle(element).transitionDuration}));
   assert.equal(motion.animation,'none');assert.equal(motion.transition,'0s');findings.reducedMotion=true;await snapshot(page,'reduced-motion-390');await context.close();
   await checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
+  await checkGroundedVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
+  await checkRevisionVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   assert.equal(findings.errors.length,0,findings.errors.join('\n'));assert.equal(findings.unexpectedRequests.length,0,findings.unexpectedRequests.join('\n'));
   assert.equal(findings.themes.length,60);
   console.log(JSON.stringify(findings,null,2));

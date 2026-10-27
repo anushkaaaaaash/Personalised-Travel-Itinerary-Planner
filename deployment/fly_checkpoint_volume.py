@@ -19,22 +19,40 @@ BASE = "https://api.machines.dev/v1/apps/" + APP
 
 # Runs on the *currently deployed* image, which may not yet have any newly
 # added CLI module. It returns only aggregate counts, not user data or IDs.
-QUIESCENCE_PROBE = '''import json,sqlite3,sys
+QUIESCENCE_PROBE = '''import json,os,sqlite3,sys
 from pathlib import Path
 from app.adaptive_sqlite_runtime import verify_volume
 try:
     path=verify_volume()
+    if os.geteuid() not in (0,10001): raise ValueError("unexpected uid")
+    os.umask(0o077)
+    if os.geteuid()==0:
+        os.setgroups([]); os.setgid(10001); os.setuid(10001)
+    if os.geteuid()!=10001 or verify_volume()!=path: raise ValueError("unsafe storage user")
     with sqlite3.connect(Path(path).as_uri()+"?mode=ro",uri=True,timeout=5) as c:
         c.execute("PRAGMA query_only=ON")
         c.execute("BEGIN")
         invalid_plans=c.execute("SELECT EXISTS(SELECT 1 FROM plans WHERE json_type(data) IS NOT 'object' OR json_type(data,'$.status') IS NOT 'text' OR json_extract(data,'$.status') NOT IN ('active','paused','completed','cancelled'))").fetchone()[0]
         invalid_sections=c.execute("SELECT EXISTS(SELECT 1 FROM sections WHERE json_type(data) IS NOT 'object' OR json_type(data,'$.status') IS NOT 'text' OR json_extract(data,'$.status') NOT IN ('queued','submitting','running','succeeded','failed','submission_unknown','cancelled'))").fetchone()[0]
         if invalid_plans or invalid_sections: raise ValueError("unknown status")
+        version=c.execute("PRAGMA user_version").fetchone()[0]
+        if version not in (1,2): raise ValueError("unknown schema")
+        tables={row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        phase2={"research_jobs","revision_jobs","revision_controls"}
+        if (version==1 and tables.intersection(phase2)) or (version==2 and not phase2.issubset(tables)): raise ValueError("incomplete schema")
         counts={"active_plans":c.execute("SELECT count(*) FROM plans WHERE json_extract(data,'$.status')='active'").fetchone()[0]}
-        for status in ("queued","submitting","running"):
+        for status in ("queued","submitting","running","submission_unknown"):
             counts[status]=c.execute("SELECT count(*) FROM sections WHERE json_extract(data,'$.status')=?",(status,)).fetchone()[0]
-    ready=not any(counts.values())
-    print(json.dumps({"ready":ready,"code":"READY" if ready else "PLANNING_IN_PROGRESS","counts":counts},sort_keys=True))
+        for table, prefix, statuses in (("research_jobs","research",("queued","submitting","running","succeeded","failed","submission_unknown","cancelled")),("revision_jobs","revision",("queued","submitting","running","candidate","accepted","rejected","failed","submission_unknown"))):
+            if version==2:
+                marks=','.join('?' for _ in statuses)
+                if c.execute("SELECT EXISTS(SELECT 1 FROM "+table+" WHERE json_type(data) IS NOT 'object' OR json_type(data,'$.status') IS NOT 'text' OR json_extract(data,'$.status') NOT IN ("+marks+"))",statuses).fetchone()[0]: raise ValueError("unknown job status")
+            for status in ("queued","submitting","running","submission_unknown"):
+                counts[prefix+"_"+status]=c.execute("SELECT count(*) FROM "+table+" WHERE json_extract(data,'$.status')=?",(status,)).fetchone()[0] if version==2 else 0
+    busy=any(value for key,value in counts.items() if not key.endswith('submission_unknown'))
+    uncertain=any(value for key,value in counts.items() if key.endswith('submission_unknown'))
+    ready=not busy and not uncertain
+    print(json.dumps({"ready":ready,"code":"READY" if ready else "PLANNING_IN_PROGRESS" if busy else "PLANNING_UNCERTAIN","counts":counts},sort_keys=True))
     sys.exit(0 if ready else 1)
 except Exception:
     print(json.dumps({"ready":False,"code":"PREFLIGHT_FAILED"},sort_keys=True))
@@ -101,7 +119,7 @@ def validate_machine_list(machines, require_disabled=True, allow_transition=Fals
         raise Stop("Existing Machine does not match approved Singapore 512 MB configuration; stopped.")
     env = m["config"].get("env", {})
     if not isinstance(env, dict) or (require_disabled and any(env.get(k, "false") != "false" for k in (
-        "ADAPTIVE_PLANNING_ENABLED", "PLANNING_JOBS_ENABLED"
+        "ADAPTIVE_PLANNING_ENABLED", "PLANNING_JOBS_ENABLED", "ADAPTIVE_RESEARCH_ENABLED", "ADAPTIVE_STREAMING_ENABLED"
     ))):
         raise Stop("Planning flags are not verified disabled; stopped.")
     return m["id"]
@@ -182,13 +200,40 @@ def check_quiescence():
     if not isinstance(data, dict) or set(data) != {"ready", "code", "counts"} or not isinstance(data["counts"], dict):
         raise Stop("Quiescence check unavailable; deployment stopped.")
     counts = data["counts"]
-    if set(counts) != {"active_plans", "queued", "submitting", "running"} or any(type(n) is not int or n < 0 for n in counts.values()):
+    required = {"active_plans", "queued", "submitting", "running", "submission_unknown"} | {prefix + "_" + status for prefix in ("research", "revision") for status in ("queued", "submitting", "running", "submission_unknown")}
+    if set(counts) != required or any(type(n) is not int or n < 0 for n in counts.values()):
         raise Stop("Quiescence check unavailable; deployment stopped.")
     if result["exit_code"] == 1 and data["ready"] is False and data["code"] == "PLANNING_IN_PROGRESS" and any(counts.values()):
         raise Stop("Planning is in progress; deployment stopped.")
+    if result["exit_code"] == 1 and data["ready"] is False and data["code"] == "PLANNING_UNCERTAIN" and any(value for key,value in counts.items() if key.endswith('submission_unknown')):
+        raise Stop("An earlier submission has an uncertain outcome; deployment stopped.")
     if result["exit_code"] != 0 or data["ready"] is not True or data["code"] != "READY" or any(counts.values()):
         raise Stop("Quiescence check unavailable; deployment stopped.")
     print("No active planning observed at this instant.")
+
+
+def grounded_store_action(check_only=False):
+    """Fixed operator upgrade or read-only verification; never initialize/retry."""
+    machine_id = verify(require_attached=True, require_disabled=True)
+    command = ["env", "PYTHONPATH=/app", "ADAPTIVE_PLANNING_ENABLED=false", "PLANNING_JOBS_ENABLED=false",
+               "ADAPTIVE_RESEARCH_ENABLED=false", "ADAPTIVE_STREAMING_ENABLED=false",
+               "python", "-m", "app.grounded_sqlite_upgrade", "--path", "/data/checkpoints/planning.sqlite3", "--check" if check_only else "--approve"]
+    result = request("POST", "/machines/" + machine_id + "/exec", {"command": command, "timeout": 25})
+    if (not isinstance(result, dict) or type(result.get("exit_code")) is not int
+            or type(result.get("exit_signal", 0)) is not int or result.get("exit_signal", 0) != 0):
+        raise Stop("Schema operation outcome unconfirmed; inspect before retry.")
+    try:
+        data = json.loads(result.get("stdout", ""))
+    except (ValueError, TypeError):
+        raise Stop("Schema operation outcome unconfirmed; inspect before retry.") from None
+    failures = {"GROUNDED_MIGRATION_NOT_APPROVED", "SECTIONS_STORAGE_UNAVAILABLE", "GROUNDED_SCHEMA_NOT_READY", "PLANNING_IN_PROGRESS", "GROUNDED_MIGRATION_UNCONFIRMED", "SQLITE_VOLUME_UNVERIFIED", "SQLITE_STORAGE_UNVERIFIED", "SQLITE_PRIVILEGE_DROP_FAILED", "GROUNDED_STAGE_REQUIRED"}
+    if (result["exit_code"] != 0 and isinstance(data, dict) and set(data) == {"ready", "code"}
+            and data["ready"] is False and isinstance(data["code"], str) and data["code"] in failures):
+        raise Stop("Schema operation stopped: " + data["code"] + "; inspect before retry.")
+    if (result["exit_code"] != 0 or not isinstance(data, dict)
+            or set(data) != {"ready", "code"} or data["ready"] is not True or data["code"] != "READY"):
+        raise Stop("Schema operation outcome unconfirmed; inspect before retry.")
+    print("Verified grounded schema v2." if check_only else "Explicit grounded schema upgrade completed; separate verification required.")
 
 
 def verify_after_deploy():
@@ -236,6 +281,10 @@ def main():
             run_store_preflight()
         elif sys.argv[1:] == ["--check-quiescence"]:
             check_quiescence()
+        elif sys.argv[1:] == ["--upgrade-grounded-store"]:
+            grounded_store_action()
+        elif sys.argv[1:] == ["--check-grounded-store"]:
+            grounded_store_action(check_only=True)
         else:
             raise Stop("Invalid mode; stopped.")
     except Stop as exc:

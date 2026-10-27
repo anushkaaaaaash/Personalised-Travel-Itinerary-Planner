@@ -137,6 +137,16 @@ def is_adaptive_travel_day(day_date, activities, eligible_dates):
     return day_date in eligible_dates and sum(field(a,'durationMinutes') for a in activities if field(a,'kind')=='transfer')>=120
 
 
+def adaptive_travel_dates(start_date,end_date,strategy=None):
+    """Eligibility from validated structured regional stays, never summary prose."""
+    eligible={start_date,end_date}
+    if strategy:
+        stays=strategy['stays']
+        for previous,current in zip(stays,stays[1:]):
+            if previous['location'].strip().lower()!=current['location'].strip().lower():
+                eligible.add(current['startDate'])
+    return eligible
+
 def validate_itinerary(raw, p, provider, model, *, travel_day_dates=()):
     p = TripPreferences.model_validate(p.model_dump())
     count = (date.fromisoformat(p.endDate) - date.fromisoformat(p.startDate)).days + 1

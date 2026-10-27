@@ -1,12 +1,24 @@
 import { COST_LABELS, validActivities, itineraryDates } from './itineraries.js';
-import { INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
+import { INTEREST_OPTIONS, isRealIsoDate } from '../../../shared/tripPreferences.mjs';
 const text = (v, max) => typeof v === 'string' && v.trim().length > 0 && Array.from(v).length <= max && !/[\u0000-\u001f\u007f\uD800-\uDFFF]/u.test(v);
 const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 /** Adaptive-only endpoint exception; never treat an intermediate section boundary as a trip endpoint.
  * Keep ordinary itinerary identity/date/budget/timeline/interest checks unchanged.
- * Explicit transfers totaling >=120 minutes permit fewer main activities only on original first/last dates.
+ * Explicit transfers totaling >=120 minutes permit fewer main activities on original endpoints or validated regional route transitions.
  */
-export function validAdaptiveSectionItinerary(b, p, original) {
+export function adaptiveTravelDates(original,strategy) {
+  const eligible=new Set([original.startDate,original.endDate]);
+  if(strategy===undefined||strategy===null)return eligible;
+  if(!strategy||Object.keys(strategy).sort().join(',')!=='stays,summary'||!text(strategy.summary,1500)||!Array.isArray(strategy.stays)||strategy.stays.length<1||strategy.stays.length>12)return null;
+  let cursor=Date.parse(original.startDate),previous=null;
+  for(const stay of strategy.stays){
+    if(!stay||Object.keys(stay).sort().join(',')!=='endDate,location,startDate'||!isRealIsoDate(stay.startDate)||!isRealIsoDate(stay.endDate)||Date.parse(stay.startDate)!==cursor||stay.endDate<stay.startDate||!text(stay.location,200))return null;
+    if(previous!==null&&previous.trim().toLowerCase()!==stay.location.trim().toLowerCase())eligible.add(stay.startDate);
+    previous=stay.location;cursor=Date.parse(stay.endDate)+86400000;
+  }
+  return cursor===Date.parse(original.endDate)+86400000?eligible:null;
+}
+export function validAdaptiveSectionItinerary(b, p, original, strategy) {
   if (!b || b.source !== 'ai' || b.saved !== false || !text(b.provider, 100) || !text(b.model, 100)
     || typeof b.destination !== 'string' || b.destination.toLowerCase() !== p.destination.toLowerCase() || b.currency !== p.currency
     || ![undefined, null, 'relaxed', 'adventure', 'luxury', 'budget'].includes(b.vibe)
@@ -15,9 +27,10 @@ export function validAdaptiveSectionItinerary(b, p, original) {
   if (b.status === 'infeasible') return b.days.length === 0 && b.estimatedTotalGroupCost === null && b.remainingBudget === null;
   const dates = itineraryDates(p), pace = { relaxed: [1, 2], balanced: [2, 3], fast: [3, 4] }[p.travelPace];
   if (b.status !== 'planned' || !dates.length || dates.length !== b.days.length || !number(b.estimatedTotalGroupCost) || !number(b.remainingBudget)) return false;
+  const eligible=adaptiveTravelDates(original,strategy);if(!eligible)return false;
   let total = 0;
   if (!b.days.every((d, i) => {
-    const endpoint = d && [original.startDate,original.endDate].includes(d.date);
+    const endpoint = d && eligible.has(d.date);
     const substantialTransfer = Array.isArray(d?.activities) && d.activities.filter(a=>a?.kind==='transfer').reduce((sum,a)=>sum+a.durationMinutes,0)>=120;
     const minimum = endpoint && substantialTransfer ? 0 : pace[0];
     if (!d || !validActivities(d.activities) || d.mainActivityCount > d.activities.length || d.date !== dates[i] || !['morning', 'afternoon', 'evening', 'dining'].every(k => text(d[k], 700))

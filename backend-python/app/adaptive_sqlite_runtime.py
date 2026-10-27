@@ -43,3 +43,17 @@ def prepare_new_directory():
         try: os.setgroups([]);os.setgid(GID);os.setuid(UID)
         except OSError: raise JobRepositoryError('SQLITE_PRIVILEGE_DROP_FAILED') from None
     return str(DATABASE)
+
+
+def prepare_existing_storage_user():
+    """Operator commands use the application's UID before opening SQLite journals."""
+    path=verify_volume()
+    if os.geteuid() not in (0,UID):raise JobRepositoryError('SQLITE_STORAGE_UNVERIFIED')
+    os.umask(0o077)
+    if os.geteuid()==0:
+        try:
+            os.setgroups([]);os.setgid(GID);os.setuid(UID)
+        except OSError:raise JobRepositoryError('SQLITE_PRIVILEGE_DROP_FAILED') from None
+    if os.geteuid()!=UID:raise JobRepositoryError('SQLITE_PRIVILEGE_DROP_FAILED')
+    verify_volume()
+    return path

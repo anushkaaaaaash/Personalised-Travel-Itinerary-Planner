@@ -107,3 +107,19 @@ def test_infeasible_requires_actionable_proposed_adjustment(payload, generated):
     result = SectionContract(spec).decode(wire)
     assert result['status'] == 'needs_changes' and result['applicability'] == 'proposed'
     assert result['completed'] is False and 'itinerary' not in result
+
+
+def test_on_demand_trigger_is_enum_only_and_does_not_claim_infeasibility(payload,generated):
+    spec=spec_for(payload);wire=section_wire(payload,generated,spec)
+    wire['researchRequest']='hours';wire['proposal'].update(status='infeasible',days=[])
+    wire['recommendations']=[]
+    assert SectionContract(spec,allow_research=True).decode(wire)=={'status':'needs_research','kind':'hours'}
+    wire['researchRequest']='private health notes query'
+    with pytest.raises(AdaptiveError):SectionContract(spec,allow_research=True).decode(wire)
+
+
+def test_on_demand_planned_output_keeps_null_trigger_and_normal_validation(payload,generated):
+    spec=spec_for(payload);wire=section_wire(payload,generated,spec);wire['researchRequest']=None
+    assert SectionContract(spec,allow_research=True).decode(wire)['itinerary']['status']=='planned'
+    wire['researchRequest']='places'
+    with pytest.raises(AdaptiveError):SectionContract(spec,allow_research=True).decode(wire)
