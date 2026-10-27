@@ -1,3 +1,4 @@
+import { useDestinationTheme } from '../themes/DestinationTheme.jsx';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { FINAL_STEP, firstErrorStep, nextPlannerStep } from '../utils/plannerSteps.js';
@@ -19,6 +20,7 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   const [jobState,setJobState] = useState({loading:false,resumable:false,job:null,error:'',needsCheck:false});
   const jobRef = useRef(null);
   const [step,setStep] = useState(0), [form,setForm] = useState(createInitialForm);
+  useDestinationTheme(form.destination);
   const [fieldErrors,setFieldErrors] = useState({}), [generation,setGeneration] = useState(emptyRead);
   const [refinement,setRefinement] = useState(emptyRead), [edited,setEdited] = useState(false);
   const [viewingPreferences,setViewingPreferences] = useState(false);
@@ -55,8 +57,9 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   async function handleRefine({feedback,vibe,targetDate,maxMainActivitiesPerDay}) { if(generationRef.current?.isBusy() || refinementRef.current?.isBusy())return;const preferences=validatedPayload();if(!preferences || !generation.result)return;const outcome=await refinementRef.current?.submit({preferences,previous:generation.result,feedback,vibe,targetDate,maxMainActivitiesPerDay});if(outcome?.result){setGeneration({loading:false,error:'',result:outcome.result,evidence:null});setEdited(false);} }
   function handleEditDay(day) { refinementRef.current?.reset();setEdited(true);setGeneration(current=>({...current,evidence:null,result:{...current.result,refinementSummary:null,days:current.result.days.map(d=>d.date===day.date?day:d)}})); }
   return <motion.div className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}} transition={{duration:reducedMotion?0:.2}}>
+    <a className="skip-link" href="#trip-planner">Skip to trip planner</a>
     <SiteHeader />
-    <main ref={mainRef} tabIndex={-1} className={`layout journey-layout ${showPlan?'journey-layout--plan':''}`}>
+    <main id="trip-planner" ref={mainRef} tabIndex={-1} className={`layout journey-layout ${showPlan?'journey-layout--plan':''}`}>
       {showPlan && <div className="journey-toolbar"><span className="eyebrow">{form.destination}</span><button className="back-btn" disabled={refinement.loading || jobBusy} onClick={()=>{if(generation.loading)generationRef.current?.reset();setViewingPreferences(true);}}>← Trip preferences</button></div>}
       {!showPlan && <>
         <DestinationDiscovery destination={form.destination} onSelect={destination=>handleChange({target:{name:'destination',value:destination}})} />

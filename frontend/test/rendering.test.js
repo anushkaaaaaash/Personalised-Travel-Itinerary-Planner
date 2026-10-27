@@ -273,7 +273,7 @@ test('coordinate confirmation is per stop, unchecked, explicit and not a claim o
 
 test('consumer discovery removes technical imports and keeps a single build action',()=>{
   const html=render(PlannerPage);
-  for(const text of ['Where will your','Kyoto','Goa','Paris','name="destination"'])assert.ok(html.includes(text),text);
+  for(const text of ['Follow your','Roamora','Kyoto','Goa','Paris','name="destination"'])assert.ok(html.includes(text),text);
   for(const text of ['Import itinerary','JSON','AI','not saved','Save trip preferences','Sample preview'])assert.ok(!html.includes(text),text);
   const review=render(PlannerForm,{...formHandlers,form:createInitialForm(),step:2});
   assert.equal((review.match(/Build my trip/g)||[]).length,1);

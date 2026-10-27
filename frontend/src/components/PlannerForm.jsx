@@ -1,8 +1,10 @@
+import { useTheme } from '../themes/DestinationTheme.jsx';
 import { useEffect, useRef } from 'react';
 import { PLANNER_STEPS, FINAL_STEP } from '../utils/plannerSteps.js';
 import { CURRENCIES, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 
 function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInterest, onSubmit, onSave, onBack, onPreview, onRecommendations, recommendationLoading = false, onGenerateItinerary, itineraryLoading = false, step = 0, loading, saved = false, errors = {} }) {
+  const { theme, countries } = useTheme();
   const headingRef = useRef(null);
   const previousStep = useRef(step);
   useEffect(() => {
@@ -33,13 +35,15 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
       </ol>
       <h3 ref={headingRef} tabIndex={-1} className="step-heading">Step {step + 1} of {PLANNER_STEPS.length}: {PLANNER_STEPS[step].title}</h3>
       {Object.keys(errors).length > 0 && <p role="alert" className="field-error">Please correct the highlighted preferences before continuing.</p>}
-      <fieldset className="planner-fields" disabled={loading}>
+      <fieldset key={step} className="planner-fields" disabled={loading}>
         <legend className="sr-only">Trip preferences</legend>
         {step === 0 && <div className="form-grid">
           <label className="field">
             <span>Destination</span>
             <input name="destination" value={form.destination} onChange={onChange}
-              placeholder="Kyoto, Japan" required maxLength={200} autoComplete="off" {...feedback('destination')} />
+              placeholder="City, country — e.g. Kyoto, Japan" list="destination-countries" required maxLength={200} autoComplete="off" {...feedback('destination')} />
+            <datalist id="destination-countries">{countries.map(country => <option key={country.code} value={country.name}/>)}</datalist>
+            <small className="destination-theme-note" aria-live="polite">{theme.code === 'WORLD' ? 'Include a country to bring its colours to your trip.' : `${theme.name} palette · ${theme.story}`}</small>
             {errorFor('destination')}
           </label>
 

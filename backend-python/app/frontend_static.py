@@ -12,7 +12,7 @@ def public_frontend_request(scope):
     if os.getenv('SERVE_FRONTEND') != 'true' or scope.get('method') not in {'GET','HEAD'}:
         return False
     path=scope.get('path','')
-    return path in {'/','/index.html'} or bool(_ASSET.fullmatch(path) or _PAGE.fullmatch(path))
+    return path in {'/','/index.html','/roamora.svg'} or bool(_ASSET.fullmatch(path) or _PAGE.fullmatch(path))
 
 
 def attach_frontend(app):
