@@ -37,7 +37,9 @@ def test_review_config_never_enables_storage_or_new_credentials():
     assert not any('KEY' in name or 'PASSWORD' in name or name=='PLANNING_DATABASE_URL' for name in env)
     assert CONFIG['http_service']['force_https'] is True
     assert CONFIG['http_service']['checks'][0]['headers']['Host']==env['API_HOST']
-    assert not any(key in CONFIG for key in ('mounts','release_command','processes'))
+    assert not any(key in CONFIG for key in ('release_command','processes'))
+    assert CONFIG['mounts']==[{'source':'planner_checkpoints','destination':'/data','scheduled_snapshots':False}]
+    assert env['ADAPTIVE_PLANNING_ENABLED']=='false' and env['PLANNING_WORKER_TRANSPORT']=='sqlite'
 
 
 def fake_verified_environment(monkeypatch,tmp_path):

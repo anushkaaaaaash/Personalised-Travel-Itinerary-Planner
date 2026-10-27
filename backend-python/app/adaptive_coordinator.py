@@ -33,15 +33,23 @@ def public_failure_details(value):
 
 
 class AdaptiveCoordinator:
-    def __init__(self, repository, worker, *, enabled=False, require_health=True, run_allowance=12):
+    def __init__(self, repository, worker, *, enabled=False, require_health=True, run_allowance=12, maintenance=None):
         if enabled is not True: raise ValueError('Explicit adaptive activation required.')
         if type(run_allowance) is not int or not 1 <= run_allowance <= 12: raise ValueError('Invalid processing allowance.')
         self.run_allowance=run_allowance
         self.repository, self.worker, self.require_health = repository, worker, require_health
         self._ready = False; self._checked = 0.0
+        self._maintenance=maintenance; self._maintained=None
+        self._maintenance_lock=asyncio.Lock()
 
     async def verify_ready(self):
         try:
+            if self._maintenance is not None:
+                async with self._maintenance_lock:
+                    now=time.monotonic()
+                    if self._maintained is None or now-self._maintained >= 30:
+                        await self._maintenance()
+                        self._maintained=time.monotonic()
             await self.repository.verify_ready()
             self._ready = True; self._checked = time.monotonic()
         except Exception:
@@ -53,7 +61,11 @@ class AdaptiveCoordinator:
 
     async def context(self, owner, plan_id, after_sequence=0):
         owner = identity(owner)
-        plan = await self.repository.get_plan(owner, plan_id)
+        try:
+            plan = await self.repository.get_plan(owner, plan_id)
+        except JobRepositoryError as error:
+            if error.code=='SECTION_NOT_FOUND_OR_CONFLICT': raise JobRepositoryError('SECTION_NOT_FOUND',404) from None
+            raise
         if plan['user_id'] != owner: raise JobRepositoryError('SECTION_NOT_FOUND',404)
         preferences = TripPreferences.model_validate(plan['preferences']).model_dump(mode='json')
         expired = datetime.now(timezone.utc) >= datetime.fromisoformat(plan['expires_at'].replace('Z','+00:00'))
@@ -146,3 +158,5 @@ class AdaptiveCoordinator:
     async def close(self):
         close = getattr(self.worker.client,'close',None)
         if close: await close()
+        storage_close=getattr(getattr(self.repository,'gateway',None),'close',None)
+        if storage_close: await storage_close()

@@ -21,6 +21,7 @@ jobs:
       # Python integration tests render React through Node; install both runtimes' dependencies first.
       - run: npm ci --ignore-scripts
       - run: python -m pytest backend-python/tests -q
+      - run: python3 -m unittest discover -s deployment/tests -p 'test_fly_checkpoint_*.py' -v
       - run: npm test
       - run: npm run build
         env:

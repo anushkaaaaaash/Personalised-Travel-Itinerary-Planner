@@ -26,7 +26,8 @@ jobs:
       - name: Production factory smoke test with synthetic settings and no network
         shell: bash
         run: |
-          docker run -d --name travel-api-offline --network none \
+          docker volume create travel-checkpoints-offline
+          docker run -d --name travel-api-offline --network none --mount source=travel-checkpoints-offline,target=/data \
             -e API_HOST=api.example.test -e FRONTEND_ORIGIN=https://api.example.test \
             -e SAVED_ITINERARIES_SCHEMA_VERIFIED=true \
             -e SUPABASE_URL=https://synthetic.supabase.co \
@@ -58,6 +59,29 @@ jobs:
               else:raise AssertionError("Protected/private path became public")
           print("PASS: real React assets and detail route share origin with guarded API")
           PYCODE
+      - name: Verify mounted SQLite initialization and persistent ready capability without network
+        shell: bash
+        run: |
+          docker exec --user 0 -e ADAPTIVE_PREFLIGHT_APPROVED=true -e ADAPTIVE_SQLITE_INITIALIZE_APPROVED=true travel-api-offline python -m app.adaptive_sqlite_preflight --initialize
+          docker exec travel-api-offline python -c 'import os,stat; s=os.stat("/data/checkpoints/planning.sqlite3"); assert s.st_uid==10001 and stat.S_IMODE(s.st_mode)==0o600; assert os.path.ismount("/data")'
+          docker rm -f travel-api-offline
+          docker run -d --name travel-api-offline --network none --mount source=travel-checkpoints-offline,target=/data \
+            -e API_HOST=api.example.test -e FRONTEND_ORIGIN=https://api.example.test \
+            -e SAVED_ITINERARIES_SCHEMA_VERIFIED=true -e SUPABASE_URL=https://synthetic.supabase.co \
+            -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_synthetic -e OPENAI_API_KEY=synthetic-provider-only \
+            -e PLANNING_JOBS_ENABLED=false -e ADAPTIVE_PLANNING_ENABLED=true -e PLANNING_WORKER_TRANSPORT=sqlite \
+            -e OPENAI_BACKGROUND_RETENTION_APPROVED=true -e PLANNING_DATA_RETENTION_APPROVED=true \
+            -e ADAPTIVE_SCHEMA_VERIFIED=true -e ADAPTIVE_CLEANUP_VERIFIED=true -e ADAPTIVE_WORKER_VERIFIED=true \
+            -e ADAPTIVE_RESOURCE_POLICY_APPROVED=true -e ADAPTIVE_SQLITE_STORAGE_APPROVED=true \
+            -e ADAPTIVE_SQLITE_VOLUME_VERIFIED=true -e ADAPTIVE_SQLITE_SINGLE_MACHINE_VERIFIED=true \
+            -e ADAPTIVE_SQLITE_SNAPSHOTS_DISABLED=true travel-api-offline
+          for i in $(seq 1 30); do
+            if docker exec travel-api-offline python -c 'import json,urllib.request; r=json.load(urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080/api/auth/config",headers={"Host":"api.example.test"}))); assert r["adaptive_planning_enabled"] is True'; then break; fi
+            sleep 1
+          done
+          docker exec travel-api-offline python -c 'import json,urllib.request,sqlite3; r=json.load(urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080/api/auth/config",headers={"Host":"api.example.test"}))); assert r["adaptive_planning_enabled"] is True and r["adaptive_planning_policy"]["maxSubmissionsPerRun"]==12; c=sqlite3.connect("/data/checkpoints/planning.sqlite3"); assert c.execute("select count(*) from plans").fetchone()[0]==0; print("PASS: mounted private SQLite survives restart with ready capability, no network or provider calls")'
       - name: Remove synthetic container
         if: always()
-        run: docker rm -f travel-api-offline || true
+        run: |
+          docker rm -f travel-api-offline || true
+          docker volume rm travel-checkpoints-offline || true
