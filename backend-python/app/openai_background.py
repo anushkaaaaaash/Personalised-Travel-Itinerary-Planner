@@ -23,13 +23,40 @@ from .openai import ENDPOINT, MAX_ENVELOPE_BYTES, MAX_OUTPUT_TOKENS, MAX_TEXT_BY
 
 STATUSES = frozenset({'queued', 'in_progress', 'completed', 'failed', 'incomplete', 'cancelled'})
 TERMINAL_STATUSES = STATUSES - {'queued', 'in_progress'}
+DIAGNOSTIC_CODES = frozenset({'BACKGROUND_NOT_APPROVED','BACKGROUND_INVALID_RESPONSE_ID',
+    'BACKGROUND_INVALID_RESPONSE','BACKGROUND_NOT_CONFIGURED','BACKGROUND_INVALID_TIMEOUT',
+    'BACKGROUND_INVALID_REQUEST','BACKGROUND_HTTP_FAILED','BACKGROUND_TRANSPORT_FAILED'})
+DIAGNOSTIC_PHASES = frozenset({'create','retrieve','cancel'})
+
+
+def background_error_metadata(error, phase):
+    """Only fixed allowlisted metadata; never exception strings or provider bodies."""
+    metadata = {'phase': phase if type(phase) is str and phase in DIAGNOSTIC_PHASES else 'unknown',
+        'code': 'BACKGROUND_UNCLASSIFIED', 'ambiguous_create': phase == 'create'}
+    if isinstance(error, BackgroundError):
+        code = error.code
+        if type(code) is str and code in DIAGNOSTIC_CODES:
+            metadata['code'] = code
+        if type(error.ambiguous_create) is bool:
+            metadata['ambiguous_create'] = error.ambiguous_create
+        status = error.http_status
+        if type(status) is int and 100 <= status <= 599:
+            metadata['http_status'] = status
+        kind = error.transport_kind
+        if type(kind) is str and kind in {'timeout','transport'}:
+            metadata['transport'] = kind
+    return metadata
 
 
 class BackgroundError(Exception):
-    def __init__(self, code, *, ambiguous_create=False):
+    def __init__(self, code, *, ambiguous_create=False, phase=None, http_status=None, transport_kind=None):
         super().__init__(code)
         self.code = code
         self.ambiguous_create = ambiguous_create
+        self.phase, self.http_status, self.transport_kind = phase, http_status, transport_kind
+
+    def safe_metadata(self):
+        return background_error_metadata(self, self.phase)
 
 
 @dataclass(frozen=True)
@@ -176,6 +203,7 @@ class OpenAIBackgroundClient:
 
     async def _request(self, method, url, *, payload=None, expected_id=None, creating=False, discard_output=False):
         # No SDK retries, redirects, environment proxies, or unbounded streaming.
+        phase = 'create' if creating else ('cancel' if discard_output else 'retrieve')
         try:
             async with asyncio.timeout(self._timeout):
                 async with httpx.AsyncClient(transport=self._transport, trust_env=False,
@@ -186,17 +214,20 @@ class OpenAIBackgroundClient:
                         if response.status_code != 200:
                             # Never parse or log error bodies; 5xx create acceptance is uncertain.
                             raise BackgroundError('BACKGROUND_HTTP_FAILED',
-                                ambiguous_create=creating and response.status_code not in {400, 401, 403, 404, 413, 422, 429})
+                                ambiguous_create=creating and response.status_code not in {400, 401, 403, 404, 413, 422, 429},
+                                phase=phase, http_status=response.status_code)
                         if response.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
-                            raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating)
+                            raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200)
                         body = bytearray()
                         async for chunk in response.aiter_bytes(chunk_size=16384):
                             body.extend(chunk)
                             if len(body) > MAX_ENVELOPE_BYTES:
-                                raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating)
+                                raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200)
                 try:
                     return _parse(body, expected_id, discard_output=discard_output)
                 except BackgroundError:
-                    raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating) from None
-        except (httpx.HTTPError, TimeoutError):
-            raise BackgroundError('BACKGROUND_TRANSPORT_FAILED', ambiguous_create=creating) from None
+                    raise BackgroundError('BACKGROUND_INVALID_RESPONSE', ambiguous_create=creating, phase=phase, http_status=200) from None
+        except (httpx.TimeoutException, TimeoutError):
+            raise BackgroundError('BACKGROUND_TRANSPORT_FAILED', ambiguous_create=creating, phase=phase, transport_kind='timeout') from None
+        except httpx.HTTPError:
+            raise BackgroundError('BACKGROUND_TRANSPORT_FAILED', ambiguous_create=creating, phase=phase, transport_kind='transport') from None

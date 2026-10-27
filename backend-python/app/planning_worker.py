@@ -5,12 +5,29 @@ approval. One tick claims one record. Never repeat a create after an ambiguous
 submission; polling/restart recovery uses the stored provider response identity.
 """
 from datetime import datetime, timezone
+import json
+import logging
 from uuid import uuid4
 from .generation_contract import GenerationContract
 from .itineraries import MAX_DAYS, validate_itinerary
 from .models import TripPreferences
 from .planning_repository import JobRepositoryError
 from .prompts import build_itinerary_prompt
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _provider_diagnostic(phase, *, error=None, status=None, refused=False):
+    from .openai_background import background_error_metadata, STATUSES, DIAGNOSTIC_PHASES
+    if error is not None:
+        metadata = background_error_metadata(error, phase)
+    else:
+        metadata = {'phase': phase if phase in DIAGNOSTIC_PHASES else 'unknown',
+            'code': 'BACKGROUND_TERMINAL',
+            'status': status if type(status) is str and status in STATUSES else 'unknown',
+            'refused': refused is True}
+    _logger.warning('Planning provider diagnostic: %s', json.dumps(metadata, sort_keys=True))
 
 
 class PlanningWorker:
@@ -36,7 +53,8 @@ class PlanningWorker:
         if response_id:
             try:
                 await self.client.cancel(response_id)
-            except Exception:
+            except Exception as error:
+                _provider_diagnostic('cancel', error=error)
                 return False
         return True
 
@@ -79,6 +97,7 @@ class PlanningWorker:
                     response = await self.client.create(prompt.messages[0].content + contract.instructions,
                         prompt.messages[1].content, contract.schema)
                 except Exception as error:
+                    _provider_diagnostic('create', error=error)
                     ambiguous = getattr(error, 'ambiguous_create', True)
                     return await self._transition(row, 'submission_unknown' if ambiguous else 'failed',
                         error_code='JOB_SUBMISSION_UNCONFIRMED' if ambiguous else 'JOB_PROVIDER_REJECTED')
@@ -92,7 +111,8 @@ class PlanningWorker:
                     return await self._transition(row, 'failed', error_code='JOB_RESPONSE_ID_MISSING')
                 try:
                     response = await self.client.retrieve(response_id)
-                except Exception:
+                except Exception as error:
+                    _provider_diagnostic('retrieve', error=error)
                     # Keep the original identity for another bounded poll; never
                     # convert a read error into a second create operation.
                     return await self._transition(row, 'running', error_code='JOB_POLL_UNCONFIRMED')
@@ -104,6 +124,8 @@ class PlanningWorker:
                 return expired
             if response.status in {'queued', 'in_progress'}:
                 return await self._transition(row, 'running')
+            if response.status not in {'queued', 'in_progress'}:
+                _provider_diagnostic('retrieve', status=response.status, refused=response.refused)
             if response.status == 'cancelled':
                 return await self._transition(row, 'cancelled', error_code='JOB_PROVIDER_CANCELLED')
             if response.status != 'completed' or response.refused:

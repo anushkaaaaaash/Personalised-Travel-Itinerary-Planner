@@ -18,4 +18,4 @@ Verified assessments enter through a separately validated, digest-bound server e
 
 ## Verification limit
 
-Offline transport/controller/mounted tests and production builds pass. No real provider calls, database changes, publication, browser screenshots or visual acceptance were performed. The existing browser-access restrictions still require a supported connected browser or an authorized preview before visual release approval.
+Offline transport/controller/mounted tests and production builds pass. The authorized preview visual CI run 40460363129 produced six full-page screenshots of the real components/CSS using synthetic fixtures: discovery, loading and itinerary at 1440×1000 and 390×844. The parent inspected all six screenshots and reported no visual blocker. Temporary public QA pages, screenshot workflow and rendering/capture generators were then removed before production merge; the production guard remains as a safeguard. These captures validate layout, not live provider behavior or authenticated end-to-end production operation.
