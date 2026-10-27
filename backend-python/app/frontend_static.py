@@ -12,7 +12,7 @@ def public_frontend_request(scope):
     if os.getenv('SERVE_FRONTEND') != 'true' or scope.get('method') not in {'GET','HEAD'}:
         return False
     path=scope.get('path','')
-    return path in {'/','/index.html','/roamora.svg'} or bool(_ASSET.fullmatch(path) or _PAGE.fullmatch(path))
+    return path in {'/','/index.html','/roamora.svg','/saved-trips'} or bool(_ASSET.fullmatch(path) or _PAGE.fullmatch(path))
 
 
 def attach_frontend(app):
@@ -29,7 +29,7 @@ def attach_frontend(app):
     async def frontend(frontend_path: str):
         path='/'+frontend_path
         if not public_frontend_request({'method':'GET','path':path}):return Response(status_code=404)
-        candidate=root/'index.html' if path in {'/','/index.html'} or _PAGE.fullmatch(path) else root/frontend_path
+        candidate=root/'index.html' if path in {'/','/index.html','/saved-trips'} or _PAGE.fullmatch(path) else root/frontend_path
         if candidate.is_symlink() or not candidate.resolve().is_relative_to(root) or not candidate.is_file():
             return Response(status_code=404)
         return FileResponse(candidate,headers={'X-Content-Type-Options':'nosniff',

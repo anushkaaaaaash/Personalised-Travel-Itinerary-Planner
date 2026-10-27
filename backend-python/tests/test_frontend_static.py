@@ -22,7 +22,7 @@ def ui(monkeypatch,tmp_path):
     with TestClient(create_app(auth_service=Auth()),base_url='https://app.example.test') as client:
         yield client,root
 
-@pytest.mark.parametrize('path',['/','/index.html','/itineraries/11111111-1111-4111-8111-111111111111'])
+@pytest.mark.parametrize('path',['/','/index.html','/saved-trips','/itineraries/11111111-1111-4111-8111-111111111111'])
 def test_public_pages_and_head_without_session(ui,path):
     client,_=ui;r=client.get(path)
     assert r.status_code==200 and 'PUBLIC_PLANNER' in r.text
@@ -34,7 +34,7 @@ def test_assets_correct_mime_and_missing_asset_not_html(ui):
     assert r.status_code==200 and 'javascript' in r.headers['content-type']
     r=client.get('/assets/missing.js');assert r.status_code==404 and 'PUBLIC_PLANNER' not in r.text
 
-@pytest.mark.parametrize('path',['/api/saved-itineraries','/api/unknown','/docs','/openapi.json','/.env','/assets/../private.env','/assets/index-abc123.js.map','/__qa/index.html'])
+@pytest.mark.parametrize('path',['/api/saved-itineraries','/api/unknown','/docs','/openapi.json','/.env','/assets/../private.env','/assets/index-abc123.js.map','/__qa/index.html','/saved-trips/private.env','/saved-trips.json'])
 def test_private_or_api_paths_never_get_spa_fallback(ui,path):
     client,_=ui;r=client.get(path)
     assert r.status_code in {401,404} and 'PUBLIC_PLANNER' not in r.text and 'PRIVATE_SENTINEL' not in r.text

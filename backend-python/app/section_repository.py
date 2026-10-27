@@ -144,13 +144,22 @@ class SectionCheckpointRepository:
         try:
             row = await self._call('create_plan',owner,arguments)
         except JobRepositoryError as error:
-            if error.code in {'SECTION_ADMISSION_REJECTED','SECTION_REQUEST_CONFLICT'}: raise
+            if error.code in {'SECTION_ADMISSION_REJECTED','SECTION_REQUEST_CONFLICT','SECTION_OWNER_PLAN_EXISTS','SECTION_CAPACITY_LIMIT'}: raise
             # Read-only reconciliation, never a second insert after uncertainty.
             row = await self.find_request(owner,request_id)
             if row is None: raise JobRepositoryError('SECTION_CREATE_UNCONFIRMED') from None
         if row.get('input_hash') != digest or row.get('request_id') != request_id:
             raise JobRepositoryError('SECTION_REQUEST_CONFLICT',409)
         return row
+
+    async def find_current(self, owner):
+        if getattr(self.gateway,'supports_owner_recovery',False) is not True:
+            raise JobRepositoryError('SECTION_OWNER_RECOVERY_UNAVAILABLE',503)
+        try:
+            return await self._call('find_current',owner,{})
+        except JobRepositoryError as error:
+            if error.code=='SECTION_NOT_FOUND_OR_CONFLICT': return None
+            raise
 
     async def find_request(self, owner, request_id):
         try:

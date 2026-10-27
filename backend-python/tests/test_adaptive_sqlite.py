@@ -265,3 +265,44 @@ def test_retry_rejects_unverified_proposal_shape_and_actual_budget(store,payload
     mutate(path,'sections',s['id'],error_code=code,failure_details=details)
     with pytest.raises(JobRepositoryError):run(r.retry_failed(owner,s['id'],uid()))
     assert run(r.get_plan(owner,p['id']))['remaining_creates']==12
+
+def test_owner_recovery_is_read_only_scoped_and_explicit_cancel_releases_owner(store,payload):
+    path,clock,g,r=store;owner=uid();other=uid();request=uid()
+    assert run(r.find_current(owner)) is None
+    p=run(r.create_plan(owner,request,payload));other_plan=run(r.create_plan(other,uid(),payload))
+    before=sqlite3.connect(path)
+    snapshot=before.execute('select id,data from plans order by id').fetchall();before.close()
+    assert run(r.find_current(owner))==p
+    assert run(r.find_current(other))==other_plan
+    assert run(r.find_current(uid())) is None
+    with sqlite3.connect(path) as c:assert c.execute('select id,data from plans order by id').fetchall()==snapshot
+    with pytest.raises(JobRepositoryError) as caught:run(r.create_plan(owner,uid(),payload))
+    assert caught.value.code=='SECTION_OWNER_PLAN_EXISTS' and caught.value.status==429
+    assert run(r.create_plan(owner,request,payload))==p # request dedup still comes first
+    mutate(path,'plans',p['id'],status='paused',pause_reason='SUBMISSION_UNKNOWN')
+    assert run(r.find_current(owner))['id']==p['id']
+    run(r.cancel_plan(owner,p['id']));assert run(r.find_current(owner)) is None
+    replacement=run(r.create_plan(owner,uid(),payload));assert replacement['id']!=p['id']
+    mutate(path,'plans',replacement['id'],status='completed');assert run(r.find_current(owner)) is None
+    mutate(path,'plans',replacement['id'],status='active',expires_at='2000-01-01T00:00:00+00:00')
+    assert run(r.find_current(owner)) is None
+
+
+def test_owner_recovery_rejects_corrupt_multiple_current_rows(store,payload):
+    path,_,_,r=store;owner=uid();p=run(r.create_plan(owner,uid(),payload))
+    duplicate={**p,'id':uid(),'request_id':uid()}
+    with sqlite3.connect(path) as c:c.execute('insert into plans values(?,?,?,?)',(duplicate['id'],owner,duplicate['request_id'],json.dumps(duplicate)))
+    with pytest.raises(JobRepositoryError) as caught:run(r.find_current(owner))
+    assert caught.value.code=='SECTION_OWNER_RECOVERY_CONFLICT'
+    assert run(r.find_current(uid())) is None
+
+
+@pytest.mark.parametrize('limit',['plans','storage'])
+def test_global_capacity_has_distinct_definite_admission_code(store,payload,limit):
+    path,_,_,r=store
+    if limit=='plans':
+        for _ in range(50):run(r.create_plan(uid(),uid(),payload))
+    else:
+        p=run(r.create_plan(uid(),uid(),payload));mutate(path,'plans',p['id'],storage_used_bytes=67108864,storage_limit_bytes=67108864)
+    with pytest.raises(JobRepositoryError) as caught:run(r.create_plan(uid(),uid(),payload))
+    assert caught.value.code=='SECTION_CAPACITY_LIMIT' and caught.value.status==429

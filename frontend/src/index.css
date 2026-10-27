@@ -576,3 +576,11 @@ button:focus-visible,a:focus-visible,summary:focus-visible { outline:3px solid #
 h1,h2,h3 { font-family:Georgia, 'Times New Roman', serif; }
 .step-progress li { font-size:11px; }.site-header__eyebrow { font-size:11px; }.destination-tile-copy small { font-size:12px; }main:focus { outline:none; }.planner-form { position:static; }
 .site-header .brand-name { font-family:Georgia,serif; font-size:28px; max-width:none; line-height:1.2; margin:0; letter-spacing:-1px; }
+
+.site-header { flex-wrap:wrap; gap:16px; }
+.site-header__actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:16px; }
+.site-header__saved { color:var(--sea); font-size:12px; padding:10px 0; white-space:nowrap; }
+.saved-trip-list { list-style:none; padding:0; margin:24px 0; }
+.saved-trip-list li { border-top:1px solid var(--line); padding:18px 0; overflow-wrap:anywhere; }
+.saved-trip-list h2 { margin:0 0 8px; font-size:24px; }
+.saved-trip-list a { color:var(--sea); }

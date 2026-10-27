@@ -13,6 +13,45 @@ const plan = patch => ({id:'test-plan',status:'active',completedDays:3,totalDays
 const state = patch => ({plan:plan(),preferences:{...preferences,endDate:'2028-03-22'},sections:[],nextCursor:null,pageCursor:0,loading:false,needsCheck:false,resumable:true,...patch});
 const actions = {onCheck(){},onCancel(){},onContinue(){},onRetry(){},onLoadPage(){},onNewPlan(){},onEditPreferences(){}};
 
+test('unfinished trip recovery opens only the verified plan and requires explicit stop confirmation',async()=>{
+  const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});let renderer;
+  try{
+    const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');let resumed=0,stopped=0,checked=0;
+    const existingPlan={plan:plan({id:'existing-a',status:'paused',completedDays:6,totalDays:9,expiresAt:'2028-12-31T00:00:00Z'}),preferences:{...preferences,destination:'Paris, France'},sections:[],nextCursor:null};
+    const value=state({plan:null,preferences:{...preferences,destination:'Kyoto, Japan'},existingPlan});
+    const props={state:value,...actions,onResumeExisting:()=>resumed++,onCancelExisting:()=>stopped++,onCheck:()=>checked++};
+    await act(async()=>{renderer=create(React.createElement(Status,props));});
+    const button=name=>renderer.root.findAllByType('button').find(node=>node.children.join('')===name);
+    assert.match(JSON.stringify(renderer.toJSON()),/Paris, France/);assert.equal(renderer.root.findByType('strong').children.join(''),'6 of 9 days planned');assert.match(JSON.stringify(renderer.toJSON()),/temporary plan kept for 24 hours, not an account-saved itinerary/);
+    assert.equal(stopped,0);assert.equal(resumed,0);
+    await act(async()=>button('Stop existing trip').props.onClick());assert.equal(stopped,0);assert.ok(button('Yes, stop this trip'));assert.equal(button('Stop existing trip').props['aria-expanded'],true);
+    await act(async()=>button('Keep this trip').props.onClick());assert.equal(stopped,0);assert.equal(button('Yes, stop this trip'),undefined);
+    await act(async()=>button('Resume existing trip').props.onClick());assert.equal(resumed,1);assert.equal(value.preferences.destination,'Kyoto, Japan');
+    await act(async()=>button('Stop existing trip').props.onClick());await act(async()=>button('Yes, stop this trip').props.onClick());assert.equal(stopped,1);
+    await act(async()=>renderer.update(React.createElement(Status,{...props,state:{...value,loading:true,cancelling:true}})));assert.equal(button('Yes, stop this trip').props.disabled,true);assert.equal(button('Resume existing trip').props.disabled,true);
+    await act(async()=>renderer.update(React.createElement(Status,{...props,state:{...value,needsCheck:true,cancelUnconfirmed:true}})));assert.equal(button('Yes, stop this trip'),undefined);assert.equal(button('Stop existing trip'),undefined);assert.equal(button('Resume existing trip'),undefined);
+    await act(async()=>button('Check existing trip').props.onClick());assert.equal(checked,1);assert.equal(stopped,1);
+    await act(async()=>renderer.update(React.createElement(Status,{...props,state:{...value,existingPlan:{...existingPlan,plan:{...existingPlan.plan,id:'existing-b'}}}})));assert.equal(button('Yes, stop this trip'),undefined);
+    for(const [status,label] of [['completed','Open completed trip'],['cancelled','Open retained trip'],['expired','Review expired session']]){
+      await act(async()=>renderer.update(React.createElement(Status,{...props,state:{...value,existingPlan:{...existingPlan,plan:{...existingPlan.plan,status}}}})));assert.ok(button(label));assert.equal(button('Stop existing trip'),undefined);assert.equal(button('Yes, stop this trip'),undefined);assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/You have an unfinished trip|new plan cannot start/);
+    }
+  }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
+});
+
+test('owner conflict, capacity and rate limits have distinct safe guidance, never invented preference corrections',async()=>{
+  const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});
+  try{
+    const {default:Status,adaptiveRequestRecovery}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');
+    const checking=renderToStaticMarkup(React.createElement(Status,{state:state({plan:null,loading:true,discoveryPending:true}),...actions}));assert.match(checking,/Checking for an unfinished trip/);assert.match(checking,/No new plan is being started/);assert.doesNotMatch(checking,/Stop planning|Starting your trip plan/);
+    for(const [code,expected] of [['SECTION_OWNER_PLAN_EXISTS',/already have an unfinished trip/],['SECTION_CAPACITY_LIMIT',/Planning is temporarily full/],['ADAPTIVE_RATE_LIMITED',/Please wait before trying again/]]){
+      const recovery=adaptiveRequestRecovery(code);assert.match(recovery.title,expected);assert.deepEqual(recovery.recommendations,[]);assert.equal(recovery.editStep,null);
+      const html=renderToStaticMarkup(React.createElement(Status,{state:state({plan:null,resumable:false,error:'PRIVATE_SERVER_TEXT',errorCode:code}),...actions}));
+      assert.doesNotMatch(html,/PRIVATE_SERVER_TEXT|Review budget format|Retry remaining section|Yes, stop this trip/);
+      assert.equal(html.includes('Find my unfinished trip'),code==='SECTION_OWNER_PLAN_EXISTS');
+    }
+  }finally{await server.close();}
+});
+
 test('adaptive status shows only authoritative completed-day counts and honest section scope',async()=>{
   const server=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),logLevel:'silent',server:{middlewareMode:true,watch:null,hmr:false}});
   try{

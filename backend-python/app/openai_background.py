@@ -160,8 +160,8 @@ class OpenAIBackgroundClient:
     cancel() discards output even if provider completion won the cancellation race.
     """
     model = 'gpt-6-luna'
-    # Small, strictly validated sections prioritize latency over extended deliberation.
-    reasoning_effort = 'low'
+    # User-selected effort; structured output and local acceptance gates remain mandatory.
+    reasoning_effort = 'high'
 
     def __init__(self, api_key, *, activation=None, transport=None, request_timeout_seconds=30):
         if type(api_key) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{10,256}', api_key):

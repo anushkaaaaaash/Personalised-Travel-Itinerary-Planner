@@ -170,8 +170,10 @@ class SectionContract:
             + 'Location labels and schedules are estimates, never verified transport facts. If the section cannot fit the actual constraints, proposal.status=infeasible and proposal.days=[], and supply 1–3 specific recommendations with a field, reason and suggested adjustment. '
             'Do not invent an exact fare, minimum budget or live closure. Suggestions are proposals for user review, not facts. Never recommend shortening the trip merely because generation is lengthy. '
             'For planned sections recommendations must be empty. All costs must have at most two decimal places. Never silently alter preferences. '
-            'Keep the response compact: use one short sentence per daily narrative and activity note, and a brief route summary. '
-            'Do not repeat activity descriptions in multiple narrative fields. Use null coordinates unless confidently known. '
+            'Keep descriptions useful for actual decisions: explain why each place fits the selected interests, the time to allow, '
+            'and practical transport, booking or access considerations where known. Preserve meaningful detail; remove only repetition. '
+            'Do not invent current opening hours, closures, availability, route durations or researched facts: label unverified details as estimates or things to confirm. '
+            'Use null coordinates unless confidently known. '
             'Return only the required JSON; retain every required day, cost category, transfer/rest allowance and uncertainty warning.')
 
     def decode(self, raw):

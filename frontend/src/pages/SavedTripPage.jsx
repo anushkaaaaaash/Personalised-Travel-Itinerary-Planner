@@ -18,7 +18,7 @@ export function SavedTripEditor({tripID}) {
   function edit(patch){setConfirm(null);controller.current?.edit(patch);}
   async function commit(){const action=confirm;setConfirm(null);if(action)await controller.current?.run(action);}
   return <motion.main className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}}>
-    <SiteHeader onNavigate={guardNavigation}/>
+    <SiteHeader showSavedTrips onNavigate={guardNavigation}/>
     <Link to="/" onClick={guardNavigation}><ArrowLeft size={16} aria-hidden="true"/> Back to planner</Link>
     <section className="card"><h1>Your saved trip</h1><p>Only you can open this trip. Use a summary to share your plans.</p>
     {state.busy&&<p role="status">Getting your trip ready…</p>}{state.error&&<p role="alert">{travelError(state.error)}</p>}{state.notice&&<p role="status">{state.notice.startsWith('Updated') ? 'Your changes are saved.' : state.notice.startsWith('New local') ? 'Your new plan is ready.' : state.notice.includes('canceled') ? 'Your previous plan is ready to explore.' : state.notice}</p>}

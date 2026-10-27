@@ -39,3 +39,14 @@ test('completed mobile fixture permits a true final transfer day without a main-
   const fixture=createAdaptiveFixture();fixture.phase='completed';fixture.finalTravelDay=true;fixture.preferences={...fullTrip,endDate:'2028-01-03',travelPace:'fast'};fixture.requestId=requestId;
   const value=validateAdaptivePage(fixture.snapshot());const days=value.sections[0].checkpoint.itinerary.days;assert.deepEqual(days.map(day=>day.mainActivityCount),[3,3,0]);assert.equal(days[2].activities[0].kind,'transfer');assert.equal(days[2].activities[0].durationMinutes,120);assert.equal(value.plan.completedDays,3);
 });
+
+test('owner recovery fixture discovers only a retained plan and never creates or changes it on reads',async()=>{
+  const fixture=createAdaptiveFixture();fixture.phase='constraint';fixture.preferences=fullTrip;fixture.requestId=requestId;fixture.startError='SECTION_OWNER_PLAN_EXISTS';let last;
+  const route=(method,body)=>({request:()=>({method:()=>method,postDataJSON:()=>body}),fulfill:async value=>{last=value;}});
+  const current=new URL('http://127.0.0.1/api/adaptive-plans/current');
+  await fixture.handle(route('GET'),current);assert.equal(last.status,404);assert.equal(last.json.error.code,'SECTION_CURRENT_NOT_FOUND');
+  await fixture.handle(route('POST',{preferences:{...fullTrip,destination:'France'},requestId:'other'}),new URL('http://127.0.0.1/api/adaptive-plans'));
+  assert.equal(last.status,429);assert.equal(last.json.error.code,'SECTION_OWNER_PLAN_EXISTS');
+  await fixture.handle(route('GET'),current);assert.equal(validateAdaptivePage(last.json).preferences.destination,'Japan');assert.equal(fixture.requestId,requestId);assert.equal(fixture.requests.filter(item=>item.method==='POST').length,1);
+  fixture.startError='SECTION_CAPACITY_LIMIT';await fixture.handle(route('POST'),new URL('http://127.0.0.1/api/adaptive-plans'));assert.equal(last.json.error.code,'SECTION_CAPACITY_LIMIT');
+});

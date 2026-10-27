@@ -100,6 +100,12 @@ class AdaptiveCoordinator:
         return {'plan':public, 'preferences':None if expired else preferences, 'sections':sections,
             'nextCursor':rows[-1]['sequence'] if len(rows)==3 else None}
 
+    async def current_context(self, owner):
+        # Owner is derived from verified auth, never a caller-supplied query field.
+        plan = await self.repository.find_current(owner)
+        if plan is None: raise JobRepositoryError('SECTION_CURRENT_NOT_FOUND',404)
+        return await self.context(owner,plan['id'])
+
     async def request_context(self, owner, request_id):
         plan = await self.repository.find_request(owner,request_id)
         if plan is None: raise JobRepositoryError('SECTION_NOT_FOUND',404)

@@ -36,7 +36,7 @@ PRAGMA user_version=1;
 """
 _ARGS = {
  'create_plan': {'owner','request_id','preferences','input_hash','budget_cents','run_allowance'},
- 'find_request': {'owner','request_id'}, 'get_plan': {'owner','plan'},
+ 'find_current': {'owner'}, 'find_request': {'owner','request_id'}, 'get_plan': {'owner','plan'},
  'get_section': {'owner','section'}, 'list_sections': {'owner','plan','after_sequence','page_size'},
  'recent_checkpoints': {'owner','plan'}, 'next_section': {'owner','plan','request_id','section_days'},
  'claim_section': {'owner','section','worker'}, 'claim_next': {'worker'},
@@ -67,6 +67,7 @@ def _rollback(conn):
 class AdaptiveSQLiteGateway:
     elevated = True
     supports_proposed_constraint_retry = True
+    supports_owner_recovery = True
 
     def __init__(self, path, *, enabled=False, initialize=False, clock=None):
         if enabled is not True: _error('SECTIONS_DISABLED',503)
@@ -188,6 +189,10 @@ class AdaptiveSQLiteGateway:
                 if claimed:return claimed
             return []
         owner=a['owner']
+        if op=='find_current':
+            rows=self._rows(c,'plans',"WHERE user_id=? AND json_extract(data,'$.status') IN ('active','paused') AND json_extract(data,'$.expires_at')>? LIMIT 2",(owner,_stamp(now)))
+            if len(rows)>1:_error('SECTION_OWNER_RECOVERY_CONFLICT',503)
+            return rows
         if op=='find_request':
             return [p for p in self._rows(c,'plans','WHERE user_id=? AND request_id=?',(owner,a['request_id'])) if _time(p['expires_at'])>now]
         if op in ('get_plan','get_section'):
@@ -241,7 +246,8 @@ class AdaptiveSQLiteGateway:
             if _time(prior[0]['expires_at'])<=now:return []
             return prior
         active=c.execute("SELECT COUNT(*),COALESCE(SUM(user_id=?),0) FROM plans WHERE json_extract(data,'$.status') IN ('active','paused') AND json_extract(data,'$.expires_at')>?",(a['owner'],_stamp(now))).fetchone()
-        if active[0]>=50 or active[1] or self._allocated(c)+49152>GLOBAL_STORAGE_BYTES:_error('SECTION_ADMISSION_REJECTED',429)
+        if active[1]:_error('SECTION_OWNER_PLAN_EXISTS',429)
+        if active[0]>=50 or self._allocated(c)+49152>GLOBAL_STORAGE_BYTES:_error('SECTION_CAPACITY_LIMIT',429)
         p=dict(id=str(uuid4()),user_id=a['owner'],request_id=a['request_id'],input_hash=a['input_hash'],preferences=prefs,
           start_date=prefs['startDate'],end_date=prefs['endDate'],next_date=prefs['startDate'],total_budget_cents=budget,spent_cents=0,completed_days=0,
           storage_limit_bytes=PLAN_STORAGE_BYTES,storage_used_bytes=49152,global_storage_limit_bytes=GLOBAL_STORAGE_BYTES,
