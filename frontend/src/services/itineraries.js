@@ -1,3 +1,4 @@
+import { MAX_PLANNING_DAYS } from '../utils/planningDates.js';
 import { AI_REQUEST_TIMEOUT_MS } from './aiRequest.js';
 import { validateTripPreferences, INTEREST_OPTIONS } from '../../../shared/tripPreferences.mjs';
 import { PlannerRequestError, requestJson } from './readRequest.js';
@@ -6,7 +7,7 @@ const text = (v, max) => typeof v === 'string' && v.trim().length > 0 && Array.f
 const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 export function itineraryDates(p) {
   const count = Math.round((Date.parse(`${p.endDate}T00:00:00Z`) - Date.parse(`${p.startDate}T00:00:00Z`)) / 86400000) + 1;
-  if (count < 1 || count > 14) return [];
+  if (count < 1 || count > MAX_PLANNING_DAYS) return [];
   return Array.from({ length: count }, (_, i) => new Date(Date.parse(`${p.startDate}T00:00:00Z`) + i * 86400000).toISOString().slice(0, 10));
 }
 export function validActivities(items) {
@@ -61,6 +62,7 @@ const failure = (status, diagnostic = {}) => {
   if (diagnostic.kind === 'invalid_json') return 'The planner service returned unreadable JSON. No replacement was accepted.';
   if (status === 400 && diagnostic.code === 'REFINEMENT_PACE_CONFLICT') return 'The activity limit conflicts with the selected travel pace. Choose a compatible limit or explicitly change the pace; your previous plan is unchanged.';
   if (status === 422 && diagnostic.code === 'REFINEMENT_FIXED_CONFLICT') return 'The activity limit cannot accommodate the fixed activities. Review the limit or fixed commitments; your previous plan is unchanged.';
+  if (status === 400 && diagnostic.code === 'ITINERARY_DURATION_UNSUPPORTED') return 'Choose a trip of 1–14 days, then try again.';
   if (status === 429) return 'The AI service rate limit was reached. Wait before retrying; no automatic retry was made.';
   if (status === 502 && diagnostic.code === 'AI_OUTPUT_TRUNCATED') return 'The AI response was cut off at its output limit. No replacement was accepted; no automatic retry was made.';
   if (status === 502 && diagnostic.code === 'AI_INVALID_RESPONSE') {
@@ -69,12 +71,13 @@ const failure = (status, diagnostic = {}) => {
   }
   return status === 503 ? 'AI itinerary generation is not configured yet. Saved preferences are unchanged.'
     : status === 504 ? 'AI itinerary generation timed out. Try again when ready; no trip was saved.'
-    : status === 400 || status === 422 ? 'Check your preferences. AI itineraries support trips of 1–14 days.'
+    : status === 400 || status === 422 ? 'Check your trip details before trying again.'
     : 'The AI itinerary could not be verified. Try again later; no trip was saved.';
 };
 export async function generateItinerary(payload, options = {}) {
   const validation = validateTripPreferences(payload);
-  if (!validation.valid || !itineraryDates(validation.value).length) throw new PlannerRequestError(failure(400));
+  if (!validation.valid) throw new PlannerRequestError(failure(400));
+  if (!itineraryDates(validation.value).length) throw new PlannerRequestError(failure(400, { code: 'ITINERARY_DURATION_UNSUPPORTED' }));
   const body = await requestJson('/itineraries/generate', { ...options, timeoutMs: options.timeoutMs ?? AI_REQUEST_TIMEOUT_MS, method: 'POST', payload: validation.value, failure });
   if (!validItinerary(body, validation.value)) throw new PlannerRequestError(clientValidationFailure);
   return body;

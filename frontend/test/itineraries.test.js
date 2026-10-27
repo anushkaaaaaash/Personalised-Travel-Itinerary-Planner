@@ -135,3 +135,11 @@ test('single-day refinement permits untouched legacy kinds normalized to unknown
   const result = await refineItinerary({ preferences: prefs, previous, targetDate: prefs.startDate, feedback: 'Maximum two', maxMainActivitiesPerDay: 2 }, { fetchImpl: async () => ({ status: 200, json: async () => body }) });
   assert.equal(result.days[1].activities[0].kind, 'unknown');
 });
+
+for (const status of [400, 422]) test(`generic ${status} preference rejection is not mislabeled as a duration error`, async () => {
+  await assert.rejects(generateItinerary(prefs, { fetchImpl: async () => ({ status, json: async () => ({ error: { code: 'VALIDATION_ERROR', message: 'PRIVATE' } }) }) }), error => error.message === 'Check your trip details before trying again.');
+});
+test('only the recognized server duration code receives date recovery wording', async () => {
+  await assert.rejects(generateItinerary(prefs, { fetchImpl: async () => ({ status: 400, json: async () => ({ error: { code: 'ITINERARY_DURATION_UNSUPPORTED', message: 'PRIVATE' } }) }) }), /1–14 days/);
+  await assert.rejects(generateItinerary({ ...prefs, destination: '' }, { fetchImpl: () => { throw new Error('must not request'); } }), error => error.message === 'Check your trip details before trying again.');
+});

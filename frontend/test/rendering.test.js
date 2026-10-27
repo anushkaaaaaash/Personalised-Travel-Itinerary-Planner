@@ -188,7 +188,7 @@ test('real AI itinerary displays days, budget warnings and local export without 
   const html = render(GeneratedItinerary, { result });
   for (const text of ['Your next chapter', 'Day 1', 'Your estimated budget', 'USD 100', 'USD 200', 'Download summary', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
   assert.ok(!html.includes('Trip preferences saved'));
-  const failed = render(GeneratedItinerary, { result, error: 'Not configured' });
+  const failed = render(GeneratedItinerary, { result, error: 'Not configured', onRetry() {} });
   assert.ok(!failed.includes('Day 1')); assert.ok(failed.includes('Try again'));
   const infeasible = render(GeneratedItinerary, { result: { ...result, status: 'infeasible', days: [] } });
   assert.ok(infeasible.includes('Try adjusting your budget')); assert.ok(!infeasible.includes('Download itinerary JSON'));

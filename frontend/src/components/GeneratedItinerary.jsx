@@ -8,9 +8,19 @@ import ItinerarySharing from './ItinerarySharing.jsx';
 export { downloadItinerary } from '../services/itineraryExport.js';
 const money = (currency, value) => `${currency} ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 const dayLabel = value => new Intl.DateTimeFormat(undefined, { weekday:'long', month:'short', day:'numeric', timeZone:'UTC' }).format(new Date(`${value}T12:00:00Z`));
-export default function GeneratedItinerary({ loading, error, result, evidence, onRetry, onCancel, onEditDay, edited = false, refinement = {}, onRefine, onCancelRefine, optimization = {}, onOptimize, onCancelOptimize, preferences, confirmedCoordinates = [], onConfirmCoordinate }) {
+export default function GeneratedItinerary({ loading, error, result, evidence, onRetry, onEditPreferences, onCancel, onEditDay, edited = false, refinement = {}, onRefine, onCancelRefine, optimization = {}, onOptimize, onCancelOptimize, preferences, confirmedCoordinates = [], onConfirmCoordinate }) {
   if (loading) return <DestinationLoading destination={preferences?.destination} onCancel={onCancel} />;
-  if (error) return <section className="card results--error"><p className="eyebrow">Let’s try that again</p><h2>Your trip needs a little more time.</h2><p role="alert">{travelError(error, "We couldn’t finish this plan. Your trip preferences are ready to try again.")}</p><button className="generate-btn" onClick={onRetry}>Try again</button></section>;
+  if (error) {
+    const dateRangeError = /1[–-]14 days/.test(error);
+    return <section className="card results--error"><p className="eyebrow">Your trip preferences are kept</p>
+      <h2>{dateRangeError ? 'Let’s check your dates.' : 'We couldn’t build this trip.'}</h2>
+      <p role="alert">{dateRangeError ? 'Plan 1–14 days at a time. Edit your trip dates to continue.' : travelError(error, 'We couldn’t finish this plan. You can try again or edit your trip details.')}</p>
+      <div className="step-actions">
+        {!dateRangeError && onRetry && <button className="generate-btn" onClick={onRetry}>Try again</button>}
+        {onEditPreferences && <button className={dateRangeError ? 'generate-btn' : 'preview-btn'} onClick={onEditPreferences}>Edit trip details</button>}
+      </div>
+    </section>;
+  }
   if (!result) return null;
   return <section className="results-wrap generated-itinerary" aria-label="Your itinerary">
     <article className="card results-hero">

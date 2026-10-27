@@ -59,7 +59,7 @@ test('owner change clears a pending job and never reuses its response for the ne
 }));
 
 test('unsupported trip length stays editable and creates no background request or handle',()=>harness(async env=>{
- let starts=0;const client=env.client(async(url,options)=>{starts++;return response(snapshot(JSON.parse(options.body).requestId));});await env.mount(client);let props=await env.prepare();await act(async()=>props().onChange({target:{name:'endDate',value:'2028-03-31'}}));await act(async()=>props().onGenerateItinerary());assert.equal(starts,0);assert.equal(env.storage.dump(),'');assert.match(env.text(),/Choose a trip of 1–14 days/);props=await env.prepare();await act(async()=>props().onGenerateItinerary());assert.equal(starts,1);
+ let starts=0,requestId;const client=env.client(async(url,options)=>{if(options.method==='POST'){starts++;requestId=JSON.parse(options.body).requestId;}return response(snapshot(requestId));});await env.mount(client);let props=await env.prepare();await act(async()=>props().onChange({target:{name:'endDate',value:'2028-03-31'}}));await act(async()=>props().onGenerateItinerary());assert.equal(starts,0);assert.equal(env.storage.dump(),'');assert.match(env.text(),/Choose a trip of 1–14 days/);props=await env.prepare();await act(async()=>props().onGenerateItinerary());assert.equal(starts,1);
 }));
 
 test('confirmed start rejection releases the handle for an explicit corrected plan',()=>harness(async env=>{
