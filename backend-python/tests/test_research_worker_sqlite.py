@@ -94,6 +94,24 @@ def test_invalid_sourcepack_is_not_accepted(setup,payload):
     assert run(plans.claim_next(uid())) is None
 
 
+@pytest.mark.parametrize('confirmed',[True,False])
+def test_completed_invalid_evidence_stops_but_unknown_parse_retains_handle(setup,payload,confirmed):
+    _,clock,g,plans,research=setup;p=triggered(plans,research,payload)
+    provider=FakeResearch(lambda:clock[0])
+    worker=AdaptiveResearchWorker(research,plans,provider,enabled=True,clock=lambda:clock[0])
+    run(worker.tick())
+    async def invalid(id,**kwargs):
+        provider.retrieves.append(id)
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',confirmed_terminal=confirmed,parse_reason='citation_missing')
+    provider.retrieve=invalid
+    result=run(worker.tick())
+    assert result['status']==('failed' if confirmed else 'running')
+    assert result['error_code']==('RESEARCH_SOURCES_UNCONFIRMED' if confirmed else 'RESEARCH_POLL_UNCONFIRMED')
+    if confirmed: assert run(worker.tick()) is None
+    assert len(provider.creates)==1 and len(provider.retrieves)==1 and provider.cancelled==[]
+    assert run(research.latest(p['user_id'],p['id'])) is None
+
+
 class FakeGeneration:
     def __init__(self):self.creates=[]
     async def create(self,system,user,schema):

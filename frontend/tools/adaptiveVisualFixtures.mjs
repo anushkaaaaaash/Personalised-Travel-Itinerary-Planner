@@ -15,6 +15,7 @@ export function createAdaptiveFixture() {
       const days=Math.min(3,completedDays-index*3),sequence=index+1,startDate=dateAt(p.startDate,index*3),endDate=dateAt(startDate,days-1);
       const result=itinerary();result.destination=p.destination;result.currency=p.currency;result.travelPace=p.travelPace;result.travelStyle=p.travelStyle;result.provider='openai';result.model='gpt-6-luna';
       result.days=Array.from({length:days},(_,day)=>({...structuredClone(result.days[0]),date:dateAt(startDate,day)}));
+      if(sequence===1)result.days[0].dining=`Example Garden Café (synthetic venue): consider vegetable noodles near the afternoon garden visit. Daily meal allowance: ${p.currency} ${(30/p.travelers).toFixed(2)} per person (${p.currency} 30.00 for the whole group). Confirm prices, opening hours and dietary arrangements; not booked.`;
       if(fixture.finalTravelDay)for(const day of result.days){
         if(day.date===p.endDate){day.mainActivityCount=0;day.activities=[{...day.activities[0],id:'return-transfer',title:'Return journey',kind:'transfer',durationMinutes:120}];day.morning='Return travel';day.afternoon='Arrival and rest';day.evening='Rest at home';}
         else{day.activities.push({...day.activities[0],id:'c',title:'Local experience',startTime:'14:00'});day.mainActivityCount=3;}
@@ -58,6 +59,8 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
     await page.getByText('3 of 46 days planned',{exact:true}).waitFor();await settleTheme(page,'JP');
     assert.equal(await page.locator('progress').getAttribute('value'),'3');assert.equal(await page.locator('progress').getAttribute('max'),'46');
     await page.locator('.adaptive-day > summary').first().click();
+    await page.getByText(/Example Garden Café \(synthetic venue\)/).waitFor();
+    await page.locator('.adaptive-day').first().getByText('Day outline',{exact:true}).click();
     await noOverflow(page,`adaptive-progress-${width}`);await snapshot(page,`adaptive-progress-${width}`);
     adaptive.phase='allowance';await page.getByRole('heading',{name:'Ready for the next part?'}).waitFor();
     assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);

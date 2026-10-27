@@ -73,6 +73,21 @@ test('saved-trip route changes select their own country and returning to the pla
   assert.deepEqual(reads,[`/api/saved-itineraries/${japan}`,`/api/saved-itineraries/${france}`]);
 }));
 
+test('saved day timelines retain dining and outlines without duplicating the older summary-only layout',()=>harness(async env=>{
+  const record=detail(),day=record.itinerary.days[0],calls=[];
+  day.dining='Example Garden Café (synthetic venue): allow USD 15 per person; confirm prices, hours and dietary needs.';
+  day.morning='A relaxed museum visit with time to arrive.';day.afternoon='A nearby garden with a rest break.';day.evening='Stay near the accommodation for dinner.';
+  const original=structuredClone(record);
+  globalThis.fetch=async(url,options)=>{calls.push({url,method:options.method});return response(record);};
+  env.setSession({user:{id:'synthetic-owner'},access_token:'TEST_ONLY_TOKEN',expires_at:Date.now()/1000+3600});
+  await env.mount(React.createElement(env.MemoryRouter,{initialEntries:[`/itineraries/${record.id}`]},React.createElement(env.Routes,{signedIn:true,ownershipEnabled:true})));
+  for(const key of ['dining','morning','afternoon','evening','dietaryNotes','mobilityNotes','transitAndRest'])assert.ok(env.text().includes(day[key]),`Missing saved ${key}`);
+  assert.match(env.text(),/Day outline|Day budget breakdown/);assert.deepEqual(calls,[{url:`/api/saved-itineraries/${record.id}`,method:'GET'}]);assert.deepEqual(record,original);
+  const summaryOnly={...record.itinerary,days:[{...day,activities:[]}]};
+  const html=renderToStaticMarkup(React.createElement(env.Generated,{result:summaryOnly,preferences:record.preferences}));
+  assert.equal(html.split(day.dining).length-1,1);assert.doesNotMatch(html,/>Day outline</);
+}));
+
 test('date-range guidance is accessible and invalid-date recovery edits details instead of repeating a failed request',()=>harness(async env=>{
   const form=renderToStaticMarkup(React.createElement(env.Form,{form:preferences,step:0,onChange(){},errors:{endDate:'Choose a trip of 1–14 days.'}}));
   assert.match(form,/id="trip-length-hint">Plan 1–14 days at a time/);

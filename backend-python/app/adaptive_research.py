@@ -104,6 +104,10 @@ def build_research_request(query, *, phase='initial'):
             'inline URL citations, separately label inference and unknowns. Check date applicability; future weather, '
             'hours, closures, prices and availability are unknown beyond published coverage. Never infer all-clear '
             'from missing results, promise a booking, or treat a citation as proof. Do not request personal details. '
+            'For places, give named real attraction and dining candidates with neighborhood, practical appeal, and published indicative prices when found; not a generic destination essay. '
+            'For transport, compare practical public-route options, locations and dated fare/duration estimates when published; mark missing or date-inapplicable details unknown. '
+            'For hours, bookings and closures, prioritize named relevant public places, official requirements and date applicability. '
+            'Do not invent a venue, price, route or availability to fill gaps; a candidate is not a booking or confirmed personal suitability. '
             'Use at most the supplied tool-call allowance, including open/find actions.'},
             {'role':'user','content':json.dumps({'phase':phase,'publicQuery':asdict(query)},ensure_ascii=False)}]}
 
@@ -127,6 +131,20 @@ def _url(value):
             if not address.is_global: _invalid()
     except ValueError: _invalid()
     return value
+
+
+def _source_key(url):
+    """Only standards-preserving authority equivalence, never redirect/query guessing."""
+    p=urlsplit(_url(url))
+    return (p.scheme,p.hostname.lower().encode('idna').decode('ascii'),p.path,p.query,p.fragment)
+
+
+def _citation_title(title, url):
+    if type(title) is not str or any((ord(c)<32 and c not in '\t\r\n') or ord(c)==127 for c in title):
+        _invalid()
+    clean=' '.join(title.split())
+    # Display metadata only: preserve evidence text; never truncate a claim.
+    return clean if len(clean)<=300 else urlsplit(url).hostname
 
 
 @dataclass(frozen=True)
@@ -170,6 +188,7 @@ class ResearchResponse:
 def parse_research_response(data, *, query, phase='initial', checked_at=None, expected_id=None, discard_output=False):
     """Actual Responses tool items + URL annotations, not URLs invented in prose."""
     reason='research_envelope'
+    confirmed_terminal=False
     try:
         if type(query) is not PublicResearchQuery or type(data) is not dict: _invalid()
         if len(json.dumps(data,allow_nan=False).encode())>MAX_BYTES: _invalid()
@@ -183,6 +202,7 @@ def parse_research_response(data, *, query, phase='initial', checked_at=None, ex
         if discard_output or base.status!='completed' or base.refused:
             return ResearchResponse(base.response_id,base.status,refused=base.refused)
         reason='research_calls'
+        confirmed_terminal=expected_id is not None and base.response_id==expected_id
         if not calls: _invalid()
         sources={}
         for call in calls:
@@ -193,13 +213,13 @@ def parse_research_response(data, *, query, phase='initial', checked_at=None, ex
             # Actual completed open/find tool actions attest consultation too.
             # https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_function_web_search.py
             if action['type']=='find_in_page' or (action['type']=='open_page' and action.get('url') is not None):
-                url=_url(action.get('url'));sources[url]=ResearchSource(url,consulted=True)
+                url=_url(action.get('url'));sources.setdefault(_source_key(url),ResearchSource(url,consulted=True))
             rows=action.get('sources')
             if rows is None: rows=[]
             if type(rows) is not list or len(rows)>32: _invalid()
             for source in rows:
                 if type(source) is not dict or source.get('type')!='url': _invalid()
-                url=_url(source.get('url'));sources[url]=ResearchSource(url,consulted=True)
+                url=_url(source.get('url'));sources.setdefault(_source_key(url),ResearchSource(url,consulted=True))
         reason='text_limit'
         text=base.output_text
         if len(text)>MAX_TEXT: _invalid()
@@ -209,18 +229,29 @@ def parse_research_response(data, *, query, phase='initial', checked_at=None, ex
             if item.get('type')!='message': continue
             for part in item['content']:
                 if part.get('type')!='output_text':continue
+                reason='citation_shape'
                 annotations=part.get('annotations',[])
                 if type(annotations) is not list or len(annotations)>48: _invalid()
                 for a in annotations:
+                    reason='citation_shape'
                     if type(a) is not dict or a.get('type')!='url_citation': _invalid()
                     start,end=a.get('start_index'),a.get('end_index');title=a.get('title')
+                    reason='citation_span'
                     if type(start) is not int or type(end) is not int or not 0<=start<end<=len(text): _invalid()
-                    if type(title) is not str or len(title)>300 or any(ord(c)<32 or ord(c)==127 for c in title): _invalid()
-                    url=_url(a.get('url')); prior=sources.get(url)
+                    reason='citation_url'
+                    url=_url(a.get('url')); key=_source_key(url); prior=sources.get(key)
+                    reason='citation_unconsulted'
                     if prior is None or not prior.consulted: _invalid()
-                    sources[url]=ResearchSource(url,title,consulted=bool(prior and prior.consulted),cited=True)
-                    citations.append(ResearchCitation(start,end,url,title))
-        if not sources or not citations or len(sources)>48: _invalid()
+                    reason='citation_title'
+                    title=_citation_title(title,prior.url)
+                    # Stable metadata for repeated citations to the same consulted source.
+                    title=prior.title if prior.cited else title
+                    sources[key]=ResearchSource(prior.url,title,consulted=True,cited=True)
+                    citations.append(ResearchCitation(start,end,prior.url,title))
+        reason='citation_missing'
+        if not sources or not citations: _invalid()
+        reason='citation_source_count'
+        if len(sources)>48: _invalid()
         reason='research_pack'
         now=checked_at or datetime.now(timezone.utc)
         if not isinstance(now,datetime) or now.tzinfo is None or now.utcoffset() is None: _invalid()
@@ -228,9 +259,9 @@ def parse_research_response(data, *, query, phase='initial', checked_at=None, ex
         validate_research_pack(json.loads(json.dumps(asdict(result))),query=query,phase=phase,now=now)
         return ResearchResponse(base.response_id,base.status,result)
     except BackgroundError as error:
-        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=error.parse_reason or reason) from None
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=error.parse_reason or reason,confirmed_terminal=confirmed_terminal) from None
     except (ValueError,TypeError,KeyError,AttributeError,UnicodeError,RecursionError,OverflowError):
-        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=reason) from None
+        raise BackgroundError('BACKGROUND_INVALID_RESPONSE',parse_reason=reason,confirmed_terminal=confirmed_terminal) from None
 
 
 class BackgroundResearchClient(OpenAIBackgroundClient):
@@ -273,7 +304,7 @@ class BackgroundResearchClient(OpenAIBackgroundClient):
             return parse_research_response(json.loads(body),query=query,phase=phase,expected_id=expected_id,discard_output=discard_output)
         except BackgroundError as error:
             if error.code=='BACKGROUND_HTTP_FAILED':raise
-            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation,http_status=200,parse_reason=error.parse_reason) from None
+            raise BackgroundError('BACKGROUND_INVALID_RESPONSE',ambiguous_create=creating,phase=operation,http_status=200,parse_reason=error.parse_reason,confirmed_terminal=error.confirmed_terminal) from None
         except (httpx.TimeoutException,TimeoutError):
             raise BackgroundError('BACKGROUND_TRANSPORT_FAILED',ambiguous_create=creating,phase=operation,transport_kind='timeout') from None
         except httpx.HTTPError:

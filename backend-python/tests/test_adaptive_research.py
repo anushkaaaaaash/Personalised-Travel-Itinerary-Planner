@@ -40,7 +40,7 @@ def test_citation_without_consulted_source_rejected():
  lambda e:e['output'][0]['action']['sources'][0].update(url='http://127.0.0.1/x'),
  lambda e:e['output'][1]['content'][0]['annotations'][0].update(start_index=True),
  lambda e:e['output'][1]['content'][0]['annotations'][0].update(end_index=100000),
- lambda e:e['output'][1]['content'][0]['annotations'][0].update(title='bad\ntext'),
+ lambda e:e['output'][1]['content'][0]['annotations'][0].update(title='bad\x00text'),
  lambda e:e['output'].pop(0),lambda e:e['output'][1]['content'][0].update(text='x'*24001)])
 def test_invalid_results(mutation):
     e=envelope();mutation(e)
@@ -191,7 +191,7 @@ def test_find_page_url_remains_required(url):
  (lambda e:e.update(output='PRIVATE_HOSTILE'), 'research_envelope'),
  (lambda e:e['output'][0].update(status='PRIVATE_HOSTILE'), 'research_calls'),
  (lambda e:e['output'][0]['action']['sources'][0].update(url='https://PRIVATE_HOSTILE.internal'), 'research_sources'),
- (lambda e:e['output'][1]['content'][0]['annotations'][0].update(title='PRIVATE_HOSTILE\n'), 'research_citations'),
+ (lambda e:e['output'][1]['content'][0]['annotations'][0].update(title='PRIVATE_HOSTILE\x00'), 'citation_title'),
  (lambda e:e['output'][1].update(phase='PRIVATE_HOSTILE'), 'message_phase'),
 ])
 def test_research_stage_diagnostics_are_closed_and_preserve_base_reason(mutation,reason):
@@ -202,3 +202,65 @@ def test_research_stage_diagnostics_are_closed_and_preserve_base_reason(mutation
     metadata=failure.value.safe_metadata()
     assert metadata['parse_reason']==reason and metadata['http_status']==200
     assert 'PRIVATE_HOSTILE' not in json.dumps(metadata)
+
+@pytest.mark.parametrize('consulted,cited',[
+ ('https://example.com/page?x=1#part','https://EXAMPLE.COM/page?x=1#part'),
+ ('https://example.com/page','https://example.com:443/page'),
+ ('https://bücher.de/page','https://xn--bcher-kva.de/page'),
+])
+def test_equivalent_authority_matches_actual_consulted_url(consulted,cited):
+    e=envelope();e['output'][0]['action']['sources'][0]['url']=consulted
+    e['output'][1]['content'][0]['annotations'][0]['url']=cited
+    result=parse_research_response(e,query=Q).result
+    assert result.sources[0].url==consulted and result.citations[0].url==consulted
+    assert result.text==e['output'][1]['content'][0]['text']
+
+@pytest.mark.parametrize('other',['https://example.com/other?x=1#part','https://example.com/page?x=2#part','https://example.com/page?x=1#other','https://other.example.com/page?x=1#part','https://example.com./page?x=1#part'])
+def test_resource_path_query_fragment_and_host_not_guessed(other):
+    e=envelope();e['output'][0]['action']['sources'][0]['url']='https://example.com/page?x=1#part'
+    e['output'][1]['content'][0]['annotations'][0]['url']=other
+    with pytest.raises(BackgroundError) as failure:parse_research_response(e,query=Q,expected_id='resp_fake')
+    assert failure.value.parse_reason=='citation_unconsulted' and failure.value.confirmed_terminal is True
+
+@pytest.mark.parametrize('title,expected',[('  Public\n page\t title  ','Public page title'),('x'*301,'www.city.kyoto.lg.jp')])
+def test_display_title_normalization_does_not_change_claim_or_provenance(title,expected):
+    e=envelope();e['output'][1]['content'][0]['annotations'][0]['title']=title
+    result=parse_research_response(e,query=Q).result
+    assert result.citations[0].title==expected and result.sources[0].title==expected
+    assert result.citations[0].url==URL and result.text==e['output'][1]['content'][0]['text']
+
+def test_repeated_source_titles_have_one_consistent_display_label():
+    e=envelope();a=e['output'][1]['content'][0]['annotations'];a.append({**a[0],'title':'Alternate valid label'})
+    result=parse_research_response(e,query=Q).result
+    assert len(result.citations)==2 and {c.title for c in result.citations}=={'City guidance'}
+
+def test_confirmed_terminal_requires_bound_completed_identity_and_survives_http():
+    e=envelope();e['output'][1]['content'][0]['annotations']=[]
+    for expected,confirmed in [(None,False),('resp_fake',True),('resp_other',False)]:
+        with pytest.raises(BackgroundError) as failure:parse_research_response(e,query=Q,expected_id=expected)
+        assert failure.value.confirmed_terminal is confirmed
+    c=BackgroundResearchClient('fake-background-test-key',activation=BackgroundActivation(True,True),cost_approved=True,
+        transport=httpx.MockTransport(lambda _:httpx.Response(200,json=e)))
+    with pytest.raises(BackgroundError) as failure:asyncio.run(c.retrieve('resp_fake',query=Q))
+    assert failure.value.confirmed_terminal is True and failure.value.safe_metadata()['parse_reason']=='citation_missing'
+    e['status']='in_progress'
+    assert asyncio.run(c.retrieve('resp_fake',query=Q)).status=='in_progress'
+
+@pytest.mark.parametrize('mutation,reason',[
+ (lambda a:a.update(type='file_citation'),'citation_shape'),
+ (lambda a:a.update(end_index=100000),'citation_span'),
+ (lambda a:a.update(title='bad\x00'),'citation_title'),
+ (lambda a:a.update(url='https://localhost/private'),'citation_url'),
+ (lambda a:a.update(url='https://example.com/other'),'citation_unconsulted'),
+])
+def test_precise_citation_failure_is_terminal_only_after_valid_completed_envelope(mutation,reason):
+    e=envelope();mutation(e['output'][1]['content'][0]['annotations'][0])
+    with pytest.raises(BackgroundError) as failure:parse_research_response(e,query=Q,expected_id='resp_fake')
+    assert failure.value.parse_reason==reason and failure.value.confirmed_terminal is True
+
+def test_practical_research_prompt_retains_public_only_high_bounded_policy():
+    request=build_research_request(Q)
+    text=request['input'][0]['content']
+    assert 'named real attraction and dining candidates' in text and 'public-route options' in text
+    assert 'not a booking or confirmed personal suitability' in text
+    assert request['reasoning']=={'effort':'high'} and request['max_tool_calls']==4
