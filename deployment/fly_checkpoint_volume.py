@@ -9,12 +9,37 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
 APP = "personalised-travel-itinerary-planner"
 NAME = "planner_checkpoints"
 BASE = "https://api.machines.dev/v1/apps/" + APP
+
+# Runs on the *currently deployed* image, which may not yet have any newly
+# added CLI module. It returns only aggregate counts, not user data or IDs.
+QUIESCENCE_PROBE = '''import json,sqlite3,sys
+from pathlib import Path
+from app.adaptive_sqlite_runtime import verify_volume
+try:
+    path=verify_volume()
+    with sqlite3.connect(Path(path).as_uri()+"?mode=ro",uri=True,timeout=5) as c:
+        c.execute("PRAGMA query_only=ON")
+        c.execute("BEGIN")
+        invalid_plans=c.execute("SELECT EXISTS(SELECT 1 FROM plans WHERE json_type(data) IS NOT 'object' OR json_type(data,'$.status') IS NOT 'text' OR json_extract(data,'$.status') NOT IN ('active','paused','completed','cancelled'))").fetchone()[0]
+        invalid_sections=c.execute("SELECT EXISTS(SELECT 1 FROM sections WHERE json_type(data) IS NOT 'object' OR json_type(data,'$.status') IS NOT 'text' OR json_extract(data,'$.status') NOT IN ('queued','submitting','running','succeeded','failed','submission_unknown','cancelled'))").fetchone()[0]
+        if invalid_plans or invalid_sections: raise ValueError("unknown status")
+        counts={"active_plans":c.execute("SELECT count(*) FROM plans WHERE json_extract(data,'$.status')='active'").fetchone()[0]}
+        for status in ("queued","submitting","running"):
+            counts[status]=c.execute("SELECT count(*) FROM sections WHERE json_extract(data,'$.status')=?",(status,)).fetchone()[0]
+    ready=not any(counts.values())
+    print(json.dumps({"ready":ready,"code":"READY" if ready else "PLANNING_IN_PROGRESS","counts":counts},sort_keys=True))
+    sys.exit(0 if ready else 1)
+except Exception:
+    print(json.dumps({"ready":False,"code":"PREFLIGHT_FAILED"},sort_keys=True))
+    sys.exit(1)
+'''
 
 
 class Stop(Exception):
@@ -62,7 +87,7 @@ def request(method: str, suffix: str, body=None):
         raise Stop("Unexpected Fly read failure; stopped.") from None
 
 
-def validate_machine_list(machines, require_disabled=True):
+def validate_machine_list(machines, require_disabled=True, allow_transition=False):
     if not isinstance(machines, list) or len(machines) != 1 or not isinstance(machines[0], dict):
         raise Stop("Expected exactly one existing Machine; stopped.")
     m = machines[0]
@@ -70,7 +95,7 @@ def validate_machine_list(machines, require_disabled=True):
     if not isinstance(guest, dict):
         raise Stop("Machine guest configuration unavailable; stopped.")
     if (not isinstance(m.get("id"), str) or not re.fullmatch(r"[a-f0-9]{12,32}", m["id"])
-            or m.get("region") != "sin" or m.get("state") != "started"
+            or m.get("region") != "sin" or m.get("state") not in ({"started","starting","created","replacing"} if allow_transition else {"started"})
             or guest.get("cpu_kind") != "shared" or type(guest.get("cpus")) is not int or guest["cpus"] != 1
             or type(guest.get("memory_mb")) is not int or guest["memory_mb"] != 512):
         raise Stop("Existing Machine does not match approved Singapore 512 MB configuration; stopped.")
@@ -142,6 +167,42 @@ def run_store_preflight(initialize=False):
     print("Checkpoint storage initialized and ready." if initialize else "Checkpoint storage preflight ready.")
 
 
+def check_quiescence():
+    """Point-in-time gate only; does not prevent a new user admission."""
+    machine_id = verify(require_attached=True)
+    command = ["env", "PYTHONPATH=/app", "python", "-c", QUIESCENCE_PROBE]
+    result = request("POST", "/machines/" + machine_id + "/exec", {"command": command, "timeout": 25})
+    if (not isinstance(result, dict) or type(result.get("exit_code")) is not int
+            or type(result.get("exit_signal", 0)) is not int or result.get("exit_signal", 0) != 0):
+        raise Stop("Quiescence check unavailable; deployment stopped.")
+    try:
+        data = json.loads(result.get("stdout", ""))
+    except (ValueError, TypeError):
+        raise Stop("Quiescence check unavailable; deployment stopped.") from None
+    if not isinstance(data, dict) or set(data) != {"ready", "code", "counts"} or not isinstance(data["counts"], dict):
+        raise Stop("Quiescence check unavailable; deployment stopped.")
+    counts = data["counts"]
+    if set(counts) != {"active_plans", "queued", "submitting", "running"} or any(type(n) is not int or n < 0 for n in counts.values()):
+        raise Stop("Quiescence check unavailable; deployment stopped.")
+    if result["exit_code"] == 1 and data["ready"] is False and data["code"] == "PLANNING_IN_PROGRESS" and any(counts.values()):
+        raise Stop("Planning is in progress; deployment stopped.")
+    if result["exit_code"] != 0 or data["ready"] is not True or data["code"] != "READY" or any(counts.values()):
+        raise Stop("Quiescence check unavailable; deployment stopped.")
+    print("No active planning observed at this instant.")
+
+
+def verify_after_deploy():
+    """Bounded GET-only wait; never rerun a deploy or create."""
+    for attempt in range(12):
+        machines = request("GET", "/machines")
+        validate_machine_list(machines, require_disabled=False, allow_transition=True)
+        if machines[0]["state"] == "started":
+            return verify(require_attached=True)
+        if attempt == 11:
+            raise Stop("Machine did not reach started state within 12 read-only checks; stopped.")
+        time.sleep(5)
+
+
 def provision():
     validate_machine_list(request("GET", "/machines"))
     existing = request("GET", "/volumes")
@@ -165,12 +226,16 @@ def main():
             provision()
         elif sys.argv[1:] == ["--verify"]:
             verify()
+        elif sys.argv[1:] == ["--verify-after-deploy"]:
+            verify_after_deploy()
         elif sys.argv[1:] == ["--verify-attached"]:
             verify(require_attached=True)
         elif sys.argv[1:] == ["--initialize-store"]:
             run_store_preflight(initialize=True)
         elif sys.argv[1:] == ["--preflight-store"]:
             run_store_preflight()
+        elif sys.argv[1:] == ["--check-quiescence"]:
+            check_quiescence()
         else:
             raise Stop("Invalid mode; stopped.")
     except Stop as exc:

@@ -190,8 +190,9 @@ def test_known_failure_retry_and_unknown_never_replayed(store,payload):
     replacement=run(r.claim(owner,replacement['id'],uid()))
     proposal={'applicability':'proposed','explanation':'Budget cannot cover transfer.','recommendations':[{'field':'budget','reason':'Insufficient.','suggestion':'Review budget.'}]}
     run(r.transition(owner,replacement['id'],replacement['lease_token'],replacement['version'],'failed',error_code='SECTION_CONSTRAINT_CONFLICT',failure_details=proposal))
-    with pytest.raises(JobRepositoryError):run(r.retry_failed(owner,replacement['id'],uid()))
     with pytest.raises(JobRepositoryError):run(r.continue_run(owner,p['id'],uid()))
+    retried=run(r.retry_failed(owner,replacement['id'],uid()))
+    assert retried['retry_of']==replacement['id']
     assert run(r.get_section(owner,replacement['id']))['failure_details']==proposal
 
 def test_http_worker_pipeline_on_sqlite(monkeypatch,payload,store):
@@ -210,3 +211,57 @@ def test_future_cleanup_heartbeat_is_not_fresh(store):
     _,clock,g,r=store
     run(g.purge_expired());clock[0]-=1
     with pytest.raises(JobRepositoryError):run(r.verify_ready())
+
+
+def test_explicit_proposed_retry_preserves_six_accepted_days(store,payload):
+    from app.adaptive_coordinator import AdaptiveCoordinator
+    from app.adaptive_worker import AdaptivePlanningWorker
+    from test_adaptive_integration import FakeProvider,OWNER
+    path,clock,g,r=store
+    prefs={**payload,'startDate':'2028-01-01','endDate':'2028-01-09','budget':5000}
+    class Provider(FakeProvider):
+        async def create(self,*args):
+            result=await super().create(*args)
+            if self.calls==3:
+                value=json.loads(self.outputs[result.response_id])
+                value['proposal'].update(status='infeasible',days=[],explanation='Model proposes reviewing the return day pace.')
+                value['recommendations']=[{'field':'travelPace','reason':'Return travel needs time.','suggestion':'Review pace.'}]
+                self.outputs[result.response_id]=json.dumps(value)
+            return result
+    async def scenario():
+        await g.purge_expired()
+        provider=Provider(r,prefs);worker=AdaptivePlanningWorker(r,provider,enabled=True)
+        engine=AdaptiveCoordinator(r,worker,enabled=True)
+        plan=(await engine.start(OWNER,uid(),prefs))['plan']['id']
+        for _ in range(6):await worker.tick()
+        before=await r.get_plan(OWNER,plan);assert before['completed_days']==6 and before['status']=='paused'
+        accepted=await r.recent_checkpoints(OWNER,plan);failed=await r.get_section(OWNER,before['active_section'])
+        assert failed['error_code']=='SECTION_CONSTRAINT_CONFLICT' and failed['failure_details']['applicability']=='proposed'
+        await worker.tick();assert provider.calls==3 # never automatic
+        request=uid();await engine.retry(OWNER,plan,failed['id'],request)
+        await engine.retry(OWNER,plan,failed['id'],request)
+        assert provider.calls==3
+        for _ in range(2):await worker.tick()
+        complete=await r.get_plan(OWNER,plan)
+        assert complete['status']=='completed' and complete['completed_days']==9 and complete['remaining_creates']==8 and provider.calls==4
+        assert complete['journey_strategy']==before['journey_strategy']
+        for row in accepted:assert await r.get_section(OWNER,row['id'])==row
+        await engine.retry(OWNER,plan,failed['id'],request)
+        await worker.tick();assert provider.calls==4
+    run(scenario())
+
+@pytest.mark.parametrize('code,details',[
+ ('SECTION_BUDGET_EXHAUSTED',{'applicability':'proposed','explanation':'Budget.','recommendations':[{'field':'budget','reason':'Cost.','suggestion':'Review.'}]}),
+ ('SECTION_CONSTRAINT_CONFLICT',None),
+ ('SECTION_CONSTRAINT_CONFLICT',{'applicability':'proposed','explanation':'Constraint.','recommendations':[{'field':'arbitrary','reason':'Reason.','suggestion':'Suggestion.'}]}),
+ ('SECTION_CONSTRAINT_CONFLICT',{'applicability':'proposed','explanation':'  ','recommendations':[{'field':'budget','reason':'Reason.','suggestion':'Suggestion.'}]}),
+ ('SECTION_CONSTRAINT_CONFLICT',{'applicability':'proposed','explanation':'Constraint.','recommendations':[{'field':'budget','reason':'Reason.','suggestion':'Bad\u0001control'}]}),
+ ('SECTION_CONSTRAINT_CONFLICT',{'applicability':'verified','explanation':'Constraint.','recommendations':[]}),
+ ('SECTION_CONSTRAINT_CONFLICT',{'applicability':'proposed','explanation':'Constraint.','recommendations':[]}),
+])
+def test_retry_rejects_unverified_proposal_shape_and_actual_budget(store,payload,code,details):
+    path,_,_,r=store;owner=uid();p=run(r.create_plan(owner,uid(),payload))
+    s=run(r.claim_next(uid()));s=run(r.transition(owner,s['id'],s['lease_token'],s['version'],'failed',error_code='OUTPUT_LIMIT'))
+    mutate(path,'sections',s['id'],error_code=code,failure_details=details)
+    with pytest.raises(JobRepositoryError):run(r.retry_failed(owner,s['id'],uid()))
+    assert run(r.get_plan(owner,p['id']))['remaining_creates']==12

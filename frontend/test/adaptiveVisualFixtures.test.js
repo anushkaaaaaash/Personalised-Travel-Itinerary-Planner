@@ -34,3 +34,8 @@ test('completed export fixture covers all requested dates and retains a valid bo
   const fixture=createAdaptiveFixture();fixture.phase='completed';fixture.preferences={...fullTrip,endDate:'2028-01-03'};fixture.requestId=requestId;
   const value=validateAdaptivePage(fixture.snapshot());assert.equal(value.plan.status,'completed');assert.equal(value.plan.completedDays,3);assert.equal(value.plan.totalDays,3);assert.equal(value.sections.length,1);assert.equal(value.sections[0].checkpoint.endLocation,'Mumbai');
 });
+
+test('completed mobile fixture permits a true final transfer day without a main-activity quota',()=>{
+  const fixture=createAdaptiveFixture();fixture.phase='completed';fixture.finalTravelDay=true;fixture.preferences={...fullTrip,endDate:'2028-01-03',travelPace:'fast'};fixture.requestId=requestId;
+  const value=validateAdaptivePage(fixture.snapshot());const days=value.sections[0].checkpoint.itinerary.days;assert.deepEqual(days.map(day=>day.mainActivityCount),[3,3,0]);assert.equal(days[2].activities[0].kind,'transfer');assert.equal(days[2].activities[0].durationMinutes,120);assert.equal(value.plan.completedDays,3);
+});

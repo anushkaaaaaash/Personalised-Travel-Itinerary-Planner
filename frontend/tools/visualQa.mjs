@@ -27,7 +27,7 @@ const server = createServer(async (request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless:true });
-const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false, adaptiveWidths:[], adaptiveUncertainty:false, adaptiveExports:[], adaptiveCompleteExport:false };
+const findings = { screenshots:[], viewports:[], themes:[], errors:[], unexpectedRequests:[], confirmations:[], snapshotReadinessErrors:[], savedTrip:false, reducedMotion:false, destinationRecovery:false, adaptiveWidths:[], adaptiveUncertainty:false, adaptiveExports:[], adaptiveCompleteExport:false, adaptiveTravelDay:false };
 const liveConfig = { enabled:true, mode:'production', ownership_enabled:true, planning_jobs_enabled:false };
 const localConfig = { enabled:false, mode:'local', ownership_enabled:false, planning_jobs_enabled:false };
 let pendingGeneration;

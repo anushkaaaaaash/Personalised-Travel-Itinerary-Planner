@@ -1,11 +1,34 @@
 """One leased adaptive section per tick. No auto-replay of uncertain creates."""
 from datetime import datetime, timezone
 from uuid import uuid4, uuid5, NAMESPACE_URL
+import json
+import logging
+import math
+from time import monotonic
 from .adaptive_planning import SectionSpec, SectionContract, AdaptiveError
 from .section_repository import validate_checkpoint
 from .planning_repository import JobRepositoryError
 from .planning_worker import _provider_diagnostic
 from .prompts import build_itinerary_prompt
+
+
+_logger = logging.getLogger('uvicorn.error')
+
+
+def _timing(phase, seconds, *, status=None):
+    """Aggregate timings only: no request IDs, preferences, outputs or error text."""
+    try:
+        if type(phase) is not str or phase not in {'create_ack', 'provider_wait', 'validation'}:
+            return
+        if type(seconds) not in (int, float) or not math.isfinite(seconds):
+            return
+        metadata = {'phase': phase, 'elapsed_ms': round(min(86400, max(0, seconds)) * 1000)}
+        if type(status) is str and status in {'queued', 'in_progress', 'completed', 'failed', 'incomplete', 'cancelled'}:
+            metadata['status'] = status
+        _logger.info('Adaptive timing: %s', json.dumps(metadata, sort_keys=True))
+    except Exception:
+        # Observability must never prevent persisting an already-paid response ID.
+        pass
 
 
 def next_identity(plan):
@@ -55,6 +78,7 @@ class AdaptivePlanningWorker:
         if section['status'] == 'queued':
             section = await self._transition(section, 'submitting')
             prompt = build_itinerary_prompt(spec.preferences)
+            started = monotonic()
             try:
                 response = await self.client.create(prompt.messages[0].content + '\n' + contract.instructions,
                     prompt.messages[1].content, contract.schema)
@@ -62,9 +86,12 @@ class AdaptivePlanningWorker:
                 _provider_diagnostic('create', error=error)
                 return await self._transition(section, 'submission_unknown' if getattr(error, 'ambiguous_create', True) else 'failed',
                     error_code='SECTION_SUBMISSION_UNCONFIRMED' if getattr(error, 'ambiguous_create', True) else 'SECTION_PROVIDER_REJECTED')
+            acknowledged = monotonic()
             # Persist response ID before retrieving; lost-CAS must never cancel
             # another worker's active response or create again.
-            return await self._transition(section, 'running', provider_response_id=response.response_id)
+            result = await self._transition(section, 'running', provider_response_id=response.response_id)
+            _timing('create_ack', acknowledged-started, status=response.status)
+            return result
         if section['status'] != 'running' or not section.get('provider_response_id'):
             raise JobRepositoryError('SECTION_INVALID_CLAIM')
         submitted = datetime.fromisoformat(section['submitted_at'].replace('Z', '+00:00'))
@@ -84,9 +111,11 @@ class AdaptivePlanningWorker:
             return await self._transition(section, 'failed', error_code='SECTION_RESPONSE_MISMATCH')
         if response.status in {'queued', 'in_progress'}:
             return await self._transition(section, 'running')
+        _timing('provider_wait', (self.clock()-submitted).total_seconds(), status=response.status)
         if response.status != 'completed' or response.refused:
             _provider_diagnostic('retrieve', status=response.status, refused=response.refused)
             return await self._transition(section, 'failed', error_code='SECTION_PROVIDER_INCOMPLETE' if response.status == 'incomplete' else 'SECTION_PROVIDER_FAILED')
+        started = monotonic()
         try:
             checkpoint = contract.decode(response.output_text)
             if checkpoint.get('status') == 'needs_changes':
@@ -95,6 +124,7 @@ class AdaptivePlanningWorker:
             validate_checkpoint(checkpoint, section)
         except (AdaptiveError, JobRepositoryError) as error:
             return await self._transition(section, 'failed', error_code=getattr(error, 'code', 'SECTION_INVALID_RESULT'))
+        _timing('validation', monotonic()-started)
         result = await self._transition(section, 'succeeded', checkpoint=checkpoint)
         # A crash here must be recoverable by coordinator reconciliation using
         # deterministic next identity, not by regenerating this checkpoint.

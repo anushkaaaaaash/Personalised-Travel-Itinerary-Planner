@@ -13,10 +13,11 @@ SCHEDULE_NOTICE=('Schedule times are computed from AI-proposed ordered activitie
     'they are not bookings or verified opening/transport times. Confirm feasibility before travel.')
 
 class GenerationContract:
-    def __init__(self,preferences):
+    def __init__(self,preferences, *, travel_day_dates=()):
         from .itineraries import ItineraryPayload
         from .openai import strict_schema
         self.preferences=preferences
+        self.travel_day_dates=frozenset(travel_day_dates)
         self.dates=[(date.fromisoformat(preferences.startDate)+timedelta(days=i)).isoformat()
             for i in range((date.fromisoformat(preferences.endDate)-date.fromisoformat(preferences.startDate)).days+1)]
         self.minimum,self.maximum={'relaxed':(1,2),'balanced':(2,3),'fast':(3,4)}[preferences.travelPace]
@@ -44,8 +45,13 @@ class GenerationContract:
             day[name]['description']=f'Required nonblank AI-authored description, 1-{day[name]["maxLength"]} characters. Never empty; explicitly describe any planned rest/return arrangements without inventing bookings.'
         day['dayStart']={'type':'string','enum':[f'{h:02}:{m:02}' for h in range(24) for m in (0,15,30,45)]}
         day['requiredMainActivities']=obj({f'main_{i+1}':{'$ref':'#/$defs/RequiredMainProposal'} for i in range(self.minimum)})
+        if self.travel_day_dates:
+            for key, value in day['requiredMainActivities']['properties'].items():
+                day['requiredMainActivities']['properties'][key]={'anyOf':[value,{'type':'null'}]}
         day['activities']={'type':'array','items':{'$ref':'#/$defs/ActivityProposal'},
             'description':f'Additional entries only, not copies of requiredMainActivities. At most {8-self.minimum} additional entries and at most one additional main. Empty is allowed. Combined sequence specifies order; local validation enforces upper bounds.'}
+        if self.travel_day_dates:
+            day['activities']['description']='Additional entries only, not copies of non-null requiredMainActivities. At most eight entries total across both containers. Include explicit transport segments; local validation checks pace and travel-day eligibility.'
         defs['GenerationDay']=obj(day)
         # Remove unused public definitions so the private output has no competing
         # absolute-time shape or redundant model-selected mainActivityCount.
@@ -58,6 +64,14 @@ class GenerationContract:
                 'additionalWarnings':{'type':'array','items':{'type':'string'},'description':'Zero to six nonblank additional warnings; each 1-500 characters.'}})})
         self.schema['$defs']=defs
         self.shape=strict_schema(self.schema)
+        pace_instructions=(
+            f'Ordinary days require {self.minimum}-{self.maximum} genuine main experiences. '
+            f'Only ORIGINAL arrival/return dates {sorted(self.travel_day_dates)} may have fewer (including zero) main experiences when explicit kind=transfer entries total at least120 minutes. '
+            'This exception does not apply to intermediate section boundaries. Keep all requiredMainActivities keys; use null for omitted main slots only on qualifying travel days. '
+            'Put explicit transport segments in activities; never relabel sightseeing as transport. Travel costs, realistic timing and rest still apply. '
+            if self.travel_day_dates else
+            f'Every day requires {self.minimum}-{self.maximum} real main experiences, including arrival and departure. Travel-only or rest-only days do not satisfy this pace rule. '
+        )
         self.instructions=(
             '\nGENERATION PROPOSAL CONTRACT: Return one complete JSON object with ALL four root fields: days, status, explanation, warnings. '
             'Write the complete days array first; an explanation and warnings alone are never a planned itinerary. '
@@ -66,10 +80,8 @@ class GenerationContract:
             'Do not output destination, currency, travelStyle, travelPace, vibe, mainActivityCount, startTime or fixedTime fields. '
             'The server supplies request metadata and computes counts and schedule times; it does not repair missing content. '
             f'For planned output days must contain exactly {len(self.dates)} complete objects with these dates exactly once in this order: {", ".join(self.dates)}. '
-            f'Include arrival and departure days. Every day requires {self.minimum}-{self.maximum} real main experiences for the requested {preferences.travelPace} pace. '
-            'Travel-only or rest-only days do not satisfy this existing pace rule; if these requirements cannot realistically fit, '
-            'return status infeasible, explanation and warnings, AND days: []. Never omit days even for infeasible output. Never label meals or transfers as main experiences. '
-            f'requiredMainActivities must contain {", ".join(f"main_{i+1}" for i in range(self.minimum))}, each a complete genuine main experience with kind main, including on Day 1. '
+            + pace_instructions +
+            'If actual constraints still cannot fit, return status infeasible, explanation and warnings, AND days: []. Never omit days. Never label meals or transfers as main experiences. '
             'The activities array contains only additional entries, optionally one more main experience. Do not repeat the required main experiences there. '
             'Across both containers there must be at most eight total entries. Assign unique consecutive sequence positions 1 through the total count across BOTH containers. '
             'Main, meal, transfer, rest and accommodation entries may appear in any realistic sequence; required main keys do not impose timeline positions. '
@@ -113,7 +125,7 @@ class GenerationContract:
                     if not day[name].strip():raise ValueError()
                 h,m=map(int,day['dayStart'].split(':'));end=60*h+m
                 activities=[]
-                entries=[*day['requiredMainActivities'].values(),*day['activities']]
+                entries=[*[v for v in day['requiredMainActivities'].values() if v is not None],*day['activities']]
                 if not 1<=len(entries)<=8:raise ValueError()
                 entries=sorted(entries,key=lambda entry:entry['sequence'])
                 if [entry['sequence'] for entry in entries]!=list(range(1,len(entries)+1)):raise ValueError()
@@ -124,7 +136,9 @@ class GenerationContract:
                     activity.update(startTime=f'{start//60:02}:{start%60:02}',fixedTime=False)
                     activities.append(activity)
                 count=sum(a['kind']=='main' for a in activities)
-                if not self.minimum<=count<=self.maximum:raise ValueError()
+                from .itineraries import is_adaptive_travel_day
+                minimum=0 if is_adaptive_travel_day(day['date'],activities,self.travel_day_dates) else self.minimum
+                if not minimum<=count<=self.maximum:raise ValueError()
                 days.append({**{name:day[name] for name in (*self.narratives,'interestTags','costs')},
                     'date':day['date'],'activities':activities,'mainActivityCount':count})
             p=self.preferences

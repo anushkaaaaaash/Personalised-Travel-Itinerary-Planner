@@ -103,6 +103,11 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: python3 deployment/fly_checkpoint_volume.py --preflight-store
+      - name: Check for active planning before deployment
+        if: inputs.deployment_action != 'initialize'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: python3 deployment/fly_checkpoint_volume.py --check-quiescence
       - name: Deploy one Machine with explicit processing state
         if: inputs.deployment_action != 'initialize'
         env:
@@ -129,4 +134,4 @@ jobs:
       - name: Verify sole Machine and volume attachment after action
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: python3 deployment/fly_checkpoint_volume.py --verify-attached
+        run: python3 deployment/fly_checkpoint_volume.py --verify-after-deploy

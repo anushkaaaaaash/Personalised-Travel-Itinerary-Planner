@@ -1,11 +1,21 @@
 import { sessionFetch } from './session.js';
 import { validateTripPreferences, isRealIsoDate } from '../../../shared/tripPreferences.mjs';
-import { validItinerary } from './itineraries.js';
+import { validAdaptiveSectionItinerary } from './adaptiveItineraryValidation.js';
 export const adaptiveId = value => typeof value === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i.test(value);
 const knownErrors = new Set(['SECTION_SUBMISSION_UNCONFIRMED','SECTION_PROVIDER_REJECTED','SECTION_DEADLINE_REACHED','SECTION_POLL_UNCONFIRMED','SECTION_RESPONSE_MISMATCH','SECTION_OUTPUT_LIMIT','SECTION_PROVIDER_INCOMPLETE','SECTION_PROVIDER_FAILED','SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED','SECTION_INVALID_RESULT','SECTION_CONTINUITY_CONFLICT','SECTION_RETURN_MISSING','SECTION_REST_CONFLICT','SECTION_TRAVEL_DOUBLE_COUNT','SECTION_BUDGET_EXCEEDED','SECTION_INVALID_COST','SECTION_CHECKPOINT_INVALID','SECTION_STRATEGY_INVALID','SECTION_STRATEGY_CONFLICT','SECTION_TRANSFER_MISSING','SECTION_REPEAT_CONFLICT']);
 export const validAdaptivePolicy = value => value?.sectionDays === 3 && Number.isInteger(value.maxSubmissionsPerRun) && value.maxSubmissionsPerRun >= 1 && value.maxSubmissionsPerRun <= 12;
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 const safeText = (value, max=500) => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+/** Only concrete model-proposed constraint advice permits an explicit remaining-section retry. */
+export function hasProposedConstraintDetails(section) {
+  const d=section?.failureDetails;
+  const fields=['budget','travelPace','destination','departureCity','mobilityConcerns','dietaryNeeds'];
+  return section?.errorCode==='SECTION_CONSTRAINT_CONFLICT' && d?.applicability==='proposed'
+    && Object.keys(d).sort().join(',')==='applicability,explanation,recommendations'
+    && safeText(d.explanation,500) && Boolean(d.explanation.trim())
+    && Array.isArray(d.recommendations) && d.recommendations.length>=1 && d.recommendations.length<=3
+    && d.recommendations.every(r=>r && Object.keys(r).sort().join(',')==='field,reason,suggestion'&&fields.includes(r.field)&&safeText(r.reason)&&Boolean(r.reason.trim())&&safeText(r.suggestion)&&Boolean(r.suggestion.trim()));
+}
 export class AdaptivePlanningError extends Error {
   constructor(code, message, { confirmed=false }={}) { super(message); this.code=code; this.confirmed=confirmed; }
 }
@@ -50,7 +60,7 @@ export function validateAdaptivePage(body, { id, requestId, afterSequence=0 }={}
     if(days>3 || !c || !integer(c.spentCents) || c.spentCents>p.totalBudgetCents || !safeText(c.startLocation,200)||!safeText(c.endLocation,200)
       || !c.itinerary || !Number.isFinite(c.itinerary.remainingBudget)) return invalid();
     const budget=c.itinerary.estimatedTotalGroupCost+c.itinerary.remainingBudget;
-    if(!validItinerary(c.itinerary,{...checked.value,startDate:s.startDate,endDate:s.endDate,budget})
+    if(!validAdaptiveSectionItinerary(c.itinerary,{...checked.value,startDate:s.startDate,endDate:s.endDate,budget},checked.value)
       || Math.abs(c.itinerary.estimatedTotalGroupCost*100-c.spentCents)>.001
       || c.provenance?.provider!=='openai'||c.provenance?.model!=='gpt-6-luna'||c.provenance?.validationVersion!=='adaptive-section-v1') return invalid();
     if(c.journeyStrategy!==undefined){

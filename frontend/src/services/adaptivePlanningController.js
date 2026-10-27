@@ -1,6 +1,6 @@
 import { validateTripPreferences } from '../../../shared/tripPreferences.mjs';
 import { getSession, subscribeSession } from './session.js';
-import { adaptiveId, createAdaptivePlanningClient } from './adaptivePlanning.js';
+import { adaptiveId, createAdaptivePlanningClient, hasProposedConstraintDetails } from './adaptivePlanning.js';
 export const ADAPTIVE_STORAGE_KEY='travel.adaptive-plan.v1';
 const terminal=status=>['completed','cancelled','expired'].includes(status);
 const initial=()=>({plan:null,preferences:null,sections:[],nextCursor:null,pageCursor:0,loading:false,error:'',errorCode:null,needsCheck:false,resumable:false,checking:false,cancelling:false,cancelRequested:false,cancelUnconfirmed:false});
@@ -58,7 +58,7 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
     },
     check,resume:check,
     continue(){if(active||state.needsCheck||state.plan?.status!=='paused'||!(state.plan.pauseReason==='RESOURCE_ALLOWANCE_REACHED'||(state.plan.pauseReason==='SECTION_FAILED'&&state.plan.remainingCreates===0)||(state.plan.pauseReason==='STORAGE_LIMIT'&&state.plan.storagePauseScope==='global')))return Promise.resolve({ignored:true});return run('continue',signal=>client.continue(handle.planId,randomUUID(),{signal}));},
-    retry(){const section=state.plan?.activeSection;if(active||state.needsCheck||state.plan?.status!=='paused'||state.plan.remainingCreates<1||section?.status!=='failed'||['SECTION_CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED'].includes(section.errorCode))return Promise.resolve({ignored:true});return run('retry',signal=>client.retry(handle.planId,randomUUID(),section.id,{signal}));},
+    retry(){const section=state.plan?.activeSection;if(active||state.needsCheck||state.plan?.status!=='paused'||state.plan.remainingCreates<1||section?.status!=='failed'||(section.errorCode==='SECTION_BUDGET_EXHAUSTED'||(section.errorCode==='SECTION_CONSTRAINT_CONFLICT'&&!hasProposedConstraintDetails(section))))return Promise.resolve({ignored:true});return run('retry',signal=>client.retry(handle.planId,randomUUID(),section.id,{signal}));},
     loadPage(afterSequence=0){if(active||!handle?.planId||!Number.isSafeInteger(afterSequence)||afterSequence<0)return Promise.resolve({ignored:true});return run('page',signal=>client.get(handle.planId,{signal,afterSequence}),afterSequence);},
     async cancel(){
       if(disposed||resetOwner()||!handle||terminal(state.plan?.status))return{ignored:true};

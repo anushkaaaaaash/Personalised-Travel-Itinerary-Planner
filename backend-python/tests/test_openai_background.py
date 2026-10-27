@@ -50,7 +50,7 @@ def test_create_exact_wire_and_safe_metadata(caplog):
         payload = json.loads(request.content)
         assert request.url == 'https://api.openai.com/v1/responses'
         assert payload['background'] is True and payload['store'] is False and payload['stream'] is False
-        assert payload['model'] == 'gpt-6-luna' and payload['reasoning'] == {'effort': 'xhigh'}
+        assert payload['model'] == 'gpt-6-luna' and payload['reasoning'] == {'effort': 'low'}
         assert payload['text']['format']['strict'] is True
         assert 'include' not in payload and 'metadata' not in payload
         return httpx.Response(200, json=envelope('completed', usage={'input_tokens': 2, 'output_tokens': 3,

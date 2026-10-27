@@ -5,7 +5,11 @@ import http.server
 import io
 import textwrap
 import pathlib
+import sqlite3
+import sys
+import tempfile
 import threading
+import types
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +23,51 @@ VOLUME = {'id': 'vol_123abc', 'name': 'planner_checkpoints', 'region': 'sin', 's
 
 
 class VolumeTests(unittest.TestCase):
+    def test_quiescence_probe_on_existing_image_schema(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = pathlib.Path(d) / 'test.sqlite3'
+            with sqlite3.connect(db) as c:
+                c.execute('CREATE TABLE plans(data TEXT NOT NULL)')
+                c.execute('CREATE TABLE sections(data TEXT NOT NULL)')
+            runtime = types.ModuleType('app.adaptive_sqlite_runtime')
+            runtime.verify_volume = lambda: str(db)
+            app = types.ModuleType('app'); app.__path__ = []
+            def probe():
+                out = io.StringIO()
+                with patch.dict(sys.modules, {'app': app, 'app.adaptive_sqlite_runtime': runtime}), contextlib.redirect_stdout(out):
+                    with self.assertRaises(SystemExit) as end: exec(volume.QUIESCENCE_PROBE, {})
+                return end.exception.code, __import__('json').loads(out.getvalue())
+            code, result = probe()
+            self.assertEqual(code, 0)
+            self.assertEqual(result, {'ready': True, 'code': 'READY', 'counts': {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0}})
+            for table, status in [('plans','active'),('sections','queued'),('sections','submitting'),('sections','running')]:
+                with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)', ('{"status":"' + status + '","private":"not-output"}',))
+                code, result = probe()
+                self.assertEqual(code, 1); self.assertFalse(result['ready']); self.assertEqual(result['code'], 'PLANNING_IN_PROGRESS')
+                self.assertNotIn('not-output', str(result))
+                with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+            for table in ('plans', 'sections'):
+                for raw in ('{}', '{"status":null}', '{"status":3}', '{"status":"future"}', '{"status":"expired"}', '[]', 'not-json'):
+                    with self.subTest(table=table, raw=raw):
+                        with sqlite3.connect(db) as c: c.execute(f'INSERT INTO {table}(data) VALUES (?)', (raw,))
+                        code, result = probe()
+                        self.assertEqual(code, 1)
+                        self.assertEqual(result, {'ready':False, 'code':'PREFLIGHT_FAILED'})
+                        with sqlite3.connect(db) as c: c.execute(f'DELETE FROM {table}')
+
+    def test_quiescence_wrapper_refuses_unavailable_or_active(self):
+        zero = {'active_plans': 0, 'queued': 0, 'submitting': 0, 'running': 0}
+        ready = {'exit_code': 0, 'exit_signal': 0, 'stdout': __import__('json').dumps({'ready': True, 'code': 'READY', 'counts': zero})}
+        active = dict(zero, active_plans=1)
+        bad = [None, {'exit_code': 0, 'stdout': 'private'}, {'exit_code': 0, 'stdout': __import__('json').dumps({'ready': True, 'code': 'READY', 'counts': active})}, {'exit_code': 1, 'stdout': __import__('json').dumps({'ready': False, 'code': 'PLANNING_IN_PROGRESS', 'counts': active})}]
+        for response in bad:
+            with self.subTest(response=response), patch.object(volume, 'verify', return_value=MACHINE['id']), patch.object(volume, 'request', return_value=response) as req:
+                with self.assertRaises(volume.Stop) as error: volume.check_quiescence()
+                self.assertNotIn('private', str(error.exception)); self.assertEqual(req.call_count, 1)
+        with patch.object(volume, 'verify', return_value=MACHINE['id']), patch.object(volume, 'request', return_value=ready) as req:
+            volume.check_quiescence()
+            self.assertEqual(req.call_args.args[2]['command'], ['env','PYTHONPATH=/app','python','-c',volume.QUIESCENCE_PROBE])
+
     def test_workflow_mount_config_guard(self):
         root = path.parents[1]
         workflow = (root / '.github/workflows/fly-checkpoint-volume.yml').read_text()
@@ -144,5 +193,23 @@ class VolumeTests(unittest.TestCase):
             self.assertEqual(requests, ['/start'])
         finally:
             server.shutdown(); server.server_close(); thread.join()
+
+class StartupWaitTests(unittest.TestCase):
+    def test_wait_is_get_only_and_does_not_redeploy(self):
+        states=[[dict(MACHINE,state=s)] for s in ('starting','replacing','started')]
+        with patch.object(volume,'request',side_effect=states) as request, patch.object(volume.time,'sleep') as sleep, patch.object(volume,'verify',return_value=MACHINE['id']) as verify:
+            volume.verify_after_deploy()
+            self.assertEqual(request.call_count,3);self.assertEqual(sleep.call_count,2)
+            self.assertTrue(all(call.args==('GET','/machines') for call in request.call_args_list))
+            verify.assert_called_once_with(require_attached=True)
+    def test_transition_wait_is_bounded(self):
+        with patch.object(volume,'request',return_value=[dict(MACHINE,state='starting')]) as request, patch.object(volume.time,'sleep') as sleep:
+            with self.assertRaises(volume.Stop):volume.verify_after_deploy()
+            self.assertEqual(request.call_count,12);self.assertEqual(sleep.call_count,11)
+    def test_terminal_or_wrong_resources_stop_immediately(self):
+        for machine in (dict(MACHINE,state='stopped'),dict(MACHINE,state='destroyed'),dict(MACHINE,state='starting',region='iad')):
+            with patch.object(volume,'request',return_value=[machine]) as request,patch.object(volume.time,'sleep') as sleep:
+                with self.assertRaises(volume.Stop):volume.verify_after_deploy()
+                self.assertEqual(request.call_count,1);sleep.assert_not_called()
 
 if __name__ == '__main__': unittest.main()
