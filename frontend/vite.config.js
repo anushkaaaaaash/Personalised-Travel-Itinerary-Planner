@@ -7,7 +7,7 @@ import { checkFrontendEnvironment } from '../deployment/frontend_config.mjs';
 export default defineConfig(({mode}) => {
   assertQaPreviewOnly({vercelEnv:process.env.VERCEL_ENV,hasQaArtifacts:existsSync(new URL('./public/__qa',import.meta.url))});
   const values={...loadEnv(mode,process.cwd(),'VITE_'),...process.env};
-  checkFrontendEnvironment(values,{hosted:Boolean(process.env.VERCEL)||['production','staging'].includes(process.env.APP_ENV)});
+  checkFrontendEnvironment(values,{hosted:Boolean(process.env.VERCEL)||['production','staging'].includes(process.env.APP_ENV),sameOrigin:process.env.FRONTEND_SAME_ORIGIN==='true'});
   return {
   plugins: [react()],
   // Router 7's conditional CJS exports need bundling in the existing SSR test runner.

@@ -137,6 +137,8 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
         # Activity 3.2 only: no save, no AI call, no credentials or cost.
         return build_itinerary_prompt(preferences)
 
+    from .frontend_static import attach_frontend
+    attach_frontend(app)
     return app
 
 app = create_app()

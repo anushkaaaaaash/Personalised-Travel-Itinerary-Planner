@@ -25,3 +25,10 @@ test('active frontend-root Vercel configuration serves SPA routes without backen
     assert.equal(config.rewrites[0].destination,'/index.html');
   }
 });
+
+test('explicit same-origin hosted build permits only relative /api and still rejects secrets',()=>{
+  assert.equal(checkFrontendEnvironment({VITE_API_BASE_URL:'/api'},{hosted:true,sameOrigin:true}),'/api');
+  assert.throws(()=>checkFrontendEnvironment({VITE_API_BASE_URL:'/api'},{hosted:true,sameOrigin:'true'}));
+  for(const value of ['//evil.example/api','/wrong','http://localhost/api'])assert.throws(()=>checkFrontendEnvironment({VITE_API_BASE_URL:value},{hosted:true,sameOrigin:true}));
+  assert.throws(()=>checkFrontendEnvironment({VITE_API_BASE_URL:'/api',VITE_OPENAI_API_KEY:'PRIVATE'},{hosted:true,sameOrigin:true}));
+});
