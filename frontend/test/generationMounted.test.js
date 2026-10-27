@@ -23,10 +23,25 @@ test('mounted day-plan flow shows progress, valid results and safe failures with
     await act(async()=>{for(const name of ['destination','departureCity','startDate','endDate','budget','currency','travelers'])props().onChange({target:{name,value:preferences[name]}});});
     await act(async()=>props().onSubmit({preventDefault(){}}));await act(async()=>props().onSubmit({preventDefault(){}}));
     assert.equal(props().step,2);
-    const start=async()=>{const count=calls.length;await act(async()=>{props().onGenerateItinerary();props().onGenerateItinerary();});assert.equal(calls.length,count+1);assert.equal(props().itineraryLoading,true);assert.match(text(),/Generating and validating your itinerary/);};
+    const start=async()=>{const count=calls.length;await act(async()=>{props().onGenerateItinerary();props().onGenerateItinerary();});assert.equal(calls.length,count+1);assert.equal(props().itineraryLoading,true);assert.match(text(),/Waiting for your AI itinerary/);};
     await start();
     await act(async()=>{finish({status:200,json:async()=>plan()});});
     assert.equal(props().itineraryLoading,false);assert.match(text(),/your day-by-day plan/);assert.match(text(),/Verify all details/);
+    // Cancel then retry: a late old response cannot replace the newer request.
+    await start();const staleFinish=finish;
+    await act(async()=>renderer.root.findAllByType('button').find(n=>n.children.join('')==='Stop waiting').props.onClick());
+    assert.equal(props().itineraryLoading,false);assert.doesNotMatch(text(),/A little wanderlust/);
+    await start();const newFinish=finish;
+    await act(async()=>staleFinish({status:200,json:async()=>plan()}));
+    assert.equal(props().itineraryLoading,true);
+    await act(async()=>newFinish({status:200,json:async()=>plan()}));
+    assert.equal(props().itineraryLoading,false);
+    // Back preserves the request; editing preferences invalidates it.
+    await start();const navigationFinish=finish;
+    await act(async()=>props().onBack());assert.equal(props().itineraryLoading,true);
+    await act(async()=>props().onChange({target:{name:'destination',value:preferences.destination}}));assert.equal(props().itineraryLoading,false);
+    await act(async()=>navigationFinish({status:200,json:async()=>plan()}));assert.doesNotMatch(text(),/your day-by-day plan/);
+    await act(async()=>props().onSubmit({preventDefault(){}}));assert.equal(props().step,2);
     for(const [status,body,pattern] of [
       [502,{error:{code:'AI_PROVIDER_FAILED',message:'PRIVATE_DETAIL'}},/provider could not complete/],
       [429,{error:{code:'AI_RATE_LIMITED',message:'PRIVATE_DETAIL'}},/rate limit was reached/],

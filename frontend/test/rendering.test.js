@@ -32,9 +32,9 @@ const formHandlers = { onChange() {}, onToggleInterest() {}, onSubmit() {}, onSa
 test('pending storage disables refinement without exposing AI cancellation',async()=>{
   const {default: Controls}=await server.ssrLoadModule('/src/components/RefinementControls.jsx');
   const html=render(Controls,{result:sharePlan(),state:detailRefinementState({busy:true,activeAction:'update'}),onCancel(){},onRefine(){}});
-  assert.ok(html.includes('Saving revision.'));assert.ok(html.includes('disabled=""'));assert.ok(!html.includes('Cancel regeneration'));
+  assert.ok(html.includes('Saving revision.'));assert.ok(html.includes('disabled=""'));assert.ok(!html.includes('Stop waiting for regeneration'));
   const ai=render(Controls,{result:sharePlan(),state:detailRefinementState({busy:true,activeAction:'refine'}),onCancel(){},onRefine(){}});
-  assert.ok(ai.includes('Cancel regeneration'));assert.ok(ai.includes('disabled=""'));
+  assert.ok(ai.includes('Stop waiting for regeneration'));assert.ok(ai.includes('disabled=""'));
 });
 
 test('detail URLs require sign-in even in local mode and keep a return path', async () => {

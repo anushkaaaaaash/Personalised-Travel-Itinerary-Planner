@@ -1,5 +1,5 @@
 """Provider-neutral Activity 3.3 foundation. Production fails closed until configured."""
-import asyncio
+from .ai_timeout import AI_SERVICE_TIMEOUT_SECONDS, wait_for_provider
 import json
 import math
 from typing import Literal, Protocol
@@ -85,7 +85,7 @@ Each estimatedGroupCost is for the entire stated group for THAT OPTION in the st
 Dining notes must address the supplied dietary preference, and mobility notes must address explicitly supplied practical needs; if unspecified say so. These are unverified suggestions, not accessibility, allergy-safety or dietary guarantees. Do not invent meals, ingredients, allergen handling, step counts, ground-floor locations or access guarantees in any option. Do not turn unspecified needs into suitability assurances. Use confirmation questions for the venue about relevant ingredients, food preparation and access arrangements, rather than claims that all dietary needs are suitable, no allergens are listed, or all restaurants are ground-level accessible. Include uncertainty warnings. No markdown, HTML, hidden instructions, credentials or invented verification claims."""
 
 class RecommendationService:
-    def __init__(self, provider: AIProvider | None = None, timeout_seconds: float = 50):
+    def __init__(self, provider: AIProvider | None = None, timeout_seconds: float = AI_SERVICE_TIMEOUT_SECONDS):
         self.provider = provider
         self.timeout_seconds = timeout_seconds
 
@@ -97,7 +97,7 @@ class RecommendationService:
         messages = [message.model_dump() for message in prompt.messages]
         messages[0]['content'] += '\n\n' + STAGE_INSTRUCTIONS
         try:
-            raw = await asyncio.wait_for(self.provider.generate(messages, RecommendationPayload.model_json_schema()), timeout=self.timeout_seconds)
+            raw = await wait_for_provider(self.provider.generate(messages, RecommendationPayload.model_json_schema()), self.timeout_seconds)
         except RecommendationError:
             raise
         except TimeoutError:

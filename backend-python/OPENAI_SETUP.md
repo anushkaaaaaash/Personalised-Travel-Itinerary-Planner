@@ -38,10 +38,25 @@ budget, pacing, activity durations/counts, fixed commitments, target-day preserv
 warning metadata and refinement feasibility are unchanged. Structured output is not
 proof that prices, hours, accessibility or locations are accurate.
 
-Timeouts: 45-second adapter I/O timeout, 50-second service wall-clock deadline,
-65-second frontend deadline. Max reasoning can exceed these limits; a timeout is a
-failed/unconfirmed generation, not permission to downgrade or retry. No live latency,
-account model access, billing or generation quality has been verified in this migration.
+Timeouts: 180-second adapter read-inactivity limit, 10-second connect limit,
+45-second write/pool limits, 190-second overall provider-call deadline at the service,
+and 210-second frontend deadline across all AI flows. These are bounded waiting
+policies, not promised completion times. The browser calls Render directly; its
+request does not pass through a Vercel function. Render's documented HTTP request
+limit accommodates this window.
+
+Timeout diagnostics contain only fixed event/subtype/stage enums and bounded elapsed
+milliseconds. They never contain exception text, prompts, output, keys or headers.
+Transport failures are distinguished from an expired overall service deadline;
+a timeout does not prove schema acceptance, provider completion or absence of charges.
+Max reasoning can exceed these limits; a timeout is a failed/unconfirmed generation,
+not permission to downgrade or retry. Stopping the browser wait does not confirm
+that provider work or billing stopped. No automatic retry or background storage was
+introduced. Live latency and successful completion still require separately authorized
+acceptance testing.
+
+- [HTTPX timeout semantics](https://www.python-httpx.org/advanced/timeouts/)
+- [Render HTTP request limits](https://render.com/docs/render-vs-vercel-comparison)
 
 ## Official compatibility evidence (2026-10-27)
 

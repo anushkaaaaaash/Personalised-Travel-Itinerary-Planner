@@ -2,7 +2,10 @@
 import json
 import logging
 import re
+import time
 import httpx
+from .ai_timeout import (AI_READ_TIMEOUT_SECONDS, AI_CONNECT_TIMEOUT_SECONDS,
+    AI_WRITE_TIMEOUT_SECONDS, AI_POOL_TIMEOUT_SECONDS, ProviderTransportTimeout, timeout_diagnostic)
 from .providers import LLMProvider
 from .recommendations import RecommendationError, ProviderRefusal
 from .schema_diagnostics import schema_names, missing_properties, TECHNICAL_PARTS
@@ -171,13 +174,18 @@ class OpenAIProvider(LLMProvider):
             'max_output_tokens': MAX_OUTPUT_TOKENS, 'reasoning': {'effort': self.reasoning_effort},
             'text': {'format': {'type': 'json_schema',
                 'name': 'travel_response', 'strict': True, 'schema': schema}}}
+        started = time.monotonic()
+        stage = 'WAIT_RESPONSE'
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(45, connect=10),
+            async with httpx.AsyncClient(timeout=httpx.Timeout(
+                    read=AI_READ_TIMEOUT_SECONDS, connect=AI_CONNECT_TIMEOUT_SECONDS,
+                    write=AI_WRITE_TIMEOUT_SECONDS, pool=AI_POOL_TIMEOUT_SECONDS),
                     follow_redirects=False, trust_env=False, transport=self._transport) as client:
                 async with client.stream('POST', ENDPOINT,
                         headers={'Authorization': 'Bearer ' + self._api_key,
                                  'Content-Type': 'application/json'}, json=payload) as response:
                     if response.status_code != 200:
+                        stage = 'READ_ERROR_BODY'
                         detail = await read_error_detail(response, schema)
                         provider_diagnostic('HTTP_FAILURE', response.status_code, detail)
                         if response.status_code == 400 and detail.get('code') == 'json_validate_failed':
@@ -189,14 +197,18 @@ class OpenAIProvider(LLMProvider):
                                 'OpenAI quota or rate limit reached. No automatic retry was made.')
                         raise RecommendationError('AI_PROVIDER_FAILED', 502,
                             'OpenAI could not complete this request. Check configuration and availability. No automatic retry was made.')
+                    stage = 'READ_RESPONSE_BODY'
                     body = bytearray()
                     async for chunk in response.aiter_bytes(chunk_size=16384):
                         body.extend(chunk)
                         if len(body) > MAX_ENVELOPE_BYTES:
                             raise invalid_response()
-        except httpx.TimeoutException:
-            provider_diagnostic('TRANSPORT_TIMEOUT')
-            raise TimeoutError('OpenAI request timed out') from None
+        except httpx.TimeoutException as exc:
+            subtype = next((label for kind, label in ((httpx.ReadTimeout, 'READ'),
+                (httpx.ConnectTimeout, 'CONNECT'), (httpx.WriteTimeout, 'WRITE'),
+                (httpx.PoolTimeout, 'POOL')) if isinstance(exc, kind)), 'OTHER')
+            timeout_diagnostic('TRANSPORT_TIMEOUT', subtype, stage, time.monotonic() - started)
+            raise ProviderTransportTimeout('OpenAI request timed out') from None
         except httpx.HTTPError:
             provider_diagnostic('TRANSPORT_ERROR')
             raise RecommendationError('AI_PROVIDER_FAILED', 502,

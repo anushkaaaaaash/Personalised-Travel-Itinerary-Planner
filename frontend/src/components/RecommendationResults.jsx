@@ -1,5 +1,6 @@
-export default function RecommendationResults({ loading, error, result, onRetry, onCancel }) {
-  if (loading) return <section className="card" aria-busy="true"><h2>AI recommendations</h2><p role="status">Generating recommendations…</p><button className="preview-btn" onClick={onCancel}>Cancel recommendations</button></section>;
+import DestinationLoading from './DestinationLoading.jsx';
+export default function RecommendationResults({ loading, error, result, onRetry, onCancel, destination }) {
+  if (loading) return <DestinationLoading destination={destination} title="Finding your kind of adventure" status="Generating recommendations…" onCancel={onCancel} cancelLabel="Stop waiting for recommendations" />;
   if (error) return <section className="card"><h2>AI recommendations</h2><p role="alert">{error}</p><button className="preview-btn" onClick={onRetry}>Retry recommendations</button></section>;
   if (!result) return null;
   return <section className="card" aria-label="AI recommendations">
