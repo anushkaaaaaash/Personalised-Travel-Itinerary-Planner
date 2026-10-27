@@ -11,7 +11,7 @@ export default function JourneyArtwork({ className = '', motif = 'mountains' }) 
     <g className="artwork-forest" fill="var(--sea, #28564c)"><path d="m76 265 49-121 49 121Zm75 9 62-163 62 163Zm160-1 49-132 49 132Z" opacity=".16"/><path d="M125 221v63m88-106v106m147-59v59" stroke="var(--sea, #28564c)" strokeWidth="2" opacity=".35"/></g>
     <path className="journey-artwork__route" d="M61 264c27-68 81-50 123-68 66-29 32-87 111-94 42-4 72 16 110-26" stroke="var(--sea, #28564c)" strokeWidth="2" strokeDasharray="5 7" strokeLinecap="round" opacity=".65"/>
     <circle cx="61" cy="264" r="5" fill="var(--sea, #28564c)"/><circle cx="61" cy="264" r="11" stroke="var(--sea, #28564c)" opacity=".3"/>
-    <g className="journey-artwork__plane" transform="translate(407 69) rotate(-28)"><path d="m-14 0 28-7-9 26-5-13-14-6Z" fill="var(--sea, #28564c)"/><path d="m0 6 14-13" stroke="var(--card, #fffefa)" strokeWidth="1.5"/></g>
+    <g transform="translate(407 69) rotate(-28)"><g className="journey-artwork__plane"><path d="m-14 0 28-7-9 26-5-13-14-6Z" fill="var(--sea, #28564c)"/><path d="m0 6 14-13" stroke="var(--card, #fffefa)" strokeWidth="1.5"/></g></g>
     <text x="31" y="38" fill="var(--sea, #28564c)" opacity=".75" fontFamily="system-ui, sans-serif" fontSize="9" letterSpacing="3">A LITTLE FURTHER FROM ORDINARY</text>
   </svg>;
 }

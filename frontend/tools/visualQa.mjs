@@ -60,7 +60,9 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   return {page,context};
 }
 async function snapshot(page,name) {
-  await page.screenshot({path:path.join(output,name+'.png'),fullPage:true});findings.screenshots.push(name+'.png');
+  await page.waitForFunction(() => [...document.querySelectorAll('.page, .welcome-hero__copy, .account-shell--welcome, .email-confirmation, .planner-fields, .results-hero, .day-card, .destination-loading__postcard')].every(element => Number(getComputedStyle(element).opacity) >= .99));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({path:path.join(output,name+'.png'),fullPage:true,animations:'disabled'});findings.screenshots.push(name+'.png');
 }
 async function noOverflow(page,label) {
   const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,body:document.body.scrollWidth}));
@@ -74,7 +76,9 @@ try {
     await page.goto(origin);await page.locator('input[name=destination]').waitFor();await page.waitForTimeout(500);
     await noOverflow(page,`default-${width}`);await snapshot(page,`planner-default-${width}`);
     await page.locator('input[name=destination]').fill('Kyoto, Japan');await settleTheme(page,'JP');
-    await noOverflow(page,`japan-${width}`);await snapshot(page,`planner-japan-${width}`);
+    await noOverflow(page,`japan-${width}`);
+    assert.ok(await page.locator('input[type=date]').evaluateAll(elements=>elements.every(element=>element.getBoundingClientRect().width>=140)),'Dates stay wide enough to read');
+    await snapshot(page,`planner-japan-${width}`);
     if(width===1440) {
       for(const theme of COUNTRY_THEMES) {
         await page.locator('input[name=destination]').fill(theme.name);
@@ -90,11 +94,14 @@ try {
       await page.locator('input[name=destination]').fill('Paris, Texas');await settleTheme(page,'WORLD');
       await page.locator('input[name=destination]').fill('Kyoto, Japan');await settleTheme(page,'JP');
     }
-    if(width===390||width===1440) {
+    if([390,768,1440].includes(width)) {
       await page.locator('input[name=departureCity]').fill('Tokyo');
       await page.locator('input[name=startDate]').fill('2028-02-28');await page.locator('input[name=endDate]').fill('2028-02-28');
       await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('heading',{name:/Step 2/}).waitFor();
-      await noOverflow(page,`preferences-${width}`);await snapshot(page,`preferences-${width}`);
+      assert.equal(await page.locator('.step-heading').evaluate(element=>element===document.activeElement),true);
+      await noOverflow(page,`preferences-${width}`);
+      assert.ok((await page.locator('input[name=budget]').boundingBox()).width>=120,'Budget value stays readable');
+      await snapshot(page,`preferences-${width}`);
       await page.getByRole('button',{name:'Back',exact:true}).click();assert.equal(await page.locator('input[name=destination]').inputValue(),'Kyoto, Japan');
       await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
       await snapshot(page,`review-${width}`);
