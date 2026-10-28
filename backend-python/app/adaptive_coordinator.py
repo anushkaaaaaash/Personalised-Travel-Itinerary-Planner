@@ -100,6 +100,7 @@ class AdaptiveCoordinator:
         if status=='paused' and pause_reason=='SECTION_FAILED' and active:
             pause_reason = {'SECTION_CONSTRAINT_CONFLICT':'CONSTRAINT_CONFLICT','SECTION_BUDGET_EXHAUSTED':'BUDGET_EXHAUSTED'}.get(active['errorCode'],pause_reason)
         public = {'id':identity(plan['id']), 'requestId':identity(plan['request_id']), 'status':status,
+            'version':plan.get('version'),
             'completedDays':plan['completed_days'], 'totalDays':(date.fromisoformat(preferences['endDate'])-date.fromisoformat(preferences['startDate'])).days+1,
             'estimatedSections':((date.fromisoformat(preferences['endDate'])-date.fromisoformat(preferences['startDate'])).days+3)//3,
             'runAllowance':self.run_allowance, 'storageLimitBytes':plan.get('storage_limit_bytes',16777216),

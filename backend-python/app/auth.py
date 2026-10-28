@@ -242,7 +242,9 @@ def build_auth_router(service, planning_capability=None, adaptive_capability=Non
 
     @router.get('/config')
     async def config():
+        from .adaptive_archive_routes import archive_enabled
         return {'enabled': service.configured(), 'mode': 'production' if production_mode() else 'local', 'ownership_enabled': ownership_enabled(), 'saved_only': production_mode(),
+                'adaptive_saved_trips_enabled': archive_enabled(),
                 'planning_jobs_enabled': bool(planning_capability and planning_capability()),
                 'adaptive_planning_enabled': bool(adaptive_capability and adaptive_capability()),
                 'adaptive_planning_policy': adaptive_policy() if adaptive_capability and adaptive_capability() and adaptive_policy else None}

@@ -56,7 +56,7 @@ class JsonBoundary:
             return {'type': 'http.request', 'body': bytes(body), 'more_body': False}
         await self.app(scope, replay, send)
 
-def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None, planning_engine=None, adaptive_engine=None):
+def create_app(store=None, recommendation_service=None, itinerary_service=None, auth_service=None, saved_client_factory=None, planning_engine=None, adaptive_engine=None, archive_repository_factory=None):
     @asynccontextmanager
     async def lifespan(_app):
         from .planning_activation import route_enabled
@@ -102,6 +102,8 @@ def create_app(store=None, recommendation_service=None, itinerary_service=None, 
         return bool(app.state.planning_lifespan_active and route_enabled(adaptive_engine) and adaptive_engine.capability_ready())
     app.include_router(build_auth_router(authentication, planning_capability, adaptive_capability,
         lambda: adaptive_engine.public_policy() if hasattr(adaptive_engine,'public_policy') else {'sectionDays':3,'maxSubmissionsPerRun':adaptive_engine.run_allowance}))
+    from .adaptive_archive_routes import build_archive_router
+    app.include_router(build_archive_router(authentication, adaptive_engine, archive_repository_factory))
     from .adaptive_routes import build_adaptive_router
     app.include_router(build_adaptive_router(authentication, adaptive_engine))
     from .planning_routes import build_planning_router

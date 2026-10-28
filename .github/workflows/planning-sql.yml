@@ -1,9 +1,9 @@
 name: Planning queue SQL
 on:
   push:
-    paths: ['backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
+    paths: ['docs/adaptive_saved_archive_REVIEW_ONLY.sql', 'backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
   pull_request:
-    paths: ['backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
+    paths: ['docs/adaptive_saved_archive_REVIEW_ONLY.sql', 'backend-python/migrations/*.sql', 'backend-python/tests/sql/**', 'backend-python/app/adaptive*.py', 'backend-python/app/section_repository.py', 'backend-python/tests/test_adaptive*.py', '.github/workflows/planning-sql.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,5 +39,10 @@ jobs:
         run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_planning_postgres.py backend-python/tests/test_adaptive_postgres.py backend-python/tests/test_adaptive_integration.py
       - name: Independent PostgreSQL connections and stale-CAS tests
         run: python3 backend-python/tests/sql/planning_jobs_postgres.py
+        env:
+          PLANNING_SQL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/planning_queue_test
+
+      - name: Saved archive quota and idempotency concurrency
+        run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_adaptive_archive_postgres.py
         env:
           PLANNING_SQL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/planning_queue_test

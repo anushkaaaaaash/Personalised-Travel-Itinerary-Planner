@@ -27,6 +27,7 @@ export function validateAdaptivePage(body, { id, requestId, afterSequence=0 }={}
   if(p?.status==='expired' && body.preferences===null && adaptiveId(p.id) && adaptiveId(p.requestId) && (!id || p.id===id) && (!requestId || p.requestId===requestId) && Array.isArray(body.sections) && body.sections.length===0 && body.nextCursor===null) return {plan:{id:p.id,requestId:p.requestId,status:'expired',activeSection:null},preferences:null,sections:[],nextCursor:null};
   const checked=validateTripPreferences(body?.preferences);
   if(!checked.valid || !p || !adaptiveId(p.id) || !adaptiveId(p.requestId) || (id && id!==p.id) || (requestId && requestId!==p.requestId)
+    || (p.version!==undefined&&(!Number.isSafeInteger(p.version)||p.version<1))
     || !['active','paused','completed','cancelled','expired'].includes(p.status)
     || !['completedDays','totalDays','remainingCreates','spentCents','totalBudgetCents'].every(key=>integer(p[key]))
     || p.completedDays>p.totalDays || p.remainingCreates>12 || !Number.isInteger(p.runAllowance) || p.runAllowance<1 || p.runAllowance>12 || p.remainingCreates>p.runAllowance || p.spentCents>p.totalBudgetCents
@@ -80,7 +81,7 @@ export function validateAdaptivePage(body, { id, requestId, afterSequence=0 }={}
   if(body.nextCursor!==null && (!integer(body.nextCursor)||body.nextCursor<=afterSequence||body.nextCursor<sequence)) return invalid();
   let research,draft;
   try{research=readPublicResearch(body.research);draft=readPublicDraft(body.draft,p,checked.value);}catch{return invalid();}
-  return {research,draft,preferences:checked.value,plan:{id:p.id,requestId:p.requestId,status:p.status,completedDays:p.completedDays,totalDays:p.totalDays,remainingCreates:p.remainingCreates,runAllowance:p.runAllowance,estimatedSections:p.estimatedSections,storageLimitBytes:p.storageLimitBytes,storageUsedBytes:p.storageUsedBytes,globalStorageLimitBytes:p.globalStorageLimitBytes,storagePauseScope:p.storagePauseScope,spentCents:p.spentCents,totalBudgetCents:p.totalBudgetCents,pauseReason:p.pauseReason,expiresAt:p.expiresAt,activeSection},sections,nextCursor:body.nextCursor};
+  return {research,draft,preferences:checked.value,plan:{id:p.id,version:p.version,requestId:p.requestId,status:p.status,completedDays:p.completedDays,totalDays:p.totalDays,remainingCreates:p.remainingCreates,runAllowance:p.runAllowance,estimatedSections:p.estimatedSections,storageLimitBytes:p.storageLimitBytes,storageUsedBytes:p.storageUsedBytes,globalStorageLimitBytes:p.globalStorageLimitBytes,storagePauseScope:p.storagePauseScope,spentCents:p.spentCents,totalBudgetCents:p.totalBudgetCents,pauseReason:p.pauseReason,expiresAt:p.expiresAt,activeSection},sections,nextCursor:body.nextCursor};
 }
 export function createAdaptivePlanningClient({fetchImpl=sessionFetch,baseUrl=(import.meta.env?.VITE_API_BASE_URL || '/api'),timeoutMs=15000}={}) {
   async function request(path,method,payload,{signal,id,requestId,afterSequence=0}={}) {

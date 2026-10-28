@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import SavedAdaptiveTrips from '../components/SavedAdaptiveTrips.jsx';
 import SiteHeader from '../components/SiteHeader.jsx';
 import { createSavedOperation } from '../services/savedItineraries.js';
 import { getSession, subscribeSession } from '../services/session.js';
 import { useDestinationTheme } from '../themes/DestinationTheme.jsx';
 
-export default function SavedTripsPage() {
+export default function SavedTripsPage({adaptiveSavedTripsEnabled=false}) {
   const [state,setState]=useState({busy:false,error:''}),[page,setPage]=useState(null),[signedOut,setSignedOut]=useState(false);
   const operation=useRef(null);
   useDestinationTheme('');
@@ -42,5 +43,6 @@ export default function SavedTripsPage() {
         </>}
       </>}
     </section>
+    {adaptiveSavedTripsEnabled===true&&!signedOut&&<SavedAdaptiveTrips/>}
   </main>;
 }
