@@ -159,7 +159,9 @@ test('review discloses actual section and request estimates without imposing a t
     const html=renderToStaticMarkup(React.createElement(Form,{form,step:2,onChange(){},adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12}}));
     assert.match(html,/46-day itinerary appears as days become ready/);assert.match(html,/up to 12 planning requests/);assert.match(html,/including retries/);assert.match(html,/dates and budget are not changed automatically/);assert.doesNotMatch(html,/1–14|maximum trip|30 days/);
     const paused=renderToStaticMarkup(React.createElement(Status,{state:state({plan:plan({status:'paused',pauseReason:'RESOURCE_ALLOWANCE_REACHED',remainingCreates:0,runAllowance:12})}),...actions}));
-    assert.match(paused,/up to 12 more section requests/);assert.doesNotMatch(paused,/three more/);
+    assert.match(paused,/up to 12 more planning requests/);assert.doesNotMatch(paused,/three more|This batch|section requests/);assert.match(paused,/This run has reached/);
+    const fallback=renderToStaticMarkup(React.createElement(Status,{state:state({plan:plan({status:'paused',pauseReason:'RESOURCE_ALLOWANCE_REACHED',remainingCreates:0,runAllowance:0})}),...actions}));
+    assert.match(fallback,/another bounded run of planning requests/);assert.doesNotMatch(fallback,/batch|section requests/);
     const invalid=renderToStaticMarkup(React.createElement(Form,{form,step:2,onChange(){},adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:Infinity}}));assert.doesNotMatch(invalid,/Infinity/);
   }finally{await server.close();}
 });
