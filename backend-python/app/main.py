@@ -41,7 +41,7 @@ class JsonBoundary:
         media = headers.get(b'content-type', b'').split(b';')[0].strip().lower()
         if media != b'application/json':
             return await error_response(415, 'UNSUPPORTED_MEDIA_TYPE', 'Send preferences as JSON.')(scope, receive, send)
-        body_limit = 128 * 1024 if (scope.get('path') in {'/api/itineraries/refine','/api/itineraries/optimize'} or scope.get('path','').startswith('/api/saved-itineraries')) else LIMIT
+        body_limit = 128 * 1024 if (scope.get('path') in {'/api/itineraries/refine','/api/itineraries/optimize','/api/itineraries/export-pdf'} or scope.get('path','').startswith('/api/saved-itineraries')) else LIMIT
         body = bytearray()
         while True:
             message = await receive()

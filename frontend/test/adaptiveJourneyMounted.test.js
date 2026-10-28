@@ -77,10 +77,10 @@ test('actual Page presents complete provisional days with accepted sections and 
  let body=groundedPage(),calls=[];
  const client=createAdaptivePlanningClient({fetchImpl:async(url,options)=>{calls.push([url,options.method]);if(url.endsWith('/current'))return noCurrent();if(options.method==='POST')body.plan.requestId=JSON.parse(options.body).requestId;return{status:200,json:async()=>body};}});
  await env.mount(client,true,groundedPolicy);await env.prepare(groundedPreferences);
- assert.match(env.text(),/model requests/);assert.match(env.text(),/search\/tool requests/);assert.match(env.text(),/8/);
- await act(async()=>env.form().onGenerateItinerary());assert.match(env.text(),/Research notes/);assert.match(env.text(),/Days taking shape/);assert.match(env.text(),/Completed section 1/);assert.match(env.text(),/Provisional day 2028-01-04/);assert.equal(env.status().state.plan.completedDays,3);
+ assert.match(env.text(),/planning requests/);assert.match(env.text(),/6 searches/);assert.match(env.text(),/8/);
+ await act(async()=>env.form().onGenerateItinerary());assert.match(env.text(),/Research notes/);assert.match(env.text(),/Days taking shape/);assert.match(env.text(),/Day 01/);assert.match(env.text(),/Provisional day 2028-01-04/);assert.equal(env.status().state.plan.completedDays,3);
  const request=body.plan.requestId;body=groundedPage({days:2});body.plan.requestId=request;await act(async()=>env.status().onCheck());assert.match(env.text(),/Provisional day 2028-01-05/);assert.equal(env.status().state.plan.completedDays,3);
- body.draft=null;body.plan.status='paused';body.plan.pauseReason='RESOURCE_ALLOWANCE_REACHED';body.plan.remainingCreates=0;body.plan.activeSection=null;await act(async()=>env.status().onCheck());assert.doesNotMatch(env.text(),/Days taking shape/);assert.match(env.text(),/Completed section 1/);assert.match(env.text(),/Continue with another run/);assert.deepEqual(calls.map(call=>call[1]),['GET','POST','GET','GET']);
+ body.draft=null;body.plan.status='paused';body.plan.pauseReason='RESOURCE_ALLOWANCE_REACHED';body.plan.remainingCreates=0;body.plan.activeSection=null;await act(async()=>env.status().onCheck());assert.doesNotMatch(env.text(),/Days taking shape/);assert.match(env.text(),/Day 01/);assert.match(env.text(),/Continue with another run/);assert.deepEqual(calls.map(call=>call[1]),['GET','POST','GET','GET']);
 }));
 test('Page research retry is explicit and never offers preference changes for a research service failure',()=>harness(async env=>{
  let body=groundedPage({status:'failed'}),calls=[];

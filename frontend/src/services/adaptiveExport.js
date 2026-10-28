@@ -11,7 +11,7 @@ function saveBlob(blob,filename){
   finally{anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),0);}
 }
 /** Read-only private export. Never save a truncated, oversized or foreign-session stream. */
-export function createAdaptiveExportController({fetchImpl=sessionFetch,getIdentity=getSession,subscribe=subscribeSession,save=saveBlob,onStateChange=()=>{},baseUrl=(import.meta.env?.VITE_API_BASE_URL || '/api'),timeoutMs=60000}={}){
+export function createAdaptiveExportController({fetchImpl=sessionFetch,getIdentity=getSession,subscribe=subscribeSession,save=saveBlob,onStateChange=()=>{},baseUrl=(import.meta.env?.VITE_API_BASE_URL || '/api'),timeoutMs=60000,format='pdf',resource='adaptive-plans'}={}){
   let active=null,disposed=false;
   const publish=value=>{if(!disposed)onStateChange(value);};
   const abort=()=>{if(active){active.controller.abort();void active.reader?.cancel().catch(()=>{});}active=null;publish({exporting:false,exportError:''});};
@@ -27,14 +27,15 @@ export function createAdaptiveExportController({fetchImpl=sessionFetch,getIdenti
       const timer=setTimeout(()=>{op.controller.abort();void op.reader?.cancel().catch(()=>{});if(active===op)publish({exporting:false,exportError:'The download timed out. No file was saved; try downloading again.'});},timeoutMs);
       publish({exporting:true,exportError:''});
       try{
-        const response=await fetchImpl(`${baseUrl.replace(/\/$/,'')}/adaptive-plans/${id}/export`,{method:'GET',headers:{Accept:'text/plain'},signal:op.controller.signal});
+        const response=await fetchImpl(`${baseUrl.replace(/\/$/,'')}/${resource==='saved-adaptive-trips'?'saved-adaptive-trips':'adaptive-plans'}/${id}/export`,{method:'GET',headers:{Accept:format==='pdf'?'application/pdf':'text/plain'},signal:op.controller.signal});
         if(!current())return{ignored:true};
         if(response.status!==200)throw new AdaptiveExportError('EXPORT_UNAVAILABLE',response.status===401?'Sign in again to download your retained plan.':'The retained plan could not be downloaded. Check its status and try again.');
         const length=response.headers?.get('content-length');
         if(length && (!/^\d+$/.test(length)||Number(length)>MAX_ADAPTIVE_EXPORT_BYTES))throw new AdaptiveExportError('EXPORT_TOO_LARGE','This export exceeds the download size limit. No file was saved.');
-        if(response.headers?.get('content-type')?.split(';')[0].trim().toLowerCase()!=='text/plain'||!response.body?.getReader)throw new AdaptiveExportError('EXPORT_INVALID','This export could not be verified. No file was saved.');
+        if(response.headers?.get('content-type')?.split(';')[0].trim().toLowerCase()!==(format==='pdf'?'application/pdf':'text/plain')||!response.body?.getReader)throw new AdaptiveExportError('EXPORT_INVALID','This export could not be verified. No file was saved.');
         op.reader=response.body.getReader();
-        const chunks=[],decoder=new TextDecoder('utf-8',{fatal:true}),sentinelBytes=new TextEncoder().encode(ADAPTIVE_EXPORT_SENTINEL);
+        const chunks=[],decoder=format==='pdf'?null:new TextDecoder('utf-8',{fatal:true}),sentinelBytes=new TextEncoder().encode(format==='pdf'?'%%EOF\n':ADAPTIVE_EXPORT_SENTINEL);
+        let prefix=new Uint8Array();
         let size=0,tail=new Uint8Array();
         while(true){
           const {done,value}=await op.reader.read();
@@ -43,17 +44,20 @@ export function createAdaptiveExportController({fetchImpl=sessionFetch,getIdenti
           if(!(value instanceof Uint8Array))throw Error('invalid stream');
           size+=value.byteLength;
           if(size>MAX_ADAPTIVE_EXPORT_BYTES)throw new AdaptiveExportError('EXPORT_TOO_LARGE','This export exceeds the download size limit. No file was saved.');
-          decoder.decode(value,{stream:true});
+          decoder?.decode(value,{stream:true});
+          if(prefix.length<5){const joined=new Uint8Array(Math.min(5,prefix.length+value.length));joined.set(prefix);joined.set(value.subarray(0,joined.length-prefix.length),prefix.length);prefix=joined;}
           chunks.push(value);
           const joined=new Uint8Array(Math.min(tail.length+value.length,sentinelBytes.length));
           if(value.length>=joined.length)joined.set(value.subarray(value.length-joined.length));
           else{joined.set(tail.subarray(tail.length-(joined.length-value.length)));joined.set(value,joined.length-value.length);}
           tail=joined;
         }
-        decoder.decode();
+        decoder?.decode();
+        if(length && size!==Number(length))throw new AdaptiveExportError('EXPORT_INCOMPLETE','The download was incomplete. No file was saved; try again.');
+        if(format==='pdf'&&new TextDecoder().decode(prefix)!=='%PDF-')throw new AdaptiveExportError('EXPORT_INVALID','The PDF could not be verified. No file was saved.');
         if(tail.length!==sentinelBytes.length||tail.some((byte,index)=>byte!==sentinelBytes[index]))throw new AdaptiveExportError('EXPORT_INCOMPLETE','The download was interrupted or incomplete. No file was saved; try downloading again.');
         if(!current())return{ignored:true};
-        save(new Blob(chunks,{type:'text/plain;charset=utf-8'}),`roamora-retained-plan-${id}.txt`);
+        save(new Blob(chunks,{type:format==='pdf'?'application/pdf':'text/plain;charset=utf-8'}),`personalised-travel-itinerary-${id}.${format==='pdf'?'pdf':'txt'}`);
         publish({exporting:false,exportError:''});return{downloaded:true,bytes:size};
       }catch(error){
         if(!current()){if(active===op&&!disposed)publish({exporting:false,exportError:'The download was interrupted. No file was saved; try downloading again.'});return{ignored:true};}

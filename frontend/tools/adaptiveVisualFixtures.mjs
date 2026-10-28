@@ -1,3 +1,4 @@
+import {syntheticPdf,assertPdfDownload} from './pdfVisualFixture.mjs';
 import assert from 'node:assert/strict';
 import { plan as itinerary, preferences as fixturePreferences } from '../test/shareFixture.js';
 
@@ -38,7 +39,7 @@ export function createAdaptiveFixture() {
     if(method==='POST'&&url.pathname==='/api/adaptive-plans') {const body=route.request().postDataJSON();fixture.preferences=body.preferences;fixture.requestId=body.requestId;return route.fulfill({status:202,json:fixture.snapshot()});}
     if(method==='POST'&&url.pathname.endsWith('/continue')) {fixture.phase='constraint';return route.fulfill({json:fixture.snapshot()});}
     if(method==='POST'&&url.pathname.endsWith('/cancel')) {fixture.pendingCancel=async()=>{fixture.phase='cancelled';await route.fulfill({json:fixture.snapshot()});};return;}
-    if(method==='GET'&&url.pathname===`/api/adaptive-plans/${id}/export`)return route.fulfill({status:200,contentType:'text/plain; charset=utf-8',body:`ROAMORA RETAINED PLAN\n${fixture.phase==='completed'?'Full':'Partial'} snapshot: ${fixture.snapshot().plan.completedDays} of ${fixture.snapshot().plan.totalDays} days planned.\nSynthetic interface test; estimates, not bookings.\nEND OF ROAMORA EXPORT\n`});
+    if(method==='GET'&&url.pathname===`/api/adaptive-plans/${id}/export`){assert.equal(route.request().headers().accept,'application/pdf');return route.fulfill({status:200,contentType:'application/pdf',body:syntheticPdf(`${fixture.phase==='completed'?'Full':'Partial'} snapshot: ${fixture.snapshot().plan.completedDays} of ${fixture.snapshot().plan.totalDays} days`)});}
     if(method==='GET'&&url.pathname===`/api/adaptive-plans/${id}`) return route.fulfill({json:fixture.snapshot()});
     throw Error(`Unexpected synthetic adaptive request: ${method} ${url.pathname}`);
   };
@@ -53,7 +54,7 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
     await page.locator('input[name=departureCity]').fill('Mumbai');await page.locator('input[name=startDate]').fill('2028-01-01');await page.locator('input[name=endDate]').fill('2028-02-15');
     assert.equal(await page.getByText(/Plan 1–14 days at a time/).count(),0);
     await page.getByRole('button',{name:/Next:/}).click();await page.getByRole('button',{name:/Next:/}).click();
-    await page.getByText(/46-day trip starts with an estimated 16 sections/).waitFor();
+    await page.getByText(/46-day itinerary appears as days become ready/).waitFor();
     await noOverflow(page,`adaptive-review-${width}`);await snapshot(page,`adaptive-review-${width}`);
     await page.getByRole('button',{name:'Build my trip →',exact:true}).click();
     await page.getByText('3 of 46 days planned',{exact:true}).waitFor();await settleTheme(page,'JP');
@@ -65,10 +66,8 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
     adaptive.phase='allowance';await page.getByRole('heading',{name:'Ready for the next part?'}).waitFor();
     assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);
     await noOverflow(page,`adaptive-paused-${width}`);await snapshot(page,`adaptive-paused-${width}`);
-    const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Download retained plan (.txt)',exact:true}).click();const download=await downloaded;
-    assert.equal(download.suggestedFilename(),`roamora-retained-plan-${id}.txt`);assert.equal(await download.failure(),null);
-    const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=Buffer.concat(chunks).toString('utf8');
-    assert.match(exported,/Partial snapshot: 9 of 46 days/);assert.ok(exported.endsWith('\nEND OF ROAMORA EXPORT\n'));
+    const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Download itinerary PDF',exact:true}).click();const download=await downloaded;
+    await assertPdfDownload(download,id,'Partial snapshot: 9 of 46 days');
     findings.adaptiveExports.push(width);
     await page.getByRole('button',{name:'Continue planning',exact:true}).click();
     await page.getByRole('heading',{name:'Suggestions for this part of your trip.'}).waitFor();
@@ -99,12 +98,11 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
   await final.page.goto(origin);await final.page.locator('input[type=email]').fill('traveler@example.test');await final.page.locator('input[type=password]').fill('synthetic-test-only');await final.page.getByRole('button',{name:'Sign in',exact:true}).click();
   await final.page.locator('input[name=destination]').fill('France');await final.page.locator('input[name=departureCity]').fill('Mumbai');await final.page.locator('input[name=startDate]').fill('2028-01-01');await final.page.locator('input[name=endDate]').fill('2028-01-03');
   await final.page.getByRole('button',{name:/Next:/}).click();await final.page.locator('select[name=travelPace]').selectOption('fast');await final.page.getByRole('button',{name:/Next:/}).click();await final.page.getByRole('button',{name:'Build my trip →',exact:true}).click();
-  await final.page.getByRole('heading',{name:'Your full date range is planned.'}).waitFor();await final.page.getByText('Full-date snapshot.',{exact:true}).waitFor();await settleTheme(final.page,'FR');
-  const travelDay=final.page.locator('.adaptive-day').last();await travelDay.locator(':scope > summary').click();await travelDay.getByText('Return journey',{exact:true}).waitFor();assert.match(await travelDay.locator(':scope > summary').innerText(),/0 main activities/);findings.adaptiveTravelDay=true;
+  await final.page.getByRole('heading',{name:'Your trip is ready.'}).waitFor();await final.page.getByText('Full itinerary.',{exact:true}).waitFor();await settleTheme(final.page,'FR');
+  const travelDay=final.page.locator('.adaptive-day').last();await travelDay.locator(':scope > summary').click();await travelDay.getByText('Return journey',{exact:true}).waitFor();assert.match(await travelDay.locator(':scope > summary').innerText(),/Day 03/);findings.adaptiveTravelDay=true;
   await noOverflow(final.page,'adaptive-complete-export-390');await snapshot(final.page,'adaptive-complete-export-390');
-  const downloaded=final.page.waitForEvent('download');await final.page.getByRole('button',{name:'Download retained plan (.txt)',exact:true}).click();const download=await downloaded;
-  assert.equal(download.suggestedFilename(),`roamora-retained-plan-${id}.txt`);assert.equal(await download.failure(),null);const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const exported=Buffer.concat(chunks).toString('utf8');
-  assert.match(exported,/Full snapshot: 3 of 3 days/);assert.ok(exported.endsWith('\nEND OF ROAMORA EXPORT\n'));assert.equal(complete.requests.filter(request=>request.method==='POST').length,1);findings.adaptiveCompleteExport=true;await final.context.close();
+  const downloaded=final.page.waitForEvent('download');await final.page.getByRole('button',{name:'Download itinerary PDF',exact:true}).click();const download=await downloaded;
+  await assertPdfDownload(download,id,'Full snapshot: 3 of 3 days');assert.equal(complete.requests.filter(request=>request.method==='POST').length,1);findings.adaptiveCompleteExport=true;await final.context.close();
   await checkOwnerRecovery({newPage,origin,settleTheme,noOverflow,snapshot,findings});
 }
 

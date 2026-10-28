@@ -343,3 +343,24 @@ button:not([class]):disabled { opacity: .6; cursor: not-allowed; }
 .field-recommendation__item + .field-recommendation__item { margin-top: 8px; }
 .adaptive-export { display: grid; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
 .adaptive-export > button { justify-self: start; max-width: 100%; }
+
+/* Compact brand and instant examples reuse the destination palette. */
+.site-header .brand-name { display:block; font-size:26px; line-height:1.08; letter-spacing:-.7px; }
+.brand-name>span { display:block; }
+.site-header__brand { min-width:0; }
+.site-header__brand>span:last-child { min-width:0; }
+.brand-tagline { display:block; margin-top:5px; font-size:10px; }
+.welcome-samples { max-width:1000px; margin:28px auto 0; }
+.welcome-samples>.destination-tiles { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.sample-itinerary { margin:22px 0; }
+.sample-itinerary .step-actions { flex-wrap:wrap; }
+.planner-reset { display:flex; justify-content:flex-end; margin:-16px 0 20px; }
+.planner-reset-dialog { margin-bottom:24px; }
+.planning-disclosure>summary { cursor:pointer; font-weight:600; }
+@media(max-width:720px) { .site-header .brand-name { font-size:22px; }.brand-tagline { max-width:175px; font-size:9px; }.site-header__mark { flex-shrink:0; }.site-header__actions { flex-shrink:0; }.sample-itinerary .step-actions>* { width:100%; }.welcome-samples { margin-top:20px; } }
+@media(max-width:360px) { .site-header .brand-name { font-size:19px; }.brand-tagline { display:none; }.site-header { gap:8px; }.site-header__brand { gap:7px; } }
+
+.adaptive-day-group { display:contents; }
+.card.adaptive-day { border:1px solid var(--line); padding:20px 28px; margin:0; }
+.card.adaptive-day>summary { font-size:17px; line-height:1.5; }
+@media(max-width:720px) { .card.adaptive-day { padding:16px 20px; }.card.adaptive-day>summary { font-size:15px; } }

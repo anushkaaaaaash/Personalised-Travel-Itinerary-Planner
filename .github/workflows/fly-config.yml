@@ -1,10 +1,10 @@
 name: Fly full-app container
 on:
   pull_request:
-    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', '.github/workflows/fly-config.yml']
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', 'deployment/pdf_container_smoke.py', '.github/workflows/fly-config.yml']
   push:
     branches: [main]
-    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', '.github/workflows/fly-config.yml']
+    paths: ['Dockerfile', '.dockerignore', 'fly.toml', 'deployment/dockerignore-test/**', 'backend-python/**', 'frontend/**', 'shared/**', 'package*.json', 'deployment/frontend_config.mjs', 'deployment/pdf_container_smoke.py', '.github/workflows/fly-config.yml']
 permissions:
   contents: read
 jobs:
@@ -39,6 +39,8 @@ jobs:
             sleep 1
           done
           docker exec travel-api-offline python -c 'import os,json,urllib.request; assert os.getuid()==10001; req=urllib.request.Request("http://127.0.0.1:8080/api/auth/config",headers={"Host":"api.example.test"}); result=json.load(urllib.request.urlopen(req)); assert result["planning_jobs_enabled"] is False; assert not os.path.exists("/app/.env"); print("PASS: non-root production health and disabled background capability with no network")'
+      - name: Verify packaged PDF fonts and real PDF rendering without network
+        run: docker exec -i travel-api-offline python - < deployment/pdf_container_smoke.py
       - name: Verify same-origin public UI and protected API in the real image
         shell: bash
         run: |

@@ -78,7 +78,7 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
             {errorFor('endDate')}
           </label>
 
-        </div><p className="hint" id="trip-length-hint">{adaptiveEnabled ? 'Choose your full trip dates. Longer trips are planned in small sections, with pauses for you to continue.' : 'Plan 1–14 days at a time, including your start and end dates.'}</p></>}
+        </div><p className="hint" id="trip-length-hint">{adaptiveEnabled ? 'Choose your full trip dates, including travel days.' : 'Plan 1–14 days at a time, including your start and end dates.'}</p></>}
 
         {step === 1 && <>
         <div className="form-grid">
@@ -174,7 +174,8 @@ function PlannerForm({ allowPreferenceSave = true, form, onChange, onToggleInter
             <dt>Mobility preferences</dt><dd>{form.mobilityConcerns || 'Not specified'}</dd>
           </dl>
           <p className="hint">Everything look right? You can go back to change any detail.</p>
-          {adaptiveEnabled&&<aside className="planning-disclosure" aria-label="How this trip will be planned"><h4>How planning works</h4>{policy&&totalDays&&<p>Your {totalDays}-day trip starts with an estimated {Math.ceil(totalDays / policy.sectionDays)} {totalDays<=policy.sectionDays?'section':'sections'}, covering up to {policy.sectionDays} days each.</p>}{grounded&&<p>Research is requested only when planning needs outside information. It can add model requests and search/tool usage to the section estimate.</p>}<p>{policy?(grounded?`Starting this run allows up to ${policy.maxSubmissionsPerRun} model requests, including research and retries, plus up to ${policy.maxWebSearchCalls} search/tool requests. `:`Starting this plan allows up to ${policy.maxSubmissionsPerRun} section requests in this batch. Retries use this allowance too. `):'Planning runs in bounded batches. '}You decide whether to continue after the request allowance is reached; your dates stay unchanged.</p>{grounded&&<p className="hint">A research or section response can take up to {policy.responseDeadlineMinutes} minutes. Completed sections remain available while later work runs.{policy.provisionalDayPreviews&&' Complete draft days may appear sooner, marked provisional until the section passes its checks.'}</p>}<p className="hint">Planning can pause earlier for a budget review, conflicting preferences, a service problem or storage limits. Any proposed changes are yours to review—not automatic edits.</p></aside>}
+          {adaptiveEnabled&&<div className="planning-summary"><p>Your {totalDays || ''}{totalDays?'-day ':''}itinerary appears as days become ready. You stay in control of any changes.</p><details className="planning-disclosure"><summary>Planning usage & limits</summary><p>{policy?`Starting allows up to ${policy.maxSubmissionsPerRun} planning requests, including retries${grounded?`, and ${policy.maxWebSearchCalls} searches`:''}. `:'Planning has a limited usage allowance. '}Another run needs your approval.</p>{grounded&&<p>Each response has an {policy.responseDeadlineMinutes}-minute time limit; this is not an estimate for the whole trip. {policy.provisionalDayPreviews&&'Early previews are labelled Draft until checked.'}</p>}<p>Research is used when needed. A pause will explain what needs attention; your dates and budget are not changed automatically.</p></details></div>}
+
         </section>}
         <div className="step-actions">
           {step > 0 && <button className="back-btn" type="button" onClick={onBack} disabled={loading}>Back</button>}

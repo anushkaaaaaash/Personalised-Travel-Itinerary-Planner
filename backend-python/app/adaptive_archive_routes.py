@@ -64,6 +64,10 @@ def build_archive_router(auth_service,engine=None,repository_factory=None,enable
     @router.get('/api/saved-adaptive-trips/{saved_id}')
     async def get(saved_id:UUID,request:Request,afterSequence:int=Query(0,ge=0,le=1024)):
         return await execute(request,lambda service:service.get(str(saved_id),afterSequence))
+    @router.get('/api/saved-adaptive-trips/{saved_id}/export')
+    async def export_pdf(saved_id:UUID,request:Request):
+        from .itinerary_pdf import archived_pdf_response
+        return await execute(request,lambda service:archived_pdf_response(service,str(saved_id)))
     @router.delete('/api/saved-adaptive-trips/{saved_id}')
     async def delete(saved_id:UUID,body:Delete,request:Request):
         return await execute(request,lambda service:service.delete(str(saved_id),body.version))

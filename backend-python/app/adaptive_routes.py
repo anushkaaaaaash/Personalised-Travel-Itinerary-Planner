@@ -53,6 +53,9 @@ def build_adaptive_router(auth_service, engine=None):
     @router.get('/{plan_id}/export')
     async def export(plan_id:UUID,request:Request):
         from .adaptive_export import export_response
+        if 'application/pdf' in request.headers.get('accept',''):
+            from .itinerary_pdf import pdf_response
+            return await execute(request,lambda owner:pdf_response(engine,owner,str(plan_id)))
         return await execute(request,lambda owner:export_response(engine,owner,str(plan_id)))
     @router.post('/{plan_id}/continue')
     async def continue_run(plan_id:UUID,body:RequestIdentity,request:Request):

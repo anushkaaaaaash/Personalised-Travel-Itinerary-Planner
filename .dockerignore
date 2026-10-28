@@ -10,6 +10,14 @@ backend-python/app/**
 **/.env*
 **/__pycache__/**
 backend-python/app/*/**
+# Exact licensed runtime PDF assets only; no general subdirectory allowance.
+!backend-python/app/pdf_fonts/
+backend-python/app/pdf_fonts/**
+!backend-python/app/pdf_fonts/DejaVuSans.ttf
+!backend-python/app/pdf_fonts/DejaVuSans-Bold.ttf
+!backend-python/app/pdf_fonts/LICENSE.txt
+backend-python/app/pdf_fonts/*.ttf/**
+backend-python/app/pdf_fonts/LICENSE.txt/**
 !package.json
 !package-lock.json
 !frontend/

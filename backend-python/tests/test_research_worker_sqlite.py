@@ -172,3 +172,18 @@ def test_required_research_missing_section_binding_fails_before_paid_create(setu
     generator=FakeGeneration();worker=AdaptivePlanningWorker(plans,generator,enabled=True,clock=lambda:clock[0],research_context=researcher.context_for_section)
     result=run(worker.tick());assert result['status']=='failed' and result['error_code']=='SECTION_RESEARCH_UNAVAILABLE'
     assert generator.creates==[]
+
+
+def test_research_timings_cover_create_wait_and_validation_without_content(setup,payload,caplog):
+    import logging,json
+    _,clock,_,plans,research=setup
+    triggered(plans,research,payload)
+    provider=FakeResearch(lambda:clock[0])
+    worker=AdaptiveResearchWorker(research,plans,provider,enabled=True,clock=lambda:clock[0])
+    with caplog.at_level(logging.INFO,logger='uvicorn.error'):
+        run(worker.tick());clock[0]+=timedelta(seconds=17);run(worker.tick())
+    rows=[json.loads(r.message.split(': ',1)[1]) for r in caplog.records if r.message.startswith('Adaptive timing:')]
+    assert [row['phase'] for row in rows]==['research_create_ack','research_provider_wait','research_validation']
+    assert rows[1]['elapsed_ms']==17000
+    assert 'resp_' not in caplog.text and payload['destination'] not in caplog.text
+    assert len(provider.creates)==1

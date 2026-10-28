@@ -7,7 +7,7 @@ export default function DestinationLoading(props) {
   return <LoadingSession key={props.destination || ''} {...props} />;
 }
 
-function LoadingSession({ destination = '', title = 'Your trip is taking shape', status = 'Putting your days together…', onCancel, cancelLabel = 'Stop waiting', embedded = false }) {
+function LoadingSession({ destination = '', title = 'Your trip is taking shape', status = 'Putting your days together…', onCancel, cancelLabel = 'Stop waiting', embedded = false, notesOnly = false, active = true }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const reducedMotion = useReducedMotion();
@@ -15,13 +15,13 @@ function LoadingSession({ destination = '', title = 'Your trip is taking shape',
   const exhausted = index === cards.length - 1;
   const next = () => setIndex(current => Math.min(current + 1, cards.length - 1));
   useEffect(() => {
-    if (paused || reducedMotion || exhausted) return;
+    if (!active || paused || reducedMotion || exhausted) return;
     const timer = setInterval(() => setIndex(current => Math.min(current + 1, cards.length - 1)), 9000);
     return () => clearInterval(timer);
-  }, [paused, reducedMotion, exhausted, cards.length]);
+  }, [active, paused, reducedMotion, exhausted, cards.length]);
   const card = cards[index];
-  return <section className={`${embedded ? '' : 'card '}destination-loading${paused || reducedMotion || exhausted ? ' destination-loading--paused' : ''}`} aria-label="Trip planning in progress">
-    <div className="destination-loading__intro">
+  return <section className={`${embedded ? '' : 'card '}destination-loading${!active || paused || reducedMotion || exhausted ? ' destination-loading--paused' : ''}`} aria-label={notesOnly?'Destination notes while planning':'Trip planning in progress'}>
+    {!notesOnly&&<div className="destination-loading__intro">
       <div className="destination-loading__map" aria-hidden="true">
         <div className="destination-loading__orbit" />
         <MapPin className="destination-loading__pin" size={27} />
@@ -34,10 +34,10 @@ function LoadingSession({ destination = '', title = 'Your trip is taking shape',
         <h2>{title}</h2>
         {destination && <p className="destination-loading__destination"><MapPin size={16} aria-hidden="true" /> {destination}</p>}
         <p role="status" aria-live="polite">{status}</p>
-        <p className="hint">Good plans take a little care. This can take a few minutes.</p>
+        <p className="hint">This can take a few minutes. Your itinerary will appear when it is ready.</p>
         <div className="destination-loading__pulse" aria-hidden="true"><span /><span /><span /></div>
       </div>
-    </div>
+    </div>}
     <div className="destination-loading__postcard" aria-live="off" key={card.title}>
       <p className="eyebrow">{card.label}</p>
       <h3>{card.title}</h3><p>{card.text}</p>

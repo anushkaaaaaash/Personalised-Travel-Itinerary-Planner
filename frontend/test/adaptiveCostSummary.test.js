@@ -18,3 +18,7 @@ test('complete estimate exposes a contingency shortfall instead of silently incr
 test('contingency arithmetic remains exact at cent rounding and maximum supported integers',()=>{
  assert.equal(calculate(plan({spentCents:5})).contingency,1n);assert.equal(calculate(plan({spentCents:4})).contingency,1n);const max=Number.MAX_SAFE_INTEGER;assert.equal(calculate(plan({spentCents:max,totalBudgetCents:max})).withContingency,9907919180215091n);assert.equal(calculate(plan({spentCents:NaN})),null);assert.equal(render(plan({completedDays:0,spentCents:0})),'');
 });
+
+test('normal expense copy consistently refers to planned days, not internal sections',()=>{
+ for(const value of [plan(),plan({completedDays:9})]){const html=render(value);assert.match(html,/Planned-day estimate/);assert.match(html,/All planned days/);assert.match(html,/planned-day estimates/);assert.doesNotMatch(html,/completed.section|completed sections/i);}
+});

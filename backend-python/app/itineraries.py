@@ -387,9 +387,30 @@ class ItineraryService:
         return await self.generate(request.preferences, context=request)
 
 
+class PdfRequest(StrictModel):
+    preferences: TripPreferences
+    itinerary: ItineraryPayload
+
+
 def build_itinerary_router(itinerary_service=None):
     router = APIRouter(prefix='/api/itineraries', tags=['Itinerary generation (does not save)'])
     service = itinerary_service if itinerary_service is not None else ItineraryService()
+
+    from .itinerary_pdf import pdf_admission
+    @router.post('/export-pdf')
+    @pdf_admission
+    async def export_pdf(request: PdfRequest):
+        from .itinerary_pdf import render_pdf, cents
+        from fastapi.responses import Response
+        from starlette.concurrency import run_in_threadpool
+        try:
+            itinerary=validate_itinerary(request.itinerary.model_dump(),request.preferences,'PDF snapshot','local').model_dump()
+            if itinerary['status']!='planned':return fail(400,'PDF_INVALID','Only a complete itinerary can be exported.')
+            count=len(itinerary['days'])
+            plan={'completedDays':count,'totalDays':count,'spentCents':sum(cents(v) for d in itinerary['days'] for v in d['costs'].values())}
+            data=await run_in_threadpool(render_pdf,request.preferences.model_dump(),plan,[{'checkpoint':{'itinerary':itinerary}}])
+            return Response(data,media_type='application/pdf',headers={'Content-Disposition':'attachment; filename=personalised-travel-itinerary.pdf','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+        except Exception:return fail(400,'PDF_INVALID','The PDF could not be prepared. Check the complete itinerary; no file was saved.')
 
     @router.post('/generate', response_model=ItineraryResponse)
     async def generate(preferences: TripPreferences):

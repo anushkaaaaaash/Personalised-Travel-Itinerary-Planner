@@ -1,3 +1,5 @@
+import {tripDayLabel,visibleDayRange} from '../utils/dayLabels.js';
+import SavedTripPdfButton from '../components/SavedTripPdfButton.jsx';
 import {useEffect,useRef,useState} from 'react';
 import {Link,useParams} from 'react-router-dom';
 import SiteHeader from '../components/SiteHeader.jsx';
@@ -10,8 +12,8 @@ import {useDestinationTheme} from '../themes/DestinationTheme.jsx';
 const money=(currency,value)=>{const cents=BigInt(value);return`${currency} ${(cents/100n).toLocaleString()}.${String(cents%100n).padStart(2,'0')}`;};
 
 function HistoricalSources({section}) {
-  if(section.sourceAssociation==='none_recorded')return <p className="hint">No research-source association was recorded for this section. Its travel details are not verified.</p>;
-  return <details className="practical-checks"><summary>Historical sources recorded for this section</summary>
+  if(section.sourceAssociation==='none_recorded')return <p className="hint">No sources were saved for these dates. Confirm travel details before booking.</p>;
+  return <details className="practical-checks"><summary>Saved sources for these dates</summary>
     <p>These saved notes are historical, unverified observations. Saving did not refresh them or verify prices, hours, routes or availability.</p>
     {section.historicalSources.map((notes,index)=><section key={index} aria-label={`Historical source notes ${index+1}`}>
       <p className="hint">Notes received <time dateTime={notes.receivedAt}>{new Date(notes.receivedAt).toLocaleString()}</time>. This is the planner’s receipt time, not a publisher’s update date.</p>
@@ -21,25 +23,25 @@ function HistoricalSources({section}) {
     </section>)}
   </details>;
 }
-function SavedSection({section,currency}) {
+function SavedSection({section,currency,tripStart}) {
   const itinerary=section.checkpoint.itinerary;
-  return <section className="card adaptive-section" aria-label={`Saved section ${section.sequence}`}>
-    <p className="eyebrow">Saved section {section.sequence}</p>
-    <h2><time dateTime={section.startDate}>{section.startDate}</time> – <time dateTime={section.endDate}>{section.endDate}</time></h2>
-    <p>{section.checkpoint.startLocation} → {section.checkpoint.endLocation}</p>
-    <p className="hint">Section estimate: {money(currency,section.checkpoint.spentCents)} for the whole group.</p>
-    <p>{itinerary.explanation}</p>
-    {!!itinerary.warnings.length&&<details className="practical-checks"><summary>Things to check for this section</summary><ul>{itinerary.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></details>}
-    {itinerary.days.map(day=><details className="adaptive-day" key={day.date}>
-      <summary><time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
+  return <section className="adaptive-day-group" aria-label={`Saved trip days ${section.startDate} to ${section.endDate}`}>
+    {itinerary.days.map((day,index)=><details className="card adaptive-day" key={day.date}>
+      <summary><strong>{tripDayLabel(day.date,tripStart)}</strong> · <time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
       <ol className="activity-list timeline">{day.activities.map(activity=><li key={activity.id}>
         <div className="activity-meta"><time>{activity.startTime}</time><span>{activity.durationMinutes} min</span>{activity.fixedTime&&<span className="tag">Fixed time</span>}</div><strong>{activity.title}</strong><p>{activity.notes}</p>
       </li>)}</ol>
       <div className="day-notes"><p><strong>Dining</strong><br/>{day.dining}</p><p><strong>Travel and rest</strong><br/>{day.transitAndRest}</p><p><strong>Dietary arrangements · confirm with venues</strong><br/>{day.dietaryNotes}</p><p><strong>Access · confirm with venues</strong><br/>{day.mobilityNotes}</p></div>
       <details className="secondary-tools"><summary>Day outline</summary><p><strong>Morning</strong><br/>{day.morning}</p><p><strong>Afternoon</strong><br/>{day.afternoon}</p><p><strong>Evening</strong><br/>{day.evening}</p></details>
       <details className="secondary-tools"><summary>Day expense breakdown</summary><p className="hint">Estimates for the whole group, not per person.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,Math.round(day.costs[key]*100))}</span></li>)}</ul></details>
+      {index===0&&<details className="secondary-tools"><summary>Route &amp; notes · {section.startDate} to {section.endDate}</summary>
+      <p>{section.checkpoint.startLocation} → {section.checkpoint.endLocation}</p>
+      <p className="hint">Estimate for these dates: {money(currency,section.checkpoint.spentCents)} for the whole group.</p>
+      <p>{itinerary.explanation}</p>
+      {!!itinerary.warnings.length&&<><h3>Things to check</h3><ul>{itinerary.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></>}
+      <HistoricalSources section={section}/>
+    </details>}
     </details>)}
-    <HistoricalSources section={section}/>
   </section>;
 }
 
@@ -88,9 +90,9 @@ export function SavedAdaptiveTripReader({tripID,client}) {
   return <main className="page"><SiteHeader showSavedTrips/>
     <Link to="/saved-trips">← Back to saved trips</Link>
     <section className="card adaptive-progress">
-      <p className="eyebrow">Account-saved trip</p><h1>{saved?.title || 'Your saved section-by-section trip'}</h1>
+      <p className="eyebrow">Account-saved trip</p><h1>{saved?.title || 'Your saved trip'}</h1>
       {signedOut?<p role="status">Sign in again to open saved trips for your account.</p>:<>
-        {busy&&<p role="status">{deletion==='removing'?'Deleting this saved account copy…':'Loading saved trip sections…'}</p>}
+        {busy&&<p role="status">{deletion==='removing'?'Deleting this saved account copy…':'Loading saved trip days…'}</p>}
         {deletion==='deleted'&&<p role="status">This saved account copy was deleted. The original temporary plan is unchanged.</p>}
         {error&&<><p role="alert">{error}</p><button className="preview-btn" disabled={busy} onClick={()=>load(state.retryCursor)}>Check this saved trip</button></>}
         {saved&&<>
@@ -98,7 +100,8 @@ export function SavedAdaptiveTripReader({tripID,client}) {
           <p>Saved to your account on <time dateTime={saved.createdAt}>{new Date(saved.createdAt).toLocaleDateString()}</time>. This copy remains separate from the original temporary planning session and its expiry.</p>
           <p className="hint">Saved version. Estimates and historical research are not live prices, verified schedules or bookings.</p>
           <ul className="budget-list"><li><span>Saved whole-trip estimate</span><strong>{money(saved.currency,saved.spentCents)}</strong></li><li><span>Original group budget</span><span>{money(saved.currency,saved.totalBudgetCents)}</span></li><li><span>Budget not allocated in this saved estimate</span><span>{money(saved.currency,BigInt(saved.totalBudgetCents)-BigInt(saved.spentCents))}</span></li></ul>
-          <p className="hint">Costs cover all {saved.totalDays} saved days for the whole group ({page.preferences.travelers} {page.preferences.travelers===1?'traveler':'travelers'}), not just the sections on this page.</p>
+          <p className="hint">Costs cover all {saved.totalDays} saved days for the whole group ({page.preferences.travelers} {page.preferences.travelers===1?'traveler':'travelers'}), not just the days on this page.</p>
+          <SavedTripPdfButton tripID={tripID} disabled={busy||deletion!=='idle'}/>
           <div className="secondary-tools">
             {deletion==='confirm'?<section aria-label="Confirm saved copy deletion"><p>Delete this saved account copy? This cannot be undone. The original temporary plan remains unchanged.</p><button className="preview-btn" disabled={busy} onClick={remove}>Confirm delete saved copy</button><button className="preview-btn" disabled={busy} onClick={()=>{if(scope.current)scope.current.confirmVersion=null;setDeletion('idle');}}>Keep saved copy</button></section>:<button className="preview-btn" disabled={busy||deletion==='unknown'} onClick={()=>{const current=scope.current;if(!current||current.disposed||current.active||current.deleteUnknown||getSession()!==current.session)return;current.confirmVersion=saved.version;setDeletion('confirm');}}>Delete saved copy</button>}
           </div>
@@ -107,9 +110,9 @@ export function SavedAdaptiveTripReader({tripID,client}) {
       </>}
     </section>
     {!signedOut&&page&&<div className="results-wrap">
-      {page.sections.map(section=><SavedSection key={section.id} section={section} currency={saved.currency}/>)}
-      <p className="hint">Showing {page.sections.length} of {saved.sectionCount} saved sections. Other sections remain in your account; they have not been replaced.</p>
-      <nav className="step-actions" aria-label="Saved trip section pages"><button className="preview-btn" disabled={busy||deletion==='unknown'||state.cursor===0} onClick={()=>load(0)}>First saved sections</button><button className="preview-btn" disabled={busy||deletion==='unknown'||page.nextCursor===null} onClick={()=>load(page.nextCursor)}>Next saved sections</button></nav>
+      {page.sections.map(section=><SavedSection key={section.id} section={section} currency={saved.currency} tripStart={saved.startDate}/>)}
+      <p className="hint">{visibleDayRange(page.sections,saved.startDate)}. All {saved.totalDays} days remain saved to your account.</p>
+      <nav className="step-actions" aria-label="Saved trip day pages"><button className="preview-btn" disabled={busy||deletion==='unknown'||state.cursor===0} onClick={()=>load(0)}>Earlier days</button><button className="preview-btn" disabled={busy||deletion==='unknown'||page.nextCursor===null} onClick={()=>load(page.nextCursor)}>Next days</button></nav>
     </div>}
   </main>;
 }
