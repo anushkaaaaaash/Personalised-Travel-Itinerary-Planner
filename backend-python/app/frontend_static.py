@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.responses import FileResponse, Response
 
 _ASSET = re.compile(r'/assets/[A-Za-z0-9_-]+\.(?:js|css|svg|png|jpg|jpeg|webp|ico|woff2?)\Z')
-_PAGE = re.compile(r'/itineraries/[A-Za-z0-9_-]{1,128}\Z')
+_PAGE = re.compile(r'/(?:itineraries|saved-adaptive-trips)/[A-Za-z0-9_-]{1,128}\Z')
 
 
 def public_frontend_request(scope):

@@ -13,6 +13,16 @@ on:
         default: stage
         type: choice
         options: [stage, upgrade, activate]
+      saved_archive_schema_verified:
+        description: 'Activate only: confirm separate hosted archive migration and owner/RLS/grant verification'
+        required: false
+        default: false
+        type: boolean
+      verified_saved_archive_sql_sha256:
+        description: 'Activate only: SHA256 of the separately applied and verified archive SQL'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -43,6 +53,12 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Require separately verified account archive migration for activation
+        env:
+          DEPLOYMENT_ACTION: ${{ inputs.deployment_action }}
+          SAVED_ARCHIVE_SCHEMA_VERIFIED: ${{ inputs.saved_archive_schema_verified }}
+          VERIFIED_SAVED_ARCHIVE_SQL_SHA256: ${{ inputs.verified_saved_archive_sql_sha256 }}
+        run: python3 deployment/fly_archive_activation.py
       - name: Verify approved Fly configuration
         run: |
           python3 - <<'PYCODE'
@@ -57,6 +73,8 @@ jobs:
           assert config["http_service"]["auto_stop_machines"] == "off"
           assert config["env"]["PLANNING_JOBS_ENABLED"] == "false"
           assert config["env"]["ADAPTIVE_PLANNING_ENABLED"] == "false"
+          assert config["env"]["ADAPTIVE_SAVED_TRIPS_ENABLED"] == "false"
+          assert config["env"]["ADAPTIVE_SAVED_TRIPS_SCHEMA_VERIFIED"] == "false"
           assert config["env"].get("ADAPTIVE_RESEARCH_ENABLED", "false") == "false"
           assert config["env"].get("ADAPTIVE_STREAMING_ENABLED", "false") == "false"
           assert config["mounts"] == [{"source":"planner_checkpoints","destination":"/data","scheduled_snapshots":False}]
@@ -121,11 +139,13 @@ jobs:
             stage)
               flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --strategy immediate --yes \
                 --env ADAPTIVE_PLANNING_ENABLED=false --env PLANNING_JOBS_ENABLED=false \
+                --env ADAPTIVE_SAVED_TRIPS_ENABLED=false --env ADAPTIVE_SAVED_TRIPS_SCHEMA_VERIFIED=false \
                 --env ADAPTIVE_RESEARCH_ENABLED=false --env ADAPTIVE_STREAMING_ENABLED=false
               ;;
             activate)
               flyctl deploy --app personalised-travel-itinerary-planner --config fly.toml --remote-only --ha=false --strategy immediate --yes \
                 --env ADAPTIVE_PLANNING_ENABLED=true --env ADAPTIVE_RUN_ALLOWANCE=12 \
+                --env ADAPTIVE_SAVED_TRIPS_ENABLED=true --env ADAPTIVE_SAVED_TRIPS_SCHEMA_VERIFIED=true \
                 --env OPENAI_BACKGROUND_RETENTION_APPROVED=true --env PLANNING_DATA_RETENTION_APPROVED=true \
                 --env ADAPTIVE_SCHEMA_VERIFIED=true --env ADAPTIVE_CLEANUP_VERIFIED=true \
                 --env ADAPTIVE_WORKER_VERIFIED=true --env ADAPTIVE_RESOURCE_POLICY_APPROVED=true \

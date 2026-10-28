@@ -4,7 +4,7 @@
   "private": true,
   "description": "Isolated test-only SQL validation; no application runtime dependencies",
   "scripts": {
-    "test": "node planning_jobs.mjs && node adaptive_sections.mjs"
+    "test": "node planning_jobs.mjs && node adaptive_sections.mjs && node test_adaptive_saved_archive.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.12"

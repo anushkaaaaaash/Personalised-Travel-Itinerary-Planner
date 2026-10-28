@@ -21,7 +21,8 @@ command = ['psql', '--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--s
 # a conninfo URI by every psql/libpq combination. Pass validated loopback fields
 # explicitly; keep even disposable credentials out of command arguments.
 environment = {
-    **os.environ, 'PGHOST': parsed.hostname, 'PGPORT': str(parsed.port or 5432),
+    **{k: v for k, v in os.environ.items() if k not in {'PGSERVICE', 'PGSERVICEFILE'}},
+    'PGHOST': parsed.hostname, 'PGHOSTADDR': '127.0.0.1', 'PGPORT': str(parsed.port or 5432),
     'PGDATABASE': 'planning_queue_test', 'PGUSER': unquote(parsed.username or 'postgres'),
     'PGPASSWORD': unquote(parsed.password or ''),
 }
@@ -42,6 +43,8 @@ def literal(data):
     return "'" + str(data).replace("'", "''") + "'"
 
 
+if value("select json_build_array(current_database(),host(inet_server_addr()))") != ['planning_queue_test','127.0.0.1']:
+    raise SystemExit('Refusing SQL QA: connected database/address is not disposable loopback.')
 sql('create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key);')
 sql(Path(__file__).resolve().parents[2].joinpath('migrations/003_planning_jobs_REVIEW_ONLY.sql').read_text())
 sql(Path(__file__).resolve().parents[2].joinpath('migrations/004_abandon_uncertain_planning_jobs_REVIEW_ONLY.sql').read_text())

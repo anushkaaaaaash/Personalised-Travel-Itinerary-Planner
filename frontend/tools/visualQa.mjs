@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { COUNTRY_THEMES } from '../src/themes/countryThemes.js';
 import { plan as fixturePlan, detail as fixtureDetail } from '../test/shareFixture.js';
+import { checkSavedAdaptiveVisuals } from './savedAdaptiveVisualFixtures.mjs';
 import { checkRevisionVisuals } from './revisionVisualFixtures.mjs';
 import { checkGroundedVisuals } from './groundedVisualFixtures.mjs';
 import { checkAdaptiveVisuals } from './adaptiveVisualFixtures.mjs';
@@ -54,8 +55,8 @@ async function newPage({width=1440,height=1050,production=false,reducedMotion='n
   });
   await context.route('**/api/**', async route=>{
     const url=new URL(route.request().url());
-    if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_planning_policy:adaptive.policy || {sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
-    if(adaptive&&url.pathname.startsWith('/api/adaptive-plans'))return adaptive.handle(route,url);
+    if(url.pathname==='/api/auth/config')return route.fulfill({json:adaptive?{...liveConfig,adaptive_planning_enabled:true,adaptive_saved_trips_enabled:adaptive.savedEnabled===true,adaptive_planning_policy:adaptive.policy || {sectionDays:3,maxSubmissionsPerRun:3}}:production?liveConfig:localConfig});
+    if(adaptive&&(url.pathname.startsWith('/api/adaptive-plans')||url.pathname.startsWith('/api/saved-adaptive-trips')))return adaptive.handle(route,url);
     if(url.pathname==='/api/auth/login') return route.fulfill({json:{session:{access_token:'synthetic-ui-session',token_type:'bearer',expires_at:Date.now()/1000+3600},user:{id:'12345678-1234-1234-1234-123456789abc',email:'traveler@example.test'}}});
     if(url.pathname==='/api/saved-itineraries'&&route.request().method()==='GET'){const {id,title,version,createdAt,updatedAt}=fixtureDetail();return route.fulfill({json:{items:[{id,title,version,createdAt,updatedAt}],offset:Number(url.searchParams.get('offset') || 0),hasMore:false}});}
     if(url.pathname==='/api/saved-itineraries/32345678-1234-1234-1234-123456789abc')return route.fulfill({json:fixtureDetail()});
@@ -213,6 +214,7 @@ try {
   await checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   await checkGroundedVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   await checkRevisionVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
+  await checkSavedAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   assert.equal(findings.errors.length,0,findings.errors.join('\n'));assert.equal(findings.unexpectedRequests.length,0,findings.unexpectedRequests.join('\n'));
   assert.equal(findings.themes.length,60);
   console.log(JSON.stringify(findings,null,2));
