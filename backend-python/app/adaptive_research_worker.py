@@ -1,5 +1,7 @@
 """Leased research execution. Reservations precede paid submission; never replay."""
 from dataclasses import asdict
+from time import monotonic
+from .adaptive_worker import _timing
 import json
 from datetime import datetime, timezone
 from uuid import uuid4, uuid5, NAMESPACE_URL
@@ -66,13 +68,17 @@ class AdaptiveResearchWorker:
         if job['status']=='queued':
             # Includes the run's create and tool reservation in the same commit.
             job=await self._transition(job,'submitting')
+            started=monotonic()
             try: response=await self.client.create(query,phase=job['phase'])
             except Exception as error:
                 _provider_diagnostic('create',error=error)
                 uncertain=getattr(error,'ambiguous_create',True)
                 return await self._transition(job,'submission_unknown' if uncertain else 'failed',
                     error_code='RESEARCH_SUBMISSION_UNCONFIRMED' if uncertain else 'RESEARCH_PROVIDER_REJECTED')
-            return await self._transition(job,'running',provider_response_id=response.response_id)
+            acknowledged=monotonic()
+            result=await self._transition(job,'running',provider_response_id=response.response_id)
+            _timing('research_create_ack',acknowledged-started,status=response.status)
+            return result
         if job['status']!='running' or not job.get('provider_response_id'):
             raise JobRepositoryError('RESEARCH_INVALID_CLAIM')
         submitted=datetime.fromisoformat(job['submitted_at'])
@@ -96,11 +102,14 @@ class AdaptiveResearchWorker:
             return await self._transition(job,'failed',error_code='RESEARCH_DEADLINE_REACHED')
         if response.status in ('queued','in_progress'):
             return await self._transition(job,'running')
+        _timing('research_provider_wait',(self.clock()-submitted).total_seconds(),status=response.status)
         if response.status!='completed' or response.refused or response.result is None:
             return await self._transition(job,'failed',error_code='RESEARCH_PROVIDER_FAILED')
+        started=monotonic()
         try:pack=serialize_research_result(response.result,now=self.clock())
         except Exception:
             return await self._transition(job,'failed',error_code='RESEARCH_SOURCES_UNCONFIRMED')
+        _timing('research_validation',monotonic()-started)
         result=await self._transition(job,'succeeded',sourcepack=pack)
         successor=await self.repository.continue_researched(job['user_id'],job['plan_id'])
         self.immediate_followup=successor is not None

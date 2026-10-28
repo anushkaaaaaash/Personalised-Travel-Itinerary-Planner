@@ -67,3 +67,8 @@ test('a complete draft prefix grows day by day but never mutates preceding accep
   }
   assert.equal(render({}), '');
 });
+
+
+test('provisional day numbers continue from original trip start, not the current preview window',()=>{
+ const props=draftProps({tripStart:'2027-12-29'});const html=render(props);assert.match(html,/Day 04/);assert.match(html,/Provisional/);assert.doesNotMatch(html,/Current section/);
+});

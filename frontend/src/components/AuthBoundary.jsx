@@ -9,6 +9,7 @@ import PlannerRoutes from './PlannerRoutes.jsx';
 import { authFailure as failure } from '../services/authFeedback.js';
 export default function AuthBoundary() {
   const [confirmation, setConfirmation] = useState(null);
+  const [sampleId,setSampleId]=useState(null);
   const signInHeading = useRef(null);
   const focusSignIn = useRef(false);
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function AuthBoundary() {
   const savedOnly = config.saved_only === true;
   const allowed = (savedOnly && Boolean(session)) || (config.mode === 'local' && !config.ownership_enabled) || (config.ownership_enabled && Boolean(session));
   return <>
-    {!allowed && <BrandWelcome/>}
+    {!allowed && <BrandWelcome onUseSample={id=>{setSampleId(id);setNotice('Example selected. Sign in below to choose your dates and personalise it.');signInHeading.current?.focus();}}/>}
     {(config.enabled || !allowed || error || notice) && <aside className={`account-shell card ${!allowed ? 'account-shell--welcome' : ''}`} aria-label="Account access"><h2 ref={signInHeading} tabIndex={-1}>Your travel space</h2>
 
       {config.mode === 'production' && !config.ownership_enabled && !savedOnly && <p role="alert">Your planner is temporarily unavailable. Please try again later.</p>}
@@ -73,6 +74,6 @@ export default function AuthBoundary() {
 
       {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     </aside>}
-    {allowed && <PlannerRoutes adaptiveSavedTripsEnabled={config.adaptive_saved_trips_enabled === true} savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} jobsEnabled={config.planning_jobs_enabled === true} adaptiveEnabled={config.adaptive_planning_enabled === true && validAdaptivePolicy(config.adaptive_planning_policy)} adaptivePolicy={validAdaptivePolicy(config.adaptive_planning_policy)?config.adaptive_planning_policy:null} />}
+    {allowed && <PlannerRoutes initialSampleId={sampleId} adaptiveSavedTripsEnabled={config.adaptive_saved_trips_enabled === true} savedOnly={savedOnly} key={epoch} ownershipEnabled={config.ownership_enabled} signedIn={Boolean(session)} jobsEnabled={config.planning_jobs_enabled === true} adaptiveEnabled={config.adaptive_planning_enabled === true && validAdaptivePolicy(config.adaptive_planning_policy)} adaptivePolicy={validAdaptivePolicy(config.adaptive_planning_policy)?config.adaptive_planning_policy:null} />}
   </>;
 }

@@ -37,10 +37,10 @@ async function mounted(run) {
 test('saved archive collection is separate, bounded and navigates only to verified saved IDs',()=>mounted(async env=>{
   const fixture=archiveFixture(),calls=[];let finish;
   const client={list:async(offset,{signal})=>{calls.push({offset,signal});if(offset===0)return{items:[fixture.saved],offset,hasMore:true};return new Promise(resolve=>finish=resolve);}};
-  await env.mount(env.Collection,{client});assert.match(env.text(),/Saved section-by-section trips/);assert.ok(env.root().findAllByType('a').some(link=>link.props.href===`/saved-adaptive-trips/${archiveId}`));assert.doesNotMatch(env.text(),/Save this trip|Delete|Regenerate/);
-  await act(async()=>{const next=button(env,'Next saved section trips').props.onClick;next();next();});assert.deepEqual(calls.map(call=>call.offset),[0,20]);assert.equal(button(env,'Next saved section trips').props.disabled,true);
-  await act(async()=>finish({items:[],offset:20,hasMore:false}));assert.doesNotMatch(env.text(),/A saved twelve-day journey/);assert.equal(button(env,'Next saved section trips').props.disabled,true);
-  await act(async()=>button(env,'Previous saved section trips').props.onClick());assert.deepEqual(calls.map(call=>call.offset),[0,20,0]);
+  await env.mount(env.Collection,{client});assert.match(env.text(),/Your complete saved trips/);assert.ok(env.root().findAllByType('a').some(link=>link.props.href===`/saved-adaptive-trips/${archiveId}`));assert.doesNotMatch(env.text(),/Save this trip|Delete|Regenerate/);
+  await act(async()=>{const next=button(env,'Next trips').props.onClick;next();next();});assert.deepEqual(calls.map(call=>call.offset),[0,20]);assert.equal(button(env,'Next trips').props.disabled,true);
+  await act(async()=>finish({items:[],offset:20,hasMore:false}));assert.doesNotMatch(env.text(),/A saved twelve-day journey/);assert.equal(button(env,'Next trips').props.disabled,true);
+  await act(async()=>button(env,'Previous trips').props.onClick());assert.deepEqual(calls.map(call=>call.offset),[0,20,0]);
 }));
 test('saved archive collection scrubs prior data and ignores an in-flight response on owner change',()=>mounted(async env=>{
   const fixture=archiveFixture();let finish,signal;
@@ -53,13 +53,13 @@ test('saved trip route reopens historical sections after source expiry with real
   const client={get:async(id,{afterSequence,signal})=>{calls.push({id,afterSequence,signal});assert.equal(id,archiveId);if(afterSequence===0)return fixture.page(0);return new Promise(resolve=>finish=resolve);}};
   await env.mountRoute(client);
   assert.match(env.text(),/A saved twelve-day journey/);assert.match(env.text(),/copy remains separate from the original temporary planning session and its expiry/);assert.match(env.text(),/USD 1,800.00/);assert.match(env.text(),/Costs cover all 12 saved days/);
-  assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved section ')).length,3);
-  assert.match(env.text(),/Historical museum notes/);assert.match(env.text(),/2025/);assert.match(env.text(),/Saving did not refresh them/);assert.match(env.text(),/No research-source association was recorded/);assert.doesNotMatch(env.text(),/This planning session has expired|FINAL_PAGE_DINING/);
+  assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved trip days ')).length,3);
+  assert.match(env.text(),/Historical museum notes/);assert.match(env.text(),/2025/);assert.match(env.text(),/Saving did not refresh them/);assert.match(env.text(),/No sources were saved for these dates/);assert.doesNotMatch(env.text(),/This planning session has expired|FINAL_PAGE_DINING/);
   const link=env.root().findAllByType('a').find(node=>node.props.href==='https://example.com/museum');assert.equal(link.props.rel,'noopener noreferrer');assert.equal(link.props.target,'_blank');
-  assert.match(env.text(),/Example Garden Café/);assert.match(env.text(),/Day outline/);assert.match(env.text(),/Day expense breakdown/);assert.doesNotMatch(env.text(),/Accept this revised day|Save this trip|Stop planning|Retry research/);
-  await act(async()=>{const next=button(env,'Next saved sections').props.onClick;next();next();});assert.deepEqual(calls.map(call=>call.afterSequence),[0,3]);
-  await act(async()=>finish(fixture.page(3)));assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved section ')).length,1);assert.match(env.text(),/FINAL_PAGE_DINING/);assert.doesNotMatch(env.text(),/Historical museum notes/);assert.match(env.text(),/USD 1,800.00/);assert.equal(button(env,'Next saved sections').props.disabled,true);
-  await act(async()=>button(env,'First saved sections').props.onClick());assert.deepEqual(calls.map(call=>call.afterSequence),[0,3,0]);assert.deepEqual(fixture.page(0),original);
+  assert.match(env.text(),/Example Garden Café/);assert.equal(env.root().findAll(node=>node.type==='section'&&node.props.className==='card adaptive-section').length,0);assert.equal(env.root().findAll(node=>node.type==='details'&&node.props.className==='card adaptive-day').length,9);assert.match(env.text(),/Day outline/);assert.match(env.text(),/Day expense breakdown/);assert.doesNotMatch(env.text(),/Accept this revised day|Save this trip|Stop planning|Retry research/);
+  await act(async()=>{const next=button(env,'Next days').props.onClick;next();next();});assert.deepEqual(calls.map(call=>call.afterSequence),[0,3]);
+  await act(async()=>finish(fixture.page(3)));assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved trip days ')).length,1);assert.match(env.text(),/FINAL_PAGE_DINING/);assert.match(env.text(),/Day 10/);assert.match(env.text(),/Day 12/);assert.doesNotMatch(env.text(),/Day 01/);assert.doesNotMatch(env.text(),/Historical museum notes/);assert.match(env.text(),/USD 1,800.00/);assert.equal(button(env,'Next days').props.disabled,true);
+  await act(async()=>button(env,'Earlier days').props.onClick());assert.deepEqual(calls.map(call=>call.afterSequence),[0,3,0]);assert.deepEqual(fixture.page(0),original);
 }));
 test('saved detail ignores late owner and unmount results and never retains private day text for another owner',()=>mounted(async env=>{
   const fixture=archiveFixture();let finish,signal;

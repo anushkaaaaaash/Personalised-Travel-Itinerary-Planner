@@ -29,9 +29,9 @@ test('known research failure has precise retry cost and never preference blame o
 });
 test('review states on-demand research, bounded allowances and real provisional semantics',()=>{
   const html=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:policy}));
-  assert.match(html,/Research is requested only when planning needs outside information/);assert.doesNotMatch(html,/one for research|first research request/);assert.match(html,/up to 12 model requests/);assert.match(html,/up to 6 search\/tool requests/);assert.match(html,/up to 8 minutes/);assert.match(html,/marked provisional until the section passes/);
-  const noPreview=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{...policy,provisionalDayPreviews:false}}));assert.doesNotMatch(noPreview,/Complete draft days may appear/);
-  const legacy=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12}}));assert.match(legacy,/12 section requests/);assert.doesNotMatch(legacy,/search\/tool requests|about 4 model requests|up to 8 minutes/);
+  assert.match(html,/Research is used when needed/);assert.doesNotMatch(html,/one for research|first research request/);assert.match(html,/up to 12 planning requests/);assert.match(html,/6 searches/);assert.match(html,/8-minute time limit/);assert.match(html,/labelled Draft until checked/);
+  const noPreview=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{...policy,provisionalDayPreviews:false}}));assert.doesNotMatch(noPreview,/Early previews are labelled/);
+  const legacy=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12}}));assert.match(legacy,/12 planning requests/);assert.doesNotMatch(legacy,/search\/tool requests|about 4 model requests|8-minute time limit/);
 });
 
 test('a research-capable run still discloses future tool allowance when no research was needed in the previous run',()=>{

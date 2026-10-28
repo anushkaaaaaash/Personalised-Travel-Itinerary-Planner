@@ -25,6 +25,23 @@ const aliases = new Map([
   ['paris', 'paris'], ['paris, france', 'paris'], ['tokyo', 'tokyo'], ['tokyo, japan', 'tokyo'],
   ['rome', 'rome'], ['rome, italy', 'rome'], ['roma', 'rome'], ['london', 'london'], ['london, uk', 'london'], ['london, england', 'london'], ['london, united kingdom', 'london'],
 ]);
+const localTips = {
+  kyoto:[
+    {title:'Keep a Kyoto day on one side of the city',text:'Try a Higashiyama day and a separate Arashiyama day, rather than repeatedly crossing Kyoto between stops.'},
+    {title:'Give the temple lanes breathing room',text:'Leave a tea break between Higashiyama visits. Hilly lanes and tempting side streets deserve time.'},
+    {title:'Plan a flexible Fushimi walk',text:'Decide how much climbing suits your group before making a long shrine walk the day’s main event.'},
+  ],
+  goa:[
+    {title:'Choose your Goa base first',text:'A Panaji heritage day and a distant south-Goa beach day need different transfer plans. Avoid treating the whole state as one compact resort.'},
+    {title:'Pair Old Goa with Panaji',text:'Consider a heritage outing from a Panaji base, with a relaxed lunch and time to return, rather than adding another long coastal transfer.'},
+    {title:'Keep a coastal alternative',text:'For a Goa beach day, keep a town or café option available if local conditions make the coast less appealing.'},
+  ],
+  paris:[
+    {title:'One Paris museum can be enough',text:'Choose a focused museum visit and a nearby walk instead of scheduling several large collections on the same day.'},
+    {title:'Leave room for Montmartre’s slopes',text:'Build rest stops into a Montmartre outing and check step-free options if your group needs them.'},
+    {title:'Let the river shape the afternoon',text:'Consider a Seine-side walk after a central Paris visit, leaving a café pause rather than filling every gap.'},
+  ],
+};
 const tips = [
   { title: 'Leave room for a detour', text: 'Keep a little unscheduled time for a neighborhood walk, a longer lunch or an unexpected discovery.' },
   { title: 'Check before you set off', text: 'Confirm opening hours, reservations and accessibility directly with venues before you travel.' },
@@ -56,9 +73,10 @@ export function destinationCards(destination = '') {
   const normalized = String(destination).trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ');
   const key = aliases.get(normalized);
   const generalTips = tips.map(tip => ({ ...tip, label: 'General travel tip' }));
+  const placeTips=(localTips[key] || []).map(tip=>({...tip,label:'Destination planning tip'}));
   if (!key) return generalTips;
-  if (Object.hasOwn(extraFacts, key)) return [{ ...extraFacts[key], label: 'Destination fact' }, ...generalTips];
-  return [...facts[key].map(fact => ({ ...fact, label: 'Destination fact', sourceLabel: 'UNESCO' })), ...generalTips];
+  if (Object.hasOwn(extraFacts, key)) return [{ ...extraFacts[key], label: 'Destination fact' }, ...placeTips, ...generalTips];
+  return [...facts[key].map(fact => ({ ...fact, label: 'Destination fact', sourceLabel: 'UNESCO' })), ...placeTips, ...generalTips];
 }
 
 // Each mounted planning run consumes this finite deck once. Never wrap to the start.

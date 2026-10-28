@@ -59,7 +59,7 @@ test('adaptive status shows only authoritative completed-day counts and honest s
     const section={id:'section-a',sequence:1,startDate:preferences.startDate,endDate:preferences.endDate,checkpoint:{itinerary:itinerary(),spentCents:15000,startLocation:'Tokyo',endLocation:'Kyoto'}};
     const html=renderToStaticMarkup(React.createElement(Status,{state:state({sections:[section]}),...actions}));
     assert.match(html,/3 of 24 days planned/);assert.match(html,/max="24" value="3"/);assert.match(html,/2028-03-22/);
-    assert.match(html,/Only completed sections count/);assert.match(html,/Section estimate/);assert.match(html,/not finished yet/);
+    assert.doesNotMatch(html,/Only completed sections count/);assert.match(html,/Estimate for these dates/);assert.match(html,/Day 01/);assert.doesNotMatch(html,/Completed section/);assert.match(html,/Planning your next days/);
     assert.doesNotMatch(html,/Save itinerary|Update this saved|Download summary|Print \/ save|Make it more you/);assert.doesNotMatch(html.match(/<div class="adaptive-progress__count">[\s\S]*?<\/div>/)?.[0] || '',/\d+%/);
   }finally{await server.close();}
 });
@@ -72,8 +72,10 @@ test('completed day cards retain dining advice and optional outlines alongside t
     const value=validateAdaptivePage(fixture.snapshot()),original=structuredClone(value),day=value.sections[0].checkpoint.itinerary.days[0];
     await act(async()=>{renderer=create(React.createElement(Status,{state:state(value),...actions}));});
     const text=node=>typeof node==='string'?node:Array.isArray(node)?node.map(text).join(''):node?.children?node.children.map(text).join(''):'';
-    const days=renderer.root.findAll(node=>node.type==='details'&&node.props.className==='adaptive-day');
+    const days=renderer.root.findAll(node=>node.type==='details'&&node.props.className==='card adaptive-day');
     const first=days[0];
+    assert.equal(days.length,value.sections.flatMap(section=>section.checkpoint.itinerary.days).length);assert.equal(renderer.root.findAll(node=>node.type==='section'&&node.props.className==='card adaptive-section').length,0);
+    assert.equal(renderer.root.findAll(node=>node.type==='section'&&node.props.className==='adaptive-day-group').length,value.sections.length);
     for(const content of [day.dining,day.transitAndRest,day.dietaryNotes,day.mobilityNotes,...day.activities.map(item=>item.notes)])assert.ok(text(first).includes(content),`Missing retained content: ${content}`);
     assert.match(text(first),/USD 15\.00 per person \(USD 30\.00 for the whole group\)/);
     assert.match(text(first),/Confirm prices, opening hours and dietary arrangements; not booked/);
@@ -109,8 +111,8 @@ test('filtered empty section pages remain navigable without creating new plannin
     const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');const pages=[];
     await act(async()=>{renderer=create(React.createElement(Status,{state:state({sections:[],pageCursor:3,nextCursor:6}),...actions,onLoadPage:value=>pages.push(value)}));});
     const buttons=renderer.root.findAllByType('button');
-    await act(async()=>buttons.find(node=>node.children.join('')==='First sections').props.onClick());
-    await act(async()=>buttons.find(node=>node.children.join('')==='Next completed sections').props.onClick());
+    await act(async()=>buttons.find(node=>node.children.join('')==='Earlier days').props.onClick());
+    await act(async()=>buttons.find(node=>node.children.join('')==='Next days').props.onClick());
     assert.deepEqual(pages,[0,6]);
   }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
 });
@@ -155,7 +157,7 @@ test('review discloses actual section and request estimates without imposing a t
     const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');
     const form={...preferences,startDate:'2028-01-01',endDate:'2028-02-15'};
     const html=renderToStaticMarkup(React.createElement(Form,{form,step:2,onChange(){},adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12}}));
-    assert.match(html,/46-day trip starts with an estimated 16 sections/);assert.match(html,/up to 12 section requests/);assert.match(html,/Retries use this allowance/);assert.match(html,/dates stay unchanged/);assert.doesNotMatch(html,/1–14|maximum trip|30 days/);
+    assert.match(html,/46-day itinerary appears as days become ready/);assert.match(html,/up to 12 planning requests/);assert.match(html,/including retries/);assert.match(html,/dates and budget are not changed automatically/);assert.doesNotMatch(html,/1–14|maximum trip|30 days/);
     const paused=renderToStaticMarkup(React.createElement(Status,{state:state({plan:plan({status:'paused',pauseReason:'RESOURCE_ALLOWANCE_REACHED',remainingCreates:0,runAllowance:12})}),...actions}));
     assert.match(paused,/up to 12 more section requests/);assert.doesNotMatch(paused,/three more/);
     const invalid=renderToStaticMarkup(React.createElement(Form,{form,step:2,onChange(){},adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:Infinity}}));assert.doesNotMatch(invalid,/Infinity/);
@@ -184,7 +186,7 @@ test('storage pauses distinguish a full session from shared capacity and never i
   try{
     const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');
     const render=storagePauseScope=>renderToStaticMarkup(React.createElement(Status,{state:state({plan:plan({status:'paused',pauseReason:'STORAGE_LIMIT',storagePauseScope,expiresAt:'2028-12-31T00:00:00Z'})}),...actions}));
-    const own=render('plan');assert.match(own,/No further sections can be added in this session/);assert.match(own,/Completed sections remain available until/);assert.doesNotMatch(own,/Check capacity and continue|Continue planning/);
+    const own=render('plan');assert.match(own,/No further sections can be added in this session/);assert.match(own,/Finished days remain available until/);assert.doesNotMatch(own,/Check capacity and continue|Continue planning/);
     const shared=render('global');assert.match(shared,/Check capacity and continue/);assert.match(shared,/if it is still full, no new section request/);assert.match(shared,/allowance and dates are unchanged/);assert.doesNotMatch(shared,/Shorten|Increase your budget/);
   }finally{await server.close();}
 });
@@ -208,12 +210,12 @@ test('retained-plan downloads disclose partial scope and expiry without claiming
     const {default:Status}=await server.ssrLoadModule('/src/components/AdaptivePlanningStatus.jsx');let downloads=0;
     const props={state:state({plan:plan({status:'cancelled',expiresAt:'2028-12-31T00:00:00Z'})}),...actions,onExport:()=>downloads++};
     await act(async()=>{renderer=create(React.createElement(Status,props));});const text=JSON.stringify(renderer.toJSON());
-    assert.match(text,/Partial snapshot/);assert.match(text,/not just this page/);assert.match(text,/Unplanned days are not included/);assert.match(text,/24 hours, not saved as an account itinerary/);assert.match(text,/2028-12-31T00:00:00Z/);
-    const button=renderer.root.findAllByType('button').find(node=>node.children.join('')==='Download retained plan (.txt)');await act(async()=>button.props.onClick());assert.equal(downloads,1);
+    assert.match(text,/Partly planned itinerary/);assert.match(text,/not just this page/);assert.match(text,/Unplanned days are not included/);assert.match(text,/return to this temporary plan for 24 hours/);assert.match(text,/2028-12-31T00:00:00Z/);
+    const button=renderer.root.findAllByType('button').find(node=>node.children.join('')==='Download itinerary PDF');await act(async()=>button.props.onClick());assert.equal(downloads,1);
     await act(async()=>renderer.update(React.createElement(Status,{...props,exporting:true})));assert.equal(renderer.root.findAllByType('button').find(node=>node.children.join('')==='Preparing download…').props.disabled,true);
     await act(async()=>renderer.update(React.createElement(Status,{...props,exportError:'The download was interrupted. No file was saved.'})));assert.match(renderer.root.findByProps({role:'alert'}).children.join(''),/No file was saved/);
     for(const [status,completedDays,expected] of [['completed',24,true],['expired',3,false],['active',0,false]]){
-      const html=renderToStaticMarkup(React.createElement(Status,{...props,state:state({plan:plan({status,completedDays})})}));assert.equal(html.includes('Download retained plan (.txt)'),expected);if(expected)assert.match(html,/Full-date snapshot/);
+      const html=renderToStaticMarkup(React.createElement(Status,{...props,state:state({plan:plan({status,completedDays})})}));assert.equal(html.includes('Download itinerary PDF'),expected);if(expected)assert.match(html,/Full itinerary/);
     }
   }finally{if(renderer)await act(async()=>renderer.unmount());await server.close();}
 });

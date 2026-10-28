@@ -1,3 +1,5 @@
+import SampleItinerary from '../components/SampleItinerary.jsx';
+import { sampleTrip, samplePreferences } from '../data/sampleTrips.js';
 import AdaptiveSaveTrip from '../components/AdaptiveSaveTrip.jsx';
 import AdaptiveRevision from '../components/AdaptiveRevision.jsx';
 import { useDestinationTheme } from '../themes/DestinationTheme.jsx';
@@ -21,7 +23,7 @@ import { createPlanningJobsClient } from '../services/planningJobs.js';
 import { createPlanningJobController } from '../services/planningJobController.js';
 import { buildTripPayload, createInitialForm } from '../utils/tripPreferences.js';
 const emptyRead = { loading: false, error: '', result: null };
-export default function PlannerPage({ signedIn = false, jobsEnabled = false, jobClient, jobStorage, jobPollMs, adaptiveEnabled = false, adaptivePolicy = null, adaptiveClient, adaptiveStorage, adaptivePollMs, revisionClient, revisionStorage, revisionPollMs, adaptiveSavedTripsEnabled=false, adaptiveSaveClient, adaptiveSaveStorage }) {
+export default function PlannerPage({ initialSampleId = null, signedIn = false, jobsEnabled = false, jobClient, jobStorage, jobPollMs, adaptiveEnabled = false, adaptivePolicy = null, adaptiveClient, adaptiveStorage, adaptivePollMs, revisionClient, revisionStorage, revisionPollMs, adaptiveSavedTripsEnabled=false, adaptiveSaveClient, adaptiveSaveStorage }) {
   const reducedMotion = useReducedMotion();
   const useAdaptive = adaptiveEnabled === true && validAdaptivePolicy(adaptivePolicy) && signedIn;
   const useJobs = !useAdaptive && jobsEnabled && signedIn;
@@ -32,7 +34,9 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   const adaptiveRef = useRef(null), pendingRecovery = useRef(null);
   const [jobState,setJobState] = useState({loading:false,resumable:false,job:null,error:'',needsCheck:false});
   const jobRef = useRef(null);
-  const [step,setStep] = useState(0), [form,setForm] = useState(createInitialForm);
+  const [step,setStep] = useState(0), [form,setForm] = useState(()=>samplePreferences(initialSampleId));
+  const [sampleId,setSampleId]=useState(()=>sampleTrip(initialSampleId)?.id || null),[pendingSample,setPendingSample]=useState(null);
+  const [confirmRestart,setConfirmRestart]=useState(false),[restartRequested,setRestartRequested]=useState(false),[restartError,setRestartError]=useState('');
   useDestinationTheme(form.destination);
   const [fieldErrors,setFieldErrors] = useState({}), [generation,setGeneration] = useState(emptyRead);
   const [refinement,setRefinement] = useState(emptyRead), [edited,setEdited] = useState(false);
@@ -89,8 +93,36 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
     pendingRecovery.current=advice;void adaptiveRef.current?.cancel();
   }
   function clearResult({preserveRecovery=false}={}) { exportRef.current?.cancel(); if(!previousCompletedPlanId)adaptiveRef.current?.clear(); pendingRecovery.current=null; jobRef.current?.clear(); generationRef.current?.reset(); refinementRef.current?.reset(); setEdited(false); setFieldErrors({}); if(!preserveRecovery)setRecovery(null); }
-  function handleChange(event) { if(jobBusy)return;const {name,value}=event.target; clearResult({preserveRecovery:true}); setForm(current=>({...current,[name]:value})); }
-  function handleToggleInterest(id) { if(jobBusy)return;clearResult({preserveRecovery:true}); setForm(current=>({...current,interests:current.interests.includes(id)?current.interests.filter(item=>item!==id):[...current.interests,id]})); }
+  function applySample(id) {
+    if(jobBusy||revisionBusy||!sampleTrip(id))return;
+    if(useAdaptive&&!adaptiveRef.current?.clear()){setRestartError('Open or stop your existing trip before replacing these details.');return;}
+    clearResult();setForm(samplePreferences(id));setSampleId(id);setPendingSample(null);setStep(0);setViewingPreferences(true);
+  }
+  function chooseSample(id) {
+    if(jobBusy||revisionBusy)return;
+    if(form.destination||form.departureCity||form.startDate||generation.result||adaptiveActive)setPendingSample(id);
+    else applySample(id);
+  }
+  function finishRestart() {
+    const current=adaptiveRef.current?.snapshot();
+    if(useAdaptive&&!adaptiveRef.current?.clear())return false;
+    if(useJobs&&!jobRef.current?.clear())return false;
+    if(current?.plan?.status==='completed')setPreviousCompletedPlanId(current.plan.id);
+    exportRef.current?.cancel();generationRef.current?.reset();refinementRef.current?.reset();pendingRecovery.current=null;
+    setForm(createInitialForm());setStep(0);setFieldErrors({});setRecovery(null);setEdited(false);setSampleId(null);setPendingSample(null);setViewingPreferences(true);setConfirmRestart(false);setRestartRequested(false);setRestartError('');return true;
+  }
+  function restartFromFirst() {
+    if(revisionBusy||restartRequested)return;
+    setRestartError('');
+    if(adaptiveState.needsCheck||jobState.needsCheck){setRestartError('Check the current planning status first. Your existing trip has been kept.');return;}
+    if(adaptiveState.existingPlan||adaptiveState.discoveryPending){setRestartError('Open or stop the existing trip first. It has not been replaced.');return;}
+    if(useAdaptive&&adaptiveActive&&!['completed','cancelled','expired'].includes(adaptiveState.plan?.status)){setRestartRequested(true);void adaptiveRef.current?.cancel();return;}
+    if(useJobs&&jobActive&&!['succeeded','failed','cancelled','expired'].includes(jobState.job?.status)){setRestartRequested(true);void jobRef.current?.cancel();return;}
+    if(!finishRestart())setRestartError('Wait for the current status check to finish, then try again.');
+  }
+  useEffect(()=>{if(!restartRequested)return;const done=useAdaptive?['completed','cancelled','expired'].includes(adaptiveState.plan?.status)&&!adaptiveState.loading:useJobs?['succeeded','failed','cancelled','expired'].includes(jobState.job?.status)&&!jobState.loading:true;let current=true;if(done)queueMicrotask(()=>{if(current)finishRestart();});return()=>{current=false;};},[restartRequested,adaptiveState.plan?.status,adaptiveState.loading,jobState.job?.status,jobState.loading]);
+  function handleChange(event) { if(jobBusy)return;const {name,value}=event.target; clearResult({preserveRecovery:true}); setSampleId(null);setForm(current=>({...current,[name]:value})); }
+  function handleToggleInterest(id) { if(jobBusy)return;clearResult({preserveRecovery:true});setSampleId(null); setForm(current=>({...current,interests:current.interests.includes(id)?current.interests.filter(item=>item!==id):[...current.interests,id]})); }
   function validatedPayload() { const validation=buildTripPayload(form);const errors=validatePlannerStep(form,FINAL_STEP,{adaptiveEnabled:useAdaptive});const valid=validation.valid && !Object.keys(errors).length;setFieldErrors(errors);if(!valid){setStep(firstErrorStep(errors));setViewingPreferences(true);}return valid?validation.value:null; }
   function handleSubmit(event) { event.preventDefault(); if(step===FINAL_STEP)return;const next=nextPlannerStep(form,step,{adaptiveEnabled:useAdaptive});setFieldErrors(next.errors);setStep(next.step); }
   function handleGenerateItinerary() { if(jobBusy || step!==FINAL_STEP || generationRef.current?.isBusy() || refinementRef.current?.isBusy())return;const payload=validatedPayload();if(!payload){generationRef.current?.reset();refinementRef.current?.reset();return;}if(payload){refinementRef.current?.reset();setEdited(false);setViewingPreferences(false);if(useAdaptive){setGeneration(emptyRead);void adaptiveRef.current?.start(payload);}else if(useJobs){setGeneration(emptyRead);void jobRef.current?.start(payload);}else void generationRef.current?.submit(payload);} }
@@ -99,17 +131,20 @@ export default function PlannerPage({ signedIn = false, jobsEnabled = false, job
   return <motion.div className="page" initial={reducedMotion?false:{opacity:0}} animate={{opacity:1}} transition={{duration:reducedMotion?0:.2}}>
     <a className="skip-link" href="#trip-planner">Skip to trip planner</a>
     <SiteHeader showSavedTrips={signedIn}/>
+    <div className="planner-reset"><button type="button" className="back-btn" disabled={revisionBusy} onClick={()=>{setConfirmRestart(true);setRestartError('');}}>Start over</button></div>
+    {confirmRestart&&<section className="card planner-reset-dialog" aria-label="Confirm starting over"><h2>Start again from the first step?</h2><p>This clears the details on this screen. Account-saved trips are kept. {useAdaptive||useJobs?'Any current planning must stop before the new blank form opens.':'If a request was already sent, stopping this screen may not stop it processing.'} No new trip is generated automatically.</p>{restartError&&<p role="alert">{restartError}</p>}{restartRequested&&<p role="status">Waiting for confirmation that planning has stopped. If its status is uncertain, check it below before continuing.</p>}<div className="step-actions"><button className="preview-btn" disabled={restartRequested} onClick={()=>setConfirmRestart(false)}>Keep my trip</button><button className="generate-btn" disabled={restartRequested||revisionBusy} onClick={restartFromFirst}>{restartRequested?'Checking…':'Yes, start over'}</button></div></section>}
+    {pendingSample&&<section className="card planner-reset-dialog" aria-label="Replace draft with example"><h2>Try the {sampleTrip(pendingSample)?.city} example?</h2><p>This replaces your current draft settings with an example. Account-saved trips are unchanged; nothing is generated.</p><div className="step-actions"><button className="preview-btn" onClick={()=>setPendingSample(null)}>Keep my details</button><button className="generate-btn" disabled={jobBusy} onClick={()=>applySample(pendingSample)}>Load example settings</button></div></section>}
     <main id="trip-planner" ref={mainRef} tabIndex={-1} className={`layout journey-layout ${showPlan?'journey-layout--plan':''}`}>
       {showPlan && <div className="journey-toolbar"><span className="eyebrow">{form.destination}</span><button className="back-btn" disabled={refinement.loading || jobBusy} onClick={()=>{if(generation.loading)generationRef.current?.reset();setViewingPreferences(true);}}>← Trip preferences</button>{otherVersion&&<button className="preview-btn" disabled={jobBusy} onClick={()=>openRetainedVersion(otherVersion)}>{retainedVersions.indexOf(otherVersion)===0?'Open previous version':'Open newer version'}</button>}</div>}
       {!showPlan && <>
-        <DestinationDiscovery destination={form.destination} onSelect={destination=>handleChange({target:{name:'destination',value:destination}})} />
-        <div><PlannerForm adaptivePolicy={adaptivePolicy} adaptiveEnabled={useAdaptive} form={form} onChange={handleChange} onToggleInterest={handleToggleInterest} step={step} onSubmit={handleSubmit} onBack={()=>{setFieldErrors({});setStep(current=>Math.max(0,current-1));}} onGenerateItinerary={handleGenerateItinerary} itineraryLoading={generation.loading || jobBusy} loading={jobBusy} errors={fieldErrors} recovery={recovery} onDismissRecovery={()=>setRecovery(null)}/>
+        <DestinationDiscovery destination={form.destination} onSelect={chooseSample} disabled={jobBusy || revisionBusy}/>
+        <div>{sampleId&&<SampleItinerary sampleId={sampleId} onCustomize={()=>setStep(0)} onPreferences={()=>setStep(1)} onReview={()=>{if(validatedPayload())setStep(FINAL_STEP);}}/>}<PlannerForm adaptivePolicy={adaptivePolicy} adaptiveEnabled={useAdaptive} form={form} onChange={handleChange} onToggleInterest={handleToggleInterest} step={step} onSubmit={handleSubmit} onBack={()=>{setFieldErrors({});setStep(current=>Math.max(0,current-1));}} onGenerateItinerary={handleGenerateItinerary} itineraryLoading={generation.loading || jobBusy} loading={jobBusy} errors={fieldErrors} recovery={recovery} onDismissRecovery={()=>setRecovery(null)}/>
         {previousCompletedPlanId&&<button className="preview-btn return-to-plan" disabled={jobBusy} onClick={async()=>{const value=await adaptiveRef.current?.openCompleted(previousCompletedPlanId);if(value?.plan?.id===previousCompletedPlanId){setPreviousCompletedPlanId(null);setViewingPreferences(false);}}}>Return to the previous retained trip</button>}
         {(generation.result || adaptiveActive) && <button className="preview-btn return-to-plan" onClick={()=>setViewingPreferences(false)}>Return to your itinerary →</button>}</div>
       </>}
       <div className="results-wrap" aria-label="Trip results">
         {showPlan && adaptiveActive && <AdaptivePlanningStatus onResumeExisting={()=>{const result=adaptiveRef.current?.resumeExisting();if(result?.resumed)setViewingPreferences(false);}} onCancelExisting={()=>adaptiveRef.current?.cancelExisting()} {...exportState} onExport={()=>exportRef.current?.download(adaptiveState.plan?.id)} state={adaptiveState} researchEnabled={adaptivePolicy?.researchEnabled===true&&adaptivePolicy?.researchMode==='on_demand'} destination={form.destination} onCheck={()=>adaptiveRef.current?.check()} onCancel={()=>{pendingRecovery.current=null;void adaptiveRef.current?.cancel();}} onContinue={()=>adaptiveRef.current?.continue()} onRetry={()=>adaptiveRef.current?.retry()} onRetryResearch={()=>adaptiveRef.current?.retryResearch()} onLoadPage={cursor=>adaptiveRef.current?.loadPage(cursor)} onEditPreferences={reviewAdaptiveChanges} onNewPlan={()=>{if(adaptiveRef.current?.clear()){setGeneration(emptyRead);setViewingPreferences(true);}}}/> }
-        {showPlan && adaptiveActive && !adaptiveState.existingPlan && <GroundedPlanningProgress research={adaptiveState.research} draft={adaptiveState.draft} currency={adaptiveState.draft?.currency} sectionStart={adaptiveState.draft?.sectionStart} sectionEnd={adaptiveState.draft?.sectionEnd}/>}
+        {showPlan && adaptiveActive && !adaptiveState.existingPlan && <GroundedPlanningProgress tripStart={adaptiveState.preferences?.startDate} research={adaptiveState.research} draft={adaptiveState.draft} currency={adaptiveState.draft?.currency} sectionStart={adaptiveState.draft?.sectionStart} sectionEnd={adaptiveState.draft?.sectionEnd}/>}
         {showPlan && adaptiveActive && !adaptiveState.existingPlan && adaptiveState.plan?.status==='completed' && <AdaptiveSaveTrip key={`${adaptiveState.plan.id}:${adaptiveState.plan.version}`} plan={adaptiveState.plan} preferences={adaptiveState.preferences} enabled={adaptiveSavedTripsEnabled===true} client={adaptiveSaveClient} storage={adaptiveSaveStorage} onDownload={()=>exportRef.current?.download(adaptiveState.plan.id)} downloading={exportState.exporting}/>}
         {showPlan && adaptiveActive && adaptiveState.plan?.status==='completed' && adaptivePolicy?.selectedDayRevisions===true && <AdaptiveRevision key={adaptiveState.plan.id} plan={adaptiveState.plan} preferences={adaptiveState.preferences} client={revisionClient} storage={revisionStorage} pollMs={revisionPollMs} onController={controller=>{revisionControllerRef.current=controller;}} onBusyChange={setRevisionBusy} onOpenPlan={openRetainedVersion} onEditWholeTrip={()=>{if(adaptiveRef.current?.prepareNewVersion()){setPreviousCompletedPlanId(adaptiveState.plan.id);setStep(0);setRecovery(null);setViewingPreferences(true);}}}/>}
         {showPlan && !adaptiveActive && jobWaiting && <PlanningJobStatus state={jobState} destination={form.destination} onCheck={()=>jobRef.current?.check()} onCancel={()=>jobRef.current?.cancel()} onNewPlan={()=>{jobRef.current?.clear();setGeneration(emptyRead);setViewingPreferences(true);}}/>}

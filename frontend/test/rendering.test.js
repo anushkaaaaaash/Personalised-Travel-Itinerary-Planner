@@ -186,10 +186,10 @@ test('real AI itinerary displays days, budget warnings and local export without 
   const { default: GeneratedItinerary } = await server.ssrLoadModule('/src/components/GeneratedItinerary.jsx');
   const result = { source: 'ai', saved: false, status: 'planned', destination: 'Kyoto <script>', provider: 'fixture', model: 'test', currency: 'USD', travelPace: 'balanced', explanation: 'Plan', warnings: ['Verify prices'], estimatedTotalGroupCost: 100, remainingBudget: 200, days: [{ date: '2028-01-01', mainActivityCount: 2, morning: '<img src=x>', afternoon: 'Garden', evening: 'Rest', dining: 'Dinner', transitAndRest: 'Breaks', dietaryNotes: 'Check menu', mobilityNotes: 'Check stairs', costs: { accommodation: 40, meals: 20, localTransport: 10, activities: 20, departureTravel: 10 } }] };
   const html = render(GeneratedItinerary, { result });
-  for (const text of ['Your next chapter', 'Day 1', 'Your estimated budget', 'USD 100', 'USD 200', 'Download summary', 'Print / save PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
+  for (const text of ['Your next chapter', 'Day 01', 'Your estimated budget', 'USD 100', 'USD 200', 'Download itinerary PDF', 'Verify prices', '&lt;img src=x&gt;']) assert.ok(html.includes(text), text);
   assert.ok(!html.includes('Trip preferences saved'));
   const failed = render(GeneratedItinerary, { result, error: 'Not configured', onRetry() {} });
-  assert.ok(!failed.includes('Day 1')); assert.ok(failed.includes('Try again'));
+  assert.ok(!failed.includes('Day 01')); assert.ok(failed.includes('Try again'));
   const infeasible = render(GeneratedItinerary, { result: { ...result, status: 'infeasible', days: [] } });
   assert.ok(infeasible.includes('Try adjusting your budget')); assert.ok(!infeasible.includes('Download itinerary JSON'));
 });
@@ -273,7 +273,7 @@ test('coordinate confirmation is per stop, unchecked, explicit and not a claim o
 
 test('consumer discovery removes technical imports and keeps a single build action',()=>{
   const html=render(PlannerPage);
-  for(const text of ['Follow your','Roamora','Kyoto','Goa','Paris','name="destination"'])assert.ok(html.includes(text),text);
+  for(const text of ['Follow your','Personalised','Kyoto','Goa','Paris','name="destination"'])assert.ok(html.includes(text),text);
   for(const text of ['Import itinerary','JSON','AI','not saved','Save trip preferences','Sample preview'])assert.ok(!html.includes(text),text);
   const review=render(PlannerForm,{...formHandlers,form:createInitialForm(),step:2});
   assert.equal((review.match(/Build my trip/g)||[]).length,1);

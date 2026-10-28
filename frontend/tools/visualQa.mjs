@@ -182,6 +182,22 @@ try {
   for(const width of [1440,390,320]){
     const {page,context}=await newPage({width,production:true});await page.goto(origin);await page.locator('input[type=email]').waitFor();await noOverflow(page,`welcome-${width}`);await snapshot(page,`welcome-${width}`);await context.close();
   }
+  findings.instantSamples=[];
+  for(const width of [1440,390,320]) {
+    const {page,context,generationRequests}=await newPage({width,production:true});
+    await page.goto(origin);await page.locator('input[type=email]').waitFor();
+    await page.getByRole('button',{name:/France Paris/}).click();await settleTheme(page,'FR');
+    await page.getByRole('region',{name:'Paris prewritten sample itinerary'}).waitFor();
+    assert.equal(generationRequests.length,0);await noOverflow(page,`instant-public-sample-${width}`);await snapshot(page,`instant-public-sample-${width}`);
+    await page.getByRole('button',{name:'Use this example',exact:true}).click();await page.getByText('Example selected. Sign in below to choose your dates and personalise it.',{exact:true}).waitFor();
+    await page.locator('input[type=email]').fill('traveler@example.test');await page.locator('input[type=password]').fill('synthetic-test-only');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+    await page.locator('input[name=destination]').waitFor();assert.equal(await page.locator('input[name=destination]').inputValue(),'Paris, France');assert.equal(await page.locator('input[name=startDate]').inputValue(),'');await settleTheme(page,'FR');
+    await page.getByRole('button',{name:'Adjust preferences',exact:true}).click();await page.getByRole('heading',{name:/Step 2/}).waitFor();assert.equal(await page.locator('input[name=budget]').inputValue(),'1000');
+    await noOverflow(page,`instant-prefilled-sample-${width}`);await snapshot(page,`instant-prefilled-sample-${width}`);
+    await page.getByRole('button',{name:'Start over',exact:true}).click();await noOverflow(page,`restart-confirmation-${width}`);await snapshot(page,`restart-confirmation-${width}`);
+    await page.getByRole('button',{name:'Keep my trip',exact:true}).click();assert.equal(await page.locator('input[name=budget]').inputValue(),'1000');
+    await page.getByRole('button',{name:'Start over',exact:true}).click();await page.getByRole('button',{name:'Yes, start over',exact:true}).click();await page.getByRole('heading',{name:/Step 1/}).waitFor();assert.equal(await page.locator('input[name=destination]').inputValue(),'');assert.equal(generationRequests.length,0);await settleTheme(page,'WORLD');findings.instantSamples.push(width);await context.close();
+  }
   for(const status of ['verified','unverified','unavailable']) {
     const {page,context}=await newPage({width:390,production:true,confirmation:status});
     await page.goto(`${origin}/#access_token=synthetic-confirmation-token&refresh_token=synthetic-refresh&type=signup&token_type=bearer`);

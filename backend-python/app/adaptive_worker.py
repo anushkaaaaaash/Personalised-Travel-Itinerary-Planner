@@ -21,7 +21,7 @@ _logger = logging.getLogger('uvicorn.error')
 def _timing(phase, seconds, *, status=None):
     """Aggregate timings only: no request IDs, preferences, outputs or error text."""
     try:
-        if type(phase) is not str or phase not in {'create_ack', 'provider_wait', 'validation'}:
+        if type(phase) is not str or phase not in {'create_ack', 'provider_wait', 'validation', 'research_create_ack', 'research_provider_wait', 'research_validation'}:
             return
         if type(seconds) not in (int, float) or not math.isfinite(seconds):
             return
@@ -145,7 +145,12 @@ class AdaptivePlanningWorker:
             if checkpoint.get('status') == 'needs_research':
                 if self.research_request is None:
                     return await self._transition(section,'failed',error_code='SECTION_RESEARCH_UNAVAILABLE')
-                return await self.research_request(section,checkpoint['kind'])
+                result = await self.research_request(section,checkpoint['kind'])
+                # Only a confirmed durable handoff can bypass the normal poll delay.
+                # This does not replay a create or bypass research admission limits.
+                self.immediate_followup = (type(result) is dict and result.get('id') == section['id']
+                    and result.get('status') == 'failed' and result.get('error_code') == 'SECTION_RESEARCH_REQUESTED')
+                return result
             if checkpoint.get('status') == 'needs_changes':
                 return await self._transition(section, 'failed', error_code='SECTION_CONSTRAINT_CONFLICT',
                     failure_details={k: checkpoint[k] for k in ('applicability','explanation','recommendations')})
@@ -162,7 +167,8 @@ class AdaptivePlanningWorker:
 
 
     async def _create_stream(self, section, system, user, schema):
-        stop = monotonic()+30
+        started = monotonic()
+        stop = started+30
         stream = self.client.create_stream(system,user,schema)
         try:
             try:
@@ -176,7 +182,9 @@ class AdaptivePlanningWorker:
                 ambiguous = getattr(error,'ambiguous_create',True)
                 return await self._transition(section,'submission_unknown' if ambiguous else 'failed',
                     error_code='SECTION_SUBMISSION_UNCONFIRMED' if ambiguous else 'SECTION_PROVIDER_REJECTED')
+            acknowledged = monotonic()
             section = await self._transition(section,'running',provider_response_id=first.response_id)
+            _timing('create_ack', acknowledged-started)
             section = await self.repository.claim(section['user_id'],section['id'],self.worker_id)
             state = await self.preview_store.load(section['user_id'],section['plan_id'],section['id'],section['lease_token'],section['version'])
             return await self._consume_stream(section,stream,state,first=first,stop=stop)

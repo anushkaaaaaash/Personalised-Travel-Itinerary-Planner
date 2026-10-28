@@ -1,3 +1,5 @@
+import PlanningWaitGuidance from './PlanningWaitGuidance.jsx';
+import {tripDayLabel,visibleDayRange} from '../utils/dayLabels.js';
 import AdaptiveCostSummary from './AdaptiveCostSummary.jsx';
 import { COST_LABELS } from '../services/itineraries.js';
 import { useId, useState } from 'react';
@@ -105,21 +107,22 @@ function ExistingPlanningRecovery({state,onResumeExisting,onCancelExisting,onChe
   </section>;
 }
 
-function CompletedSection({section,currency}) {
+function CompletedSection({section,currency,tripStart}) {
   const itinerary=section.checkpoint.itinerary;
-  return <section className="card adaptive-section" aria-label={`Completed section ${section.sequence}`}>
-    <header><p className="eyebrow">Completed section {section.sequence}</p><h3><time dateTime={section.startDate}>{section.startDate}</time> – <time dateTime={section.endDate}>{section.endDate}</time></h3>
-      <p>{section.checkpoint.startLocation} → {section.checkpoint.endLocation}</p><p className="hint">Section estimate · {money(currency,section.checkpoint.spentCents)} for the whole group. Check prices and availability before booking.</p>
-    </header>
-    {itinerary.explanation && <p>{itinerary.explanation}</p>}
-    <details className="secondary-tools"><summary>Section expense breakdown</summary><p className="hint">This section only · estimated costs for the whole group.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,itinerary.days.reduce((total,day)=>total+Math.round(day.costs[key]*100),0))}</span></li>)}</ul></details>
-    {itinerary.warnings.length>0 && <details className="practical-checks"><summary>Things to check for this section</summary><ul>{itinerary.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></details>}
-    {itinerary.days.map(day=><details className="adaptive-day" key={day.date}>
-      <summary><time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
+  return <section className="adaptive-day-group" aria-label={`Trip days ${section.startDate} to ${section.endDate}`}>
+    {itinerary.days.map((day,index)=><details className="card adaptive-day" key={day.date}>
+      <summary><strong>{tripDayLabel(day.date,tripStart)}</strong> · <time dateTime={day.date}>{day.date}</time> · {day.mainActivityCount} main activities</summary>
       <ol className="activity-list timeline">{day.activities.map(activity=><li key={activity.id}><div className="activity-meta"><time>{activity.startTime}</time><span>{activity.durationMinutes} min</span>{activity.fixedTime&&<span className="tag">Fixed time</span>}</div><strong>{activity.title}</strong><p>{activity.notes}</p></li>)}</ol>
       <div className="day-notes"><p><strong>Dining</strong><br/>{day.dining}</p><p><strong>Getting around & taking a break</strong><br/>{day.transitAndRest}</p><p><strong>Dietary arrangements · confirm with venues</strong><br/>{day.dietaryNotes}</p><p><strong>Access · confirm with venues</strong><br/>{day.mobilityNotes}</p></div>
       <details className="secondary-tools"><summary>Day outline</summary><p><strong>Morning</strong><br/>{day.morning}</p><p><strong>Afternoon</strong><br/>{day.afternoon}</p><p><strong>Evening</strong><br/>{day.evening}</p></details>
       <details className="secondary-tools"><summary>Day expense breakdown</summary><p className="hint">Estimated costs for the whole group, not per person.</p><ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,Math.round(day.costs[key]*100))}</span></li>)}</ul></details>
+      {index===0&&<details className="secondary-tools"><summary>Route &amp; costs · {section.startDate} to {section.endDate}</summary>
+      <p>{section.checkpoint.startLocation} → {section.checkpoint.endLocation}</p>
+      <p className="hint">Estimate for these dates · {money(currency,section.checkpoint.spentCents)} for the whole group.</p>
+      {itinerary.explanation && <p>{itinerary.explanation}</p>}
+      <ul className="budget-list">{Object.entries(COST_LABELS).map(([key,label])=><li key={key}><span>{label}</span><span>{money(currency,itinerary.days.reduce((total,day)=>total+Math.round(day.costs[key]*100),0))}</span></li>)}</ul>
+      {itinerary.warnings.length>0 && <><h3>Things to check</h3><ul>{itinerary.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></>}
+    </details>}
     </details>)}
   </section>;
 }
@@ -137,13 +140,14 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   const withResearch=researchEnabled===true||Boolean(state.research);
   const uncertain=state.needsCheck || plan?.activeSection?.status==='submission_unknown' || plan?.pauseReason==='SUBMISSION_UNKNOWN';
   const busy=state.loading || state.cancelling;
+  const activeWait=plan?.status==='active'&&!uncertain&&!state.error&&state.research?.status!=='submission_unknown';
   const hasSession=Boolean(plan || state.resumable);
   const pauseReason=pauseCategory(plan);
   const requestRecovery=adaptiveRequestRecovery(state.errorCode);
   const needsBudgetEdit=!hasSession&&state.errorCode==='SECTION_MONEY_INVALID';
   const queryInvalid=plan?.status==='paused'&&plan.pauseReason==='RESEARCH_FAILED'&&state.research?.errorCode==='RESEARCH_QUERY_INVALID';
   const recovery=queryInvalid?researchQueryRecovery():needsBudgetEdit?requestRecovery:adaptiveRecovery(plan);
-  if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.discoveryPending?'Checking for an unfinished trip…':state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.discoveryPending?'Looking for a retained plan in your account. No new plan is being started.':state.cancelling?'Stopping planning…':'Your full date range will be planned in small sections.'} onCancel={state.discoveryPending||busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
+  if(!plan && !uncertain && !state.error) return <DestinationLoading destination={state.preferences?.destination || destination} title={state.discoveryPending?'Checking for an unfinished trip…':state.resumable?'Picking up your trip…':'Starting your trip plan…'} status={state.discoveryPending?'Looking for a retained plan in your account. No new plan is being started.':state.cancelling?'Stopping planning…':'Your dated itinerary will appear here as it is ready.'} onCancel={state.discoveryPending||busy&&state.cancelling?undefined:onCancel} cancelLabel="Stop planning"/>;
   const allowancePause=plan?.status==='paused' && (pauseReason==='RESOURCE_ALLOWANCE_REACHED' || (pauseReason==='SECTION_FAILED'&&plan.remainingCreates===0) || (pauseReason==='RESEARCH_ALLOWANCE_REACHED'&&state.research&&!['submitting','running','submission_unknown'].includes(state.research.status)));
   const researchNeedsCheck=plan?.status==='paused'&&pauseReason==='RESEARCH_FAILED'&&state.research?.status==='failed'&&(plan.remainingCreates<1||state.research.toolCallsReserved>4);
   const canRetryResearch=plan?.status==='paused'&&pauseReason==='RESEARCH_FAILED'&&state.research?.status==='failed'&&state.research.errorCode!=='RESEARCH_QUERY_INVALID'&&plan.remainingCreates>0&&state.research.toolCallsReserved<=4;
@@ -153,9 +157,9 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   const canReview=queryInvalid || needsBudgetEdit || plan?.status==='paused' && ['CONSTRAINT_CONFLICT','BUDGET_EXHAUSTED'].includes(pauseReason);
   const expired=plan?.status==='expired';
   const currency=state.preferences?.currency || 'USD';
-  let title='Your trip is taking shape.', message='Planning the next section. Completed sections below are ready to review; the rest of the trip is not finished yet.';
-  if(plan?.status==='completed'){title='Your full date range is planned.';message='All requested days have a completed plan. Browse the sections below and check current prices and availability before booking.';}
-  else if(plan?.status==='cancelled'){title='Planning has stopped.';message='No further sections will be created for this plan. The completed sections below are retained as estimates, not verified bookings.';}
+  let title='Your trip is taking shape.', message='Planning your next days. You can explore the finished days below while you wait.';
+  if(plan?.status==='completed'){title='Your trip is ready.';message='Explore your day-by-day itinerary below.';}
+  else if(plan?.status==='cancelled'){title='Planning has stopped.';message='Planning has stopped. Your finished days are still available below.';}
   else if(expired){title='This planning session has expired.';message='These checkpoints are no longer available here. Return to your trip details to decide what to do next.';}
   else if(uncertain || state.error){title=requestRecovery.title;message=requestRecovery.message;}
   else if(allowancePause){title='Ready for the next part?';message=withResearch?'This run has reached a research or model-request allowance. Your full dates and completed sections are kept. Continuing requires your confirmation of another bounded run.':`This batch has reached its planning-request allowance. Your full trip dates are kept. ${Number.isSafeInteger(plan.runAllowance)&&plan.runAllowance>=1&&plan.runAllowance<=12?`Continue only when you want to allow up to ${plan.runAllowance} more section requests.`:'Continue only when you want to allow another bounded batch of section requests.'}`;}
@@ -163,13 +167,15 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   else if(queryInvalid){title=recovery.title;message=recovery.message;}
   else if(plan?.status==='paused'&&['RESEARCH_FAILED','RESEARCH_SUBMISSION_UNKNOWN','RESEARCH_ALLOWANCE_REACHED'].includes(plan.pauseReason)){title='Research needs attention.';message='This part of the trip is waiting for usable research. See the research status below. Your dates, budget and completed sections have not been changed.';}
   else if(plan?.status==='paused'){title=recovery.title;message=recovery.message;}
-  else if(['queued','submitting','running'].includes(state.research?.status)){title='Researching your journey.';message='Looking for source information before planning the next section. Any completed sections below remain available.';}
-  return <section className="adaptive-planning" aria-label="Section-by-section trip planning">
+  else if(['queued','submitting','running'].includes(state.research?.status)){title='Researching your journey.';message='Checking travel details for your next days. Your finished days remain available below.';}
+  return <section className="adaptive-planning" aria-label="Day-by-day trip planning">
     <article className="card adaptive-progress"><p className="eyebrow">{state.preferences?.destination || destination || 'Your trip'}</p><h2>{state.cancelling?'Stopping planning…':title}</h2>
       <p role="status">{plan?.status==='paused'&&'Planning is paused. '}{message}</p>
       {state.preferences&&<p className="hint">Your full trip · <time dateTime={state.preferences.startDate}>{state.preferences.startDate}</time> to <time dateTime={state.preferences.endDate}>{state.preferences.endDate}</time></p>}
-      {plan?.pauseReason==='STORAGE_LIMIT'&&Number.isFinite(Date.parse(plan.expiresAt))&&<p className="hint">Completed sections remain available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</p>}
-      {!expired&&Number.isSafeInteger(plan?.totalDays)&&plan.totalDays>0&&<div className="adaptive-progress__count"><strong>{plan.completedDays} of {plan.totalDays} days planned</strong><progress aria-label="Days with completed plans" max={plan.totalDays} value={plan.completedDays}/><p className="hint">Only completed sections count toward this total—not time spent waiting.</p></div>}
+      {plan?.pauseReason==='STORAGE_LIMIT'&&Number.isFinite(Date.parse(plan.expiresAt))&&<p className="hint">Finished days remain available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</p>}
+      {!expired&&Number.isSafeInteger(plan?.totalDays)&&plan.totalDays>0&&<div className="adaptive-progress__count"><strong>{plan.completedDays} of {plan.totalDays} days planned</strong><progress aria-label="Days with completed plans" max={plan.totalDays} value={plan.completedDays}/></div>}
+      {plan&&<PlanningWaitGuidance key={plan.id} planId={plan.id} totalDays={plan.totalDays} expiresAt={plan.expiresAt} active={activeWait}/>}
+      {plan&&<div hidden={!activeWait}><DestinationLoading key={`notes-${plan.id}`} notesOnly embedded active={activeWait} destination={state.preferences?.destination || destination}/></div>}
       {!expired&&plan&&<AdaptiveCostSummary plan={plan} currency={currency} travelers={state.preferences?.travelers}/>}
       {canReview&&recovery.proposed&&<p className="hint">These are planning suggestions to review, not verified prices, availability or travel restrictions.</p>}
       {canReview&&recovery.recommendations.length>0&&<ul className="recovery-recommendations">{recovery.recommendations.map((item,index)=><li key={`${item.field}-${index}`}><strong>{item.suggestion}</strong>{item.reason&&<p>{item.reason}</p>}</li>)}</ul>}
@@ -187,13 +193,13 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
         {(terminal(plan?.status)||!hasSession)&&onNewPlan&&<button className="preview-btn" disabled={busy} onClick={onNewPlan}>Back to trip details</button>}
       </div>
       {!expired&&plan?.completedDays>0&&onExport&&<section className="adaptive-export" aria-label="Download retained trip snapshot" aria-busy={exporting}>
-        <p className="hint"><strong>{plan.completedDays===plan.totalDays?'Full-date snapshot.':'Partial snapshot.'}</strong> Download all retained completed sections, not just this page.{plan.completedDays<plan.totalDays&&' Unplanned days are not included.'} These are planning estimates, not bookings.</p>
-        <p className="hint">This temporary plan is kept for 24 hours, not saved as an account itinerary.{Number.isFinite(Date.parse(plan.expiresAt))&&<> Download before <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</>}</p>
-        <button type="button" className="preview-btn" disabled={exporting} onClick={onExport}>{exporting?'Preparing download…':'Download retained plan (.txt)'}</button>
+        <p className="hint"><strong>{plan.completedDays===plan.totalDays?'Full itinerary.':'Partly planned itinerary.'}</strong> Includes every finished day, not just this page.{plan.completedDays<plan.totalDays&&' Unplanned days are not included.'}</p>
+        <p className="hint">You can return to this temporary plan for 24 hours. Save the finished trip to keep it in your account.{Number.isFinite(Date.parse(plan.expiresAt))&&<> Download before <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</>}</p>
+        <button type="button" className="preview-btn" disabled={exporting} onClick={onExport}>{exporting?'Preparing download…':'Download itinerary PDF'}</button>
         {exportError&&<p role="alert" className="field-error">{exportError}</p>}
       </section>}
     </article>
-    {(state.sections || []).slice(0,3).map(section=><CompletedSection key={section.id} section={section} currency={currency}/>)}
-    {onLoadPage&&(!!state.sections?.length||state.pageCursor>0||state.nextCursor!==null&&state.nextCursor!==undefined)&&<nav className="adaptive-pages" aria-label="Completed section pages"><span className="hint">Showing {Math.min(state.sections?.length||0,3)} completed {state.sections?.length===1?'section':'sections'}.</span>{state.pageCursor>0&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(0)}>First sections</button>}{state.nextCursor!==null&&state.nextCursor!==undefined&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(state.nextCursor)}>Next completed sections</button>}</nav>}
+    {(state.sections || []).slice(0,3).map(section=><CompletedSection key={section.id} section={section} currency={currency} tripStart={state.preferences?.startDate}/>)}
+    {onLoadPage&&(!!state.sections?.length||state.pageCursor>0||state.nextCursor!==null&&state.nextCursor!==undefined)&&<nav className="adaptive-pages" aria-label="Completed day pages"><span className="hint">{visibleDayRange(state.sections,state.preferences?.startDate)}</span>{state.pageCursor>0&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(0)}>Earlier days</button>}{state.nextCursor!==null&&state.nextCursor!==undefined&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(state.nextCursor)}>Next days</button>}</nav>}
   </section>;
 }

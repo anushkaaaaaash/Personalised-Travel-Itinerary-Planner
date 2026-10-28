@@ -40,7 +40,9 @@ def event(seq,text=None,kind=None):
     return OutputStreamUpdate('resp_private',seq,kind or ('text_delta' if text is not None else 'created'),text)
 
 
-def test_create_persists_id_then_draft_before_acceptance(tmp_path,payload,generated):
+def test_create_persists_id_then_draft_before_acceptance(tmp_path,payload,generated,caplog):
+    import logging
+    caplog.set_level(logging.INFO,logger="uvicorn.error")
     path=tmp_path/'q.sqlite';clock=[1800000000.0]
     AdaptiveSQLiteGateway(path,enabled=True,initialize=True);upgrade_research_schema(path,approved=True)
     g=ResearchSQLiteGateway(path,enabled=True,clock=lambda:clock[0]);r=SectionCheckpointRepository(g,enabled=True)
@@ -52,6 +54,10 @@ def test_create_persists_id_then_draft_before_acceptance(tmp_path,payload,genera
     assert result['stream_cursor']==1 and result['stream_output_text']==text
     assert len(result['stream_preview']['days'])==1 and not result['stream_preview']['accepted']
     assert result['lease_token'] is None and client.creates==1 and client.closed==1
+    timings=[json.loads(record.message.split(': ',1)[1]) for record in caplog.records if record.message.startswith('Adaptive timing:')]
+    assert len(timings)==1 and timings[0]['phase']=='create_ack'
+    assert set(timings[0])=={'phase','elapsed_ms'}
+    assert 'resp_private' not in caplog.text
     assert run(r.get_plan(p['user_id'],p['id']))['completed_days']==0
     client.events=[event(2,']}}'),event(3,kind='terminal')]
     run(worker(r,g,client,clock).tick())
