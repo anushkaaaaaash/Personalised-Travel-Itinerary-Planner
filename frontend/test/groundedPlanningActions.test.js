@@ -29,7 +29,8 @@ test('known research failure has precise retry cost and never preference blame o
 });
 test('review states on-demand research, bounded allowances and real provisional semantics',()=>{
   const html=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:policy}));
-  assert.match(html,/Research is used when needed/);assert.doesNotMatch(html,/one for research|first research request/);assert.match(html,/up to 12 planning requests/);assert.match(html,/6 searches/);assert.match(html,/8-minute time limit/);assert.match(html,/labelled Draft until checked/);
+  assert.match(html,/Research is used when needed/);assert.doesNotMatch(html,/one for research|first research request/);assert.match(html,/up to 12 planning requests/);assert.match(html,/6 searches/);assert.match(html,/up to 8 minutes while available/);assert.match(html,/labelled Draft until checked/);
+  const longer=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{...policy,responseDeadlineMinutes:30}}));assert.match(longer,/up to 30 minutes while available/);assert.match(longer,/service limits may stop it sooner/);assert.match(longer,/recoverable planning response may retry once using the current allowance/);
   const noPreview=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{...policy,provisionalDayPreviews:false}}));assert.doesNotMatch(noPreview,/Early previews are labelled/);
   const legacy=renderToStaticMarkup(React.createElement(Form,{form:groundedPreferences,step:2,adaptiveEnabled:true,adaptivePolicy:{sectionDays:3,maxSubmissionsPerRun:12}}));assert.match(legacy,/12 planning requests/);assert.doesNotMatch(legacy,/search\/tool requests|about 4 model requests|8-minute time limit/);
 });
@@ -44,4 +45,16 @@ test('deterministic public-query rejection offers only targeted place-field revi
  try{await act(async()=>{renderer=create(React.createElement(Status,{state:state(body),onRetryResearch:()=>assert.fail('no retry'),onEditPreferences:value=>{advice=value;}}));});const text=JSON.stringify(renderer.toJSON());assert.match(text,/place-name format check/);assert.doesNotMatch(text,/Retry research|increase your budget|shorten your trip/);
  const button=renderer.root.findAllByType('button').find(node=>node.children.join('')==='Stop planning and review changes');await act(async()=>button.props.onClick());assert.equal(advice.editStep,0);assert.deepEqual(advice.recommendations.map(item=>item.field),['destination','departureCity']);assert.equal(advice.retryable,false);
  }finally{if(renderer)await act(async()=>renderer.unmount());}
+});
+
+test('bounded reconnect keeps completed-day context without prompting another retry mid-recovery',()=>{
+ const body=groundedPage({status:'succeeded'}),value={...state(body),needsCheck:true,reconnecting:true,error:'unavailable',errorCode:'ADAPTIVE_UNAVAILABLE'};
+ const html=renderToStaticMarkup(React.createElement(Status,{state:value,onCheck(){},onCancel(){},onRetry(){}}));assert.match(html,/Reconnecting to your trip/);assert.match(html,/checking this same trip automatically/);assert.match(html,/3 of 9 days planned/);assert.doesNotMatch(html,/>Check planning status<|>Try this section again</);
+ const ended=renderToStaticMarkup(React.createElement(Status,{state:{...value,reconnecting:false},onCheck(){}}));assert.match(ended,/>Check planning status</);
+});
+test('exhausted automatic recovery and unavailable response have honest fixed guidance',()=>{
+ for(const code of ['SECTION_AUTO_RETRYABLE_FAILURE','SECTION_AUTO_RETRYABLE_INCOMPLETE','SECTION_RESPONSE_UNAVAILABLE']){
+  const body=groundedPage({status:'failed'});body.research=null;body.plan.pauseReason='SECTION_FAILED';body.plan.activeSection={id:'33333333-3333-4333-8333-333333333333',status:'failed',errorCode:code,failureDetails:null};
+  const html=renderToStaticMarkup(React.createElement(Status,{state:state(body),onRetry(){},onCheck(){}}));assert.match(html,/Planning is paused/);assert.match(html,code==='SECTION_RESPONSE_UNAVAILABLE'?/no longer available/:/Automatic recovery/);assert.doesNotMatch(html,/Reconnecting to your trip|increase your budget|shorten your trip/);
+ }
 });

@@ -28,7 +28,7 @@ test('transport preserves optional public context without triggering another req
 });
 
 test('research capability requires the exact bounded public policy and eight-minute response limit',()=>{
- const policy={sectionDays:3,maxSubmissionsPerRun:12,researchEnabled:true,maxWebSearchCalls:6,researchMode:'on_demand',provisionalDayPreviews:true,responseDeadlineMinutes:8};assert.equal(validAdaptivePolicy(policy),true);
+ const policy={sectionDays:3,maxSubmissionsPerRun:12,researchEnabled:true,maxWebSearchCalls:6,researchMode:'on_demand',provisionalDayPreviews:true,responseDeadlineMinutes:8};assert.equal(validAdaptivePolicy(policy),true);assert.equal(validAdaptivePolicy({...policy,responseDeadlineMinutes:30}),true);assert.equal(validAdaptivePolicy({...policy,responseDeadlineMinutes:15}),false);
  for(const patch of [{maxWebSearchCalls:7},{maxWebSearchCalls:undefined},{researchMode:'always'},{provisionalDayPreviews:'true'},{responseDeadlineMinutes:undefined},{researchEnabled:'true'}])assert.equal(validAdaptivePolicy({...policy,...patch}),false);
  assert.equal(validAdaptivePolicy({sectionDays:3,maxSubmissionsPerRun:12}),true);
 });

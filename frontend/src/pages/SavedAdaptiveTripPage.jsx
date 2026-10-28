@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Link,useParams} from 'react-router-dom';
 import SiteHeader from '../components/SiteHeader.jsx';
 import {createSavedAdaptiveClient} from '../services/savedAdaptiveTrips.js';
+import {readContinuousDays,continuousDaysMessage} from '../services/continuousTripDays.js';
 import {getSession,subscribeSession} from '../services/session.js';
 import {COST_LABELS} from '../services/itineraries.js';
 import {researchSourceUrl} from '../services/groundedPlanning.js';
@@ -48,19 +49,30 @@ function SavedSection({section,currency,tripStart}) {
 export function SavedAdaptiveTripReader({tripID,client}) {
   const fallback=useRef(null);if(!fallback.current)fallback.current=createSavedAdaptiveClient();
   const api=client || fallback.current,scope=useRef(null);
-  const [state,setState]=useState({page:null,cursor:0,retryCursor:0,busy:false,error:'',signedOut:false});
+  const [state,setState]=useState({page:null,busy:false,error:'',signedOut:false});
   const [deletion,setDeletion]=useState('idle');
   useDestinationTheme(state.page?.saved.destination || '');
-  async function load(cursor=0) {
+  async function load() {
     const current=scope.current;
     if(!current||current.disposed||current.active||getSession()!==current.session)return;
     const controller=new AbortController();current.active=controller;current.confirmVersion=null;
-    setState(previous=>({...previous,busy:true,error:'',retryCursor:cursor}));
+    const valid=()=>scope.current===current&&!current.disposed&&!controller.signal.aborted&&getSession()===current.session;
+    setState(previous=>({...previous,busy:true,error:''}));
     try {
-      const page=await api.get(tripID,{afterSequence:cursor,signal:controller.signal});
-      if(scope.current===current&&!current.disposed&&!controller.signal.aborted&&getSession()===current.session){current.deleteUnknown=false;setDeletion('idle');setState({page,cursor,retryCursor:cursor,busy:false,error:'',signedOut:false});}
+      const firstPage=await api.get(tripID,{afterSequence:0,signal:controller.signal});
+      if(!valid())return;
+      const identity=page=>JSON.stringify([page.saved,page.preferences,page.journeyStrategy]);
+      const page=await readContinuousDays({firstPage,identity,expectedDays:firstPage.saved.totalDays,startDate:firstPage.saved.startDate,signal:controller.signal,
+        readPage:(cursor,{signal})=>api.get(tripID,{afterSequence:cursor,signal}),
+        onPage:page=>{if(valid()){current.deleteUnknown=false;setDeletion('idle');setState(previous=>{
+          const retained=previous.page;
+          const sameLongerPrefix=retained&&identity(retained)===identity(page)&&retained.sections.length>page.sections.length&&page.sections.every((section,index)=>JSON.stringify(section)===JSON.stringify(retained.sections[index]));
+          return {page:sameLongerPrefix?retained:page,busy:true,error:'',signedOut:false};
+        });}},
+      });
+      if(valid()){current.deleteUnknown=false;setDeletion('idle');setState({page,busy:false,error:'',signedOut:false});}
     } catch(error) {
-      if(scope.current===current&&!current.disposed&&!controller.signal.aborted&&getSession()===current.session)setState(previous=>({...previous,page:error?.code==='SAVED_ADAPTIVE_NOT_FOUND'?null:previous.page,busy:false,error:error?.code==='SAVED_ADAPTIVE_NOT_FOUND'?'This saved trip could not be found or is not available to your account.':'This saved trip could not be checked. Try a read-only check again.'}));
+      if(valid())setState(previous=>({...previous,page:error?.code==='SAVED_ADAPTIVE_NOT_FOUND'?null:previous.page,busy:false,error:error?.code==='SAVED_ADAPTIVE_NOT_FOUND'?'This saved trip could not be found or is not available to your account.':continuousDaysMessage(error)}));
     } finally {if(current.active===controller)current.active=null;}
   }
   async function remove() {
@@ -79,11 +91,11 @@ export function SavedAdaptiveTripReader({tripID,client}) {
   useEffect(()=>{
     setDeletion('idle');
     const session=getSession();
-    if(!session?.user?.id){setState({page:null,cursor:0,retryCursor:0,busy:false,error:'',signedOut:true});return;}
+    if(!session?.user?.id){setState({page:null,busy:false,error:'',signedOut:true});return;}
     const current={session,active:null,disposed:false};scope.current=current;
-    setState({page:null,cursor:0,retryCursor:0,busy:false,error:'',signedOut:false});
-    const unsubscribe=subscribeSession(next=>{if(next!==session){current.disposed=true;current.active?.abort();setDeletion('idle');setState({page:null,cursor:0,retryCursor:0,busy:false,error:'',signedOut:true});}});
-    void load(0);
+    setState({page:null,busy:false,error:'',signedOut:false});
+    const unsubscribe=subscribeSession(next=>{if(next!==session){current.disposed=true;current.active?.abort();setDeletion('idle');setState({page:null,busy:false,error:'',signedOut:true});}});
+    void load();
     return()=>{current.disposed=true;current.active?.abort();unsubscribe();if(scope.current===current)scope.current=null;};
   },[tripID,api]);
   const {page,busy,error,signedOut}=state,saved=page?.saved;
@@ -94,7 +106,7 @@ export function SavedAdaptiveTripReader({tripID,client}) {
       {signedOut?<p role="status">Sign in again to open saved trips for your account.</p>:<>
         {busy&&<p role="status">{deletion==='removing'?'Deleting this saved account copy…':'Loading saved trip days…'}</p>}
         {deletion==='deleted'&&<p role="status">This saved account copy was deleted. The original temporary plan is unchanged.</p>}
-        {error&&<><p role="alert">{error}</p><button className="preview-btn" disabled={busy} onClick={()=>load(state.retryCursor)}>Check this saved trip</button></>}
+        {error&&<><p role="alert">{error}</p><button className="preview-btn" disabled={busy} onClick={()=>load()}>Check this saved trip</button></>}
         {saved&&<>
           <p>{saved.destination} · <time dateTime={saved.startDate}>{saved.startDate}</time> to <time dateTime={saved.endDate}>{saved.endDate}</time> · {saved.totalDays} planned days</p>
           <p>Saved to your account on <time dateTime={saved.createdAt}>{new Date(saved.createdAt).toLocaleDateString()}</time>. This copy remains separate from the original temporary planning session and its expiry.</p>
@@ -111,8 +123,7 @@ export function SavedAdaptiveTripReader({tripID,client}) {
     </section>
     {!signedOut&&page&&<div className="results-wrap">
       {page.sections.map(section=><SavedSection key={section.id} section={section} currency={saved.currency} tripStart={saved.startDate}/>)}
-      <p className="hint">{visibleDayRange(page.sections,saved.startDate)}. All {saved.totalDays} days remain saved to your account.</p>
-      <nav className="step-actions" aria-label="Saved trip day pages"><button className="preview-btn" disabled={busy||deletion==='unknown'||state.cursor===0} onClick={()=>load(0)}>Earlier days</button><button className="preview-btn" disabled={busy||deletion==='unknown'||page.nextCursor===null} onClick={()=>load(page.nextCursor)}>Next days</button></nav>
+      <p className="hint">{visibleDayRange(page.sections,saved.startDate)}. {page.sections.reduce((count,section)=>count+section.checkpoint.itinerary.days.length,0)} of {saved.totalDays} saved days shown.{busy&&' Loading the remaining days…'} All days remain saved to your account.</p>
     </div>}
   </main>;
 }

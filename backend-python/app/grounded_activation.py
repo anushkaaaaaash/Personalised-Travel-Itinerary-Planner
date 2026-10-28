@@ -35,7 +35,7 @@ def build_grounded(config,*,gateway_factory=None,client_factory=None,research_cl
     research_client=(research_client_factory or BackgroundResearchClient)(config.get('OPENAI_API_KEY',''),
         activation=activation,cost_approved=True)
     preview=SectionPreviewStore(gateway,enabled=True) if streaming else None
-    section_worker=AdaptivePlanningWorker(plans,client,enabled=True,preview_store=preview)
+    section_worker=AdaptivePlanningWorker(plans,client,enabled=True,preview_store=preview,deadline_seconds=1800)
     revisions=RevisionRepository(gateway,enabled=True) if getattr(gateway,"supports_revisions",False) else None
     revision_worker=RevisionWorker(revisions,client,enabled=True) if revisions is not None else None
     worker=GroundedPlanningWorker(section_worker,AdaptiveResearchWorker(research,plans,research_client,enabled=True),revision_worker)

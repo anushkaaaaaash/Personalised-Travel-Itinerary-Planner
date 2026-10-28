@@ -1,3 +1,4 @@
+import useContinuousPlanDays from '../components/useContinuousPlanDays.js';
 import SampleItinerary from '../components/SampleItinerary.jsx';
 import { sampleTrip, samplePreferences } from '../data/sampleTrips.js';
 import AdaptiveSaveTrip from '../components/AdaptiveSaveTrip.jsx';
@@ -31,7 +32,9 @@ export default function PlannerPage({ initialSampleId = null, signedIn = false, 
   const [revisionBusy,setRevisionBusy]=useState(false),[previousCompletedPlanId,setPreviousCompletedPlanId]=useState(null),[retainedVersions,setRetainedVersions]=useState([]);
   const [exportState,setExportState]=useState({exporting:false,exportError:''});
   const exportRef=useRef(null),revisionControllerRef=useRef(null);
-  const adaptiveRef = useRef(null), pendingRecovery = useRef(null);
+  const adaptiveRef = useRef(null), pendingRecovery = useRef(null), defaultAdaptiveClient=useRef(null);
+  if(!defaultAdaptiveClient.current)defaultAdaptiveClient.current=createAdaptivePlanningClient();
+  const adaptiveApi=adaptiveClient || defaultAdaptiveClient.current;
   const [jobState,setJobState] = useState({loading:false,resumable:false,job:null,error:'',needsCheck:false});
   const jobRef = useRef(null);
   const [step,setStep] = useState(0), [form,setForm] = useState(()=>samplePreferences(initialSampleId));
@@ -49,6 +52,7 @@ export default function PlannerPage({ initialSampleId = null, signedIn = false, 
   const adaptiveBusy = revisionBusy || useAdaptive && Boolean(adaptiveState.loading || adaptiveState.needsCheck || (adaptiveState.resumable && !['completed','cancelled','expired'].includes(adaptiveState.plan?.status)));
   const jobBusy = adaptiveBusy || useJobs && Boolean(jobState.loading || jobState.needsCheck || (jobState.job && !['succeeded','failed','cancelled','expired'].includes(jobState.job.status)));
   const showPlan = !viewingPreferences && Boolean(adaptiveActive || jobActive || generation.loading || generation.result || generation.error);
+  const dayFeed=useContinuousPlanDays({state:adaptiveState,client:adaptiveApi,enabled:useAdaptive&&showPlan});
   const valid = buildTripPayload(form);
   const otherVersion=retainedVersions.find(id=>id!==adaptiveState.plan?.id);
   useEffect(()=>{if(adaptiveState.plan?.status==='completed')setRetainedVersions(current=>current.includes(adaptiveState.plan.id)?current:[...current,adaptiveState.plan.id].slice(-2));},[adaptiveState.plan?.id,adaptiveState.plan?.status]);
@@ -73,7 +77,7 @@ export default function PlannerPage({ initialSampleId = null, signedIn = false, 
   },[useJobs,jobClient,jobStorage,jobPollMs]);
   useEffect(()=>{
     if(!useAdaptive)return;
-    const controller=createAdaptivePlanningController({client:adaptiveClient || createAdaptivePlanningClient(),storage:adaptiveStorage,pollMs:adaptivePollMs,onStateChange:state=>{
+    const controller=createAdaptivePlanningController({client:adaptiveApi,storage:adaptiveStorage,pollMs:adaptivePollMs,onStateChange:state=>{
       setAdaptiveState(state);
       if(state.preferences && !state.existingPlan){setForm({...createInitialForm(),...state.preferences});setStep(FINAL_STEP);}
       if(pendingRecovery.current && state.plan?.status==='cancelled'){
@@ -83,7 +87,7 @@ export default function PlannerPage({ initialSampleId = null, signedIn = false, 
     }});
     adaptiveRef.current=controller;void controller.resume();
     return ()=>{controller.dispose();adaptiveRef.current=null;pendingRecovery.current=null;};
-  },[useAdaptive,adaptiveClient,adaptiveStorage,adaptivePollMs]);
+  },[useAdaptive,adaptiveApi,adaptiveStorage,adaptivePollMs]);
   useEffect(()=>{const controller=createAdaptiveExportController({onStateChange:setExportState});exportRef.current=controller;return()=>{controller.dispose();exportRef.current=null;};},[]);
   useEffect(()=>{exportRef.current?.cancel();},[adaptiveState.plan?.id]);
   useEffect(()=>{if(!showPlan)exportRef.current?.cancel();},[showPlan]);
@@ -143,7 +147,7 @@ export default function PlannerPage({ initialSampleId = null, signedIn = false, 
         {(generation.result || adaptiveActive) && <button className="preview-btn return-to-plan" onClick={()=>setViewingPreferences(false)}>Return to your itinerary →</button>}</div>
       </>}
       <div className="results-wrap" aria-label="Trip results">
-        {showPlan && adaptiveActive && <AdaptivePlanningStatus onResumeExisting={()=>{const result=adaptiveRef.current?.resumeExisting();if(result?.resumed)setViewingPreferences(false);}} onCancelExisting={()=>adaptiveRef.current?.cancelExisting()} {...exportState} onExport={()=>exportRef.current?.download(adaptiveState.plan?.id)} state={adaptiveState} researchEnabled={adaptivePolicy?.researchEnabled===true&&adaptivePolicy?.researchMode==='on_demand'} destination={form.destination} onCheck={()=>adaptiveRef.current?.check()} onCancel={()=>{pendingRecovery.current=null;void adaptiveRef.current?.cancel();}} onContinue={()=>adaptiveRef.current?.continue()} onRetry={()=>adaptiveRef.current?.retry()} onRetryResearch={()=>adaptiveRef.current?.retryResearch()} onLoadPage={cursor=>adaptiveRef.current?.loadPage(cursor)} onEditPreferences={reviewAdaptiveChanges} onNewPlan={()=>{if(adaptiveRef.current?.clear()){setGeneration(emptyRead);setViewingPreferences(true);}}}/> }
+        {showPlan && adaptiveActive && <AdaptivePlanningStatus dayFeed={dayFeed} onResumeExisting={()=>{const result=adaptiveRef.current?.resumeExisting();if(result?.resumed)setViewingPreferences(false);}} onCancelExisting={()=>adaptiveRef.current?.cancelExisting()} {...exportState} onExport={()=>exportRef.current?.download(adaptiveState.plan?.id)} state={adaptiveState} researchEnabled={adaptivePolicy?.researchEnabled===true&&adaptivePolicy?.researchMode==='on_demand'} destination={form.destination} onCheck={()=>adaptiveRef.current?.check()} onCancel={()=>{pendingRecovery.current=null;void adaptiveRef.current?.cancel();}} onContinue={()=>adaptiveRef.current?.continue()} onRetry={()=>adaptiveRef.current?.retry()} onRetryResearch={()=>adaptiveRef.current?.retryResearch()} onLoadPage={cursor=>adaptiveRef.current?.loadPage(cursor)} onEditPreferences={reviewAdaptiveChanges} onNewPlan={()=>{if(adaptiveRef.current?.clear()){setGeneration(emptyRead);setViewingPreferences(true);}}}/> }
         {showPlan && adaptiveActive && !adaptiveState.existingPlan && <GroundedPlanningProgress tripStart={adaptiveState.preferences?.startDate} research={adaptiveState.research} draft={adaptiveState.draft} currency={adaptiveState.draft?.currency} sectionStart={adaptiveState.draft?.sectionStart} sectionEnd={adaptiveState.draft?.sectionEnd}/>}
         {showPlan && adaptiveActive && !adaptiveState.existingPlan && adaptiveState.plan?.status==='completed' && <AdaptiveSaveTrip key={`${adaptiveState.plan.id}:${adaptiveState.plan.version}`} plan={adaptiveState.plan} preferences={adaptiveState.preferences} enabled={adaptiveSavedTripsEnabled===true} client={adaptiveSaveClient} storage={adaptiveSaveStorage} onDownload={()=>exportRef.current?.download(adaptiveState.plan.id)} downloading={exportState.exporting}/>}
         {showPlan && adaptiveActive && adaptiveState.plan?.status==='completed' && adaptivePolicy?.selectedDayRevisions===true && <AdaptiveRevision key={adaptiveState.plan.id} plan={adaptiveState.plan} preferences={adaptiveState.preferences} client={revisionClient} storage={revisionStorage} pollMs={revisionPollMs} onController={controller=>{revisionControllerRef.current=controller;}} onBusyChange={setRevisionBusy} onOpenPlan={openRetainedVersion} onEditWholeTrip={()=>{if(adaptiveRef.current?.prepareNewVersion()){setPreviousCompletedPlanId(adaptiveState.plan.id);setStep(0);setRecovery(null);setViewingPreferences(true);}}}/>}

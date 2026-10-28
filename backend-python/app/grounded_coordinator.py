@@ -21,7 +21,7 @@ class GroundedCoordinator(AdaptiveCoordinator):
     def public_policy(self):
         return {'sectionDays':3,'maxSubmissionsPerRun':self.run_allowance,
             'researchEnabled':True,'maxWebSearchCalls':6,'researchMode':'on_demand',
-            'provisionalDayPreviews':self.streaming_enabled,'responseDeadlineMinutes':8,
+            'provisionalDayPreviews':self.streaming_enabled,'responseDeadlineMinutes':30,
             'selectedDayRevisions':self.revision_repository is not None}
 
     async def verify_ready(self):

@@ -14,7 +14,7 @@ import re
 from contextlib import closing
 import sqlite3
 import time
-from uuid import uuid4, UUID
+from uuid import uuid4, uuid5, UUID
 
 from .planning_repository import JobRepositoryError, identity
 from .section_repository import (_bounded_json, _cents, _limit, validate_checkpoint,
@@ -34,6 +34,8 @@ CREATE TABLE runtime(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL
 INSERT INTO runtime VALUES(1,1,NULL);
 PRAGMA user_version=1;
 """
+AUTO_RECOVERY_CODES = frozenset({'SECTION_AUTO_RETRYABLE_FAILURE','SECTION_AUTO_RETRYABLE_INCOMPLETE'})
+
 _ARGS = {
  'create_plan': {'owner','request_id','preferences','input_hash','budget_cents','run_allowance'},
  'find_current': {'owner'}, 'find_request': {'owner','request_id'}, 'get_plan': {'owner','plan'},
@@ -69,6 +71,7 @@ class AdaptiveSQLiteGateway:
     elevated = True
     supports_proposed_constraint_retry = True
     supports_owner_recovery = True
+    supports_auto_recovery = True
 
     def __init__(self, path, *, enabled=False, initialize=False, clock=None):
         if enabled is not True: _error('SECTIONS_DISABLED',503)
@@ -164,6 +167,21 @@ class AdaptiveSQLiteGateway:
 
     @staticmethod
     def _save(c,table,row):
+        if table=='sections':
+            root=row.get('auto_retry_root') or row['id']
+            count=row.get('auto_retry_count',0)
+            if row.get('retry_of'):
+                prior=c.execute('SELECT data FROM sections WHERE id=? AND plan_id=? AND user_id=?',
+                    (row['retry_of'],row['plan_id'],row['user_id'])).fetchone()
+                if not prior:_error('SECTION_RETRY_LINEAGE_INVALID',409)
+                parent=json.loads(prior[0]);root=parent.get('auto_retry_root') or parent['id']
+                parent_count=parent.get('auto_retry_count',0)
+                if type(parent_count) is not int or parent_count not in (0,1):_error('SECTION_RETRY_LINEAGE_INVALID',409)
+                if type(count) is not int or count not in (0,1):_error('SECTION_RETRY_LINEAGE_INVALID',409)
+                count=max(count,parent_count)
+            if type(count) is not int or count not in (0,1):_error('SECTION_RETRY_LINEAGE_INVALID',409)
+            identity(root)
+            row.update(auto_retry_root=root,auto_retry_count=count)
         row['version']+=1
         c.execute('UPDATE '+table+' SET data=? WHERE id=? AND user_id=?',(_json(row),row['id'],row['user_id']))
 
@@ -171,7 +189,7 @@ class AdaptiveSQLiteGateway:
         return c.execute("SELECT (SELECT COALESCE(SUM(json_extract(data,'$.storage_used_bytes')),0) FROM plans)+(SELECT COALESCE(SUM(json_extract(data,'$.reserved_checkpoint_bytes')),0) FROM sections)").fetchone()[0]
 
     def _paid_work_count(self,c,now):
-        return c.execute("SELECT COUNT(*) FROM sections WHERE json_extract(data,'$.status') IN ('submitting','running') OR (json_extract(data,'$.status')='queued' AND json_extract(data,'$.lease_until')>?) OR (json_extract(data,'$.status') IN ('submission_unknown','cancelled','failed') AND json_extract(data,'$.submitted_at')>?)",(_stamp(now),_stamp(now-600))).fetchone()[0]
+        return c.execute("SELECT COUNT(*) FROM sections WHERE json_extract(data,'$.status') IN ('submitting','running') OR (json_extract(data,'$.status')='queued' AND json_extract(data,'$.lease_until')>?) OR (json_extract(data,'$.status') IN ('submission_unknown','cancelled','failed') AND (json_extract(data,'$.submitted_at')>? OR COALESCE(json_extract(data,'$.paid_hold_until'),'')>?) AND NOT (json_extract(data,'$.status')='failed' AND COALESCE(json_extract(data,'$.error_code'),'') IN ('SECTION_AUTO_RETRYABLE_FAILURE','SECTION_AUTO_RETRYABLE_INCOMPLETE') AND json_extract(data,'$.provider_response_id') IS NOT NULL))",(_stamp(now),_stamp(now-600),_stamp(now))).fetchone()[0]
 
     def _dispatch(self,c,op,a,now):
         if op=='checkpoint_health':
@@ -187,7 +205,7 @@ class AdaptiveSQLiteGateway:
             ready=self._rows(c,'plans',"WHERE json_extract(data,'$.status')='active' AND json_extract(data,'$.expires_at')>? AND json_extract(data,'$.active_section') IS NULL AND json_extract(data,'$.next_date') IS NOT NULL AND json_extract(data,'$.remaining_creates')>0 ORDER BY json_extract(data,'$.created_at') LIMIT 3",(_stamp(now),))
             for p in ready:
                 self._next(c,dict(owner=p['user_id'],plan=p['id'],request_id=str(UUID(hashlib.md5((p['id']+':'+p['next_date']).encode()).hexdigest())),section_days=3),now)
-            rows=self._rows(c,'sections',"WHERE json_extract(data,'$.status') IN ('queued','running','submitting') AND COALESCE(json_extract(data,'$.lease_until'),'')<=? AND plan_id IN (SELECT id FROM plans WHERE json_extract(data,'$.status')='active' AND json_extract(data,'$.expires_at')>?) ORDER BY (json_extract(data,'$.status')='running') DESC,json_extract(data,'$.created_at') LIMIT 3",(_stamp(now),_stamp(now)))
+            rows=self._rows(c,'sections',"WHERE json_extract(data,'$.status') IN ('queued','running','submitting') AND COALESCE(json_extract(data,'$.lease_until'),'')<=? AND (json_extract(data,'$.status')!='queued' OR COALESCE(json_extract(data,'$.not_before'),'')<=?) AND plan_id IN (SELECT id FROM plans WHERE json_extract(data,'$.status')='active' AND json_extract(data,'$.expires_at')>?) ORDER BY (json_extract(data,'$.status')='running') DESC,json_extract(data,'$.created_at') LIMIT 3",(_stamp(now),_stamp(now),_stamp(now)))
             for s in rows:
                 claimed=self._claim(c,dict(owner=s['user_id'],section=s['id'],worker=a['worker']),now)
                 if claimed:return claimed
@@ -232,6 +250,7 @@ class AdaptiveSQLiteGateway:
         if op=='cancel_plan':
             for s in self._rows(c,'sections',"WHERE plan_id=? AND user_id=? AND json_extract(data,'$.status')!='succeeded'",(p['id'],owner)):
                 if s['status']!='succeeded':
+                    self._late_paid_hold(s,now)
                     s.update(status='cancelled',reserved_checkpoint_bytes=0,lease_token=None,lease_until=None);self._save(c,'sections',s)
             if p['status']=='completed':return []
             p.update(status='cancelled',pause_reason=None);self._save(c,'plans',p);return [p]
@@ -289,6 +308,7 @@ class AdaptiveSQLiteGateway:
             s.update(status='submission_unknown',reserved_checkpoint_bytes=0,error_code='SUBMISSION_UNKNOWN',lease_token=None,lease_until=None);self._save(c,'sections',s)
             p.update(status='paused',pause_reason='SUBMISSION_UNKNOWN');self._save(c,'plans',p);return []
         if s['status'] not in ('queued','running') or _time(s['lease_until'])>now:return []
+        if s['status']=='queued' and _time(s.get('not_before'))>now:return []
         active=self._paid_work_count(c,now)
         if s['status']=='queued' and active>=2:return []
         s.update(lease_token=str(uuid4()),lease_until=_stamp(now+60),worker_id=a['worker']);self._save(c,'sections',s);return [s]
@@ -307,6 +327,7 @@ class AdaptiveSQLiteGateway:
         if (status=='succeeded')!=(cp is not None):_error('SECTION_CHECKPOINT_INVALID',400)
         code=a['failure_code']
         if code is not None and (not isinstance(code,str) or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,79}',code)):_error('SECTION_TRANSITION_INVALID',400)
+        if code in AUTO_RECOVERY_CODES and (status!='failed' or s['status']!='running' or not s['provider_response_id']):_error('SECTION_TRANSITION_INVALID',400)
         details=a['failure_details']
         if details is not None:
             if status!='failed' or code!='SECTION_CONSTRAINT_CONFLICT' or type(details) is not dict or set(details)!={'applicability','explanation','recommendations'} or details['applicability']!='proposed' or not isinstance(details['explanation'],str) or not 1<=len(details['explanation'])<=500 or type(details['recommendations']) is not list or not 1<=len(details['recommendations'])<=3:_error('SECTION_FAILURE_DETAILS_INVALID',400)
@@ -318,12 +339,45 @@ class AdaptiveSQLiteGateway:
             if not p['remaining_creates']:return []
             p['remaining_creates']-=1
         elif status in ('failed','submission_unknown'):
+            if code not in AUTO_RECOVERY_CODES:self._late_paid_hold(s,now)
             p.update(status='paused',pause_reason='SECTION_FAILED' if status=='failed' else 'SUBMISSION_UNKNOWN')
         self._save(c,'plans',p)
         s.update(status=status,provider_response_id=response,error_code=code,failure_details=details,checkpoint=cp,
           reserved_checkpoint_bytes=0 if status in ('succeeded','failed','submission_unknown') else s['reserved_checkpoint_bytes'],
           submitted_at=_stamp(now) if status=='submitting' else s['submitted_at'],lease_token=s['lease_token'] if status=='submitting' else None,lease_until=_stamp(now+60) if status=='submitting' else None)
-        self._save(c,'sections',s);return [s]
+        self._save(c,'sections',s)
+        if status=='failed' and code in AUTO_RECOVERY_CODES and p['remaining_creates'] and s.get('auto_retry_count',0)==0:
+            self._auto_retry(c,p,s,now)
+        return [s]
+
+    @staticmethod
+    def _late_paid_hold(section,now):
+        # A local late stop is not proof that the remote request stopped.
+        # Only the first running->terminal edge adds a hold; repeat cancels
+        # preserve it and never slide its deadline indefinitely.
+        if section['status']=='running' and section.get('provider_response_id') and now>=_time(section.get('submitted_at'))+600:
+            section['paid_hold_until']=_stamp(now+600)
+
+    def _auto_retry(self,c,p,s,now):
+        # The failure and successor are committed together, never a new worker POST.
+        # Existing queue/submitting paths enforce storage, paid admission and allowance.
+        root=s['auto_retry_root'];request=str(uuid5(UUID(root),'adaptive-auto-retry-v1'))
+        # User-chosen manual request IDs can collide with the deterministic key.
+        # Never adopt that row, self-link a lineage, or clear the failed handle.
+        if c.execute('SELECT 1 FROM sections WHERE plan_id=? AND request_id=?',(p['id'],request)).fetchone():return
+        days=1 if s['error_code']=='SECTION_AUTO_RETRYABLE_INCOMPLETE' else s['requested_days']
+        p.update(status='active',pause_reason=None,active_section=None);self._save(c,'plans',p)
+        rows=self._next(c,dict(owner=s['user_id'],plan=p['id'],request_id=request,section_days=days),now)
+        if rows:
+            s['auto_retry_count']=1;self._save(c,'sections',s)
+            successor=rows[0];successor.update(retry_of=s['id'],auto_retry_count=1,not_before=_stamp(now+15))
+            self._save(c,'sections',successor)
+        else:
+            # Capacity/research refusal must not strand or silently skip the failed day.
+            current=self._one(c,'plans',p['id'],s['user_id'],now)
+            current['active_section']=s['id']
+            if current['status']=='active':current.update(status='paused',pause_reason='SECTION_FAILED')
+            self._save(c,'plans',current)
 
     def _accept(self,c,p,s,cp):
         validate_checkpoint(cp,s)

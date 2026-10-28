@@ -6,6 +6,7 @@ import {createServer} from 'vite';
 import {fileURLToPath} from 'node:url';
 import {createAdaptiveFixture} from '../tools/adaptiveVisualFixtures.mjs';
 import {preferences} from './shareFixture.js';
+import {savedFixture,savedId} from './savedAdaptiveFixture.js';
 const archiveId='77777777-7777-4777-8777-777777777777';
 const owner=id=>({user:{id},access_token:'SYNTHETIC',expires_at:Date.now()/1000+3600});
 const flatten=node=>typeof node==='string'?node:typeof node==='number'?String(node):Array.isArray(node)?node.map(flatten).join(''):node?.children?node.children.map(flatten).join(''):'';
@@ -57,9 +58,8 @@ test('saved trip route reopens historical sections after source expiry with real
   assert.match(env.text(),/Historical museum notes/);assert.match(env.text(),/2025/);assert.match(env.text(),/Saving did not refresh them/);assert.match(env.text(),/No sources were saved for these dates/);assert.doesNotMatch(env.text(),/This planning session has expired|FINAL_PAGE_DINING/);
   const link=env.root().findAllByType('a').find(node=>node.props.href==='https://example.com/museum');assert.equal(link.props.rel,'noopener noreferrer');assert.equal(link.props.target,'_blank');
   assert.match(env.text(),/Example Garden Café/);assert.equal(env.root().findAll(node=>node.type==='section'&&node.props.className==='card adaptive-section').length,0);assert.equal(env.root().findAll(node=>node.type==='details'&&node.props.className==='card adaptive-day').length,9);assert.match(env.text(),/Day outline/);assert.match(env.text(),/Day expense breakdown/);assert.doesNotMatch(env.text(),/Accept this revised day|Save this trip|Stop planning|Retry research/);
-  await act(async()=>{const next=button(env,'Next days').props.onClick;next();next();});assert.deepEqual(calls.map(call=>call.afterSequence),[0,3]);
-  await act(async()=>finish(fixture.page(3)));assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved trip days ')).length,1);assert.match(env.text(),/FINAL_PAGE_DINING/);assert.match(env.text(),/Day 10/);assert.match(env.text(),/Day 12/);assert.doesNotMatch(env.text(),/Day 01/);assert.doesNotMatch(env.text(),/Historical museum notes/);assert.match(env.text(),/USD 1,800.00/);assert.equal(button(env,'Next days').props.disabled,true);
-  await act(async()=>button(env,'Earlier days').props.onClick());assert.deepEqual(calls.map(call=>call.afterSequence),[0,3,0]);assert.deepEqual(fixture.page(0),original);
+  assert.equal(button(env,'Next days'),undefined);assert.equal(button(env,'Earlier days'),undefined);assert.deepEqual(calls.map(call=>call.afterSequence),[0,3]);assert.match(env.text(),/9 of 12 saved days shown/);
+  await act(async()=>finish(fixture.page(3)));assert.equal(env.root().findAll(node=>node.props['aria-label']?.startsWith('Saved trip days ')).length,4);assert.match(env.text(),/FINAL_PAGE_DINING/);assert.match(env.text(),/Day 10/);assert.match(env.text(),/Day 12/);assert.match(env.text(),/Day 01/);assert.match(env.text(),/Historical museum notes/);assert.match(env.text(),/USD 1,800.00/);assert.match(env.text(),/12 of 12 saved days shown/);assert.equal(button(env,'Next days'),undefined);assert.deepEqual(calls.map(call=>call.afterSequence),[0,3]);assert.deepEqual(fixture.page(0),original);
 }));
 test('saved detail ignores late owner and unmount results and never retains private day text for another owner',()=>mounted(async env=>{
   const fixture=archiveFixture();let finish,signal;
@@ -72,13 +72,13 @@ test('saved detail ignores late owner and unmount results and never retains priv
 }));
 test('saved detail failure messages are fixed and retry reads do not expose raw server text',()=>mounted(async env=>{
   let calls=0;const fixture=archiveFixture();
-  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async()=>{if(++calls===1)throw Object.assign(Error('PRIVATE_SERVER_TEXT'),{code:'SAVED_ADAPTIVE_NOT_FOUND'});return fixture.page(0);}}});
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(_,{afterSequence})=>{if(++calls===1)throw Object.assign(Error('PRIVATE_SERVER_TEXT'),{code:'SAVED_ADAPTIVE_NOT_FOUND'});return fixture.page(afterSequence);}}});
   assert.match(env.text(),/could not be found or is not available to your account/);assert.doesNotMatch(env.text(),/PRIVATE_SERVER_TEXT/);
-  await act(async()=>button(env,'Check this saved trip').props.onClick());assert.match(env.text(),/A saved twelve-day journey/);assert.equal(calls,2);
+  await act(async()=>button(env,'Check this saved trip').props.onClick());assert.match(env.text(),/A saved twelve-day journey/);assert.equal(calls,3);
 }));
 test('saved copy deletion requires explicit confirmation, suppresses duplicates and clears only saved detail',()=>mounted(async env=>{
   const fixture=archiveFixture(),calls=[];let finish;
-  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async()=>fixture.page(0),remove:(...args)=>{calls.push(args);return new Promise(resolve=>finish=resolve);}}});
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(_,{afterSequence})=>fixture.page(afterSequence),remove:(...args)=>{calls.push(args);return new Promise(resolve=>finish=resolve);}}});
   await act(async()=>button(env,'Delete saved copy').props.onClick());assert.equal(calls.length,0);assert.match(env.text(),/original temporary plan remains unchanged/);
   await act(async()=>button(env,'Keep saved copy').props.onClick());assert.equal(calls.length,0);
   await act(async()=>button(env,'Delete saved copy').props.onClick());
@@ -87,7 +87,7 @@ test('saved copy deletion requires explicit confirmation, suppresses duplicates 
 }));
 test('unknown delete stops writes until same-ID read succeeds and requires fresh confirmation',()=>mounted(async env=>{
   const fixture=archiveFixture();let reads=0,writes=0;
-  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(id)=>{assert.equal(id,archiveId);if(++reads===2)throw Error('temporary');return fixture.page(0);},remove:async()=>{writes++;throw Error('PRIVATE_UNKNOWN');}}});
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(id,{afterSequence})=>{assert.equal(id,archiveId);if(afterSequence===0&&++reads===2)throw Error('temporary');return fixture.page(afterSequence);},remove:async()=>{writes++;throw Error('PRIVATE_UNKNOWN');}}});
   await act(async()=>button(env,'Delete saved copy').props.onClick());const staleConfirm=button(env,'Confirm delete saved copy').props.onClick;
   await act(async()=>staleConfirm());assert.equal(writes,1);assert.equal(button(env,'Delete saved copy').props.disabled,true);assert.match(env.text(),/deletion outcome is not confirmed/);assert.doesNotMatch(env.text(),/PRIVATE_UNKNOWN/);
   await act(async()=>{staleConfirm();button(env,'Check this saved trip').props.onClick();});assert.equal(writes,1);assert.equal(button(env,'Delete saved copy').props.disabled,true);
@@ -96,14 +96,72 @@ test('unknown delete stops writes until same-ID read succeeds and requires fresh
 }));
 test('unknown delete followed by not-found reports inaccessible rather than confirmed deletion',()=>mounted(async env=>{
   const fixture=archiveFixture();let reads=0,writes=0;
-  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async()=>{if(++reads>1)throw Object.assign(Error('missing'),{code:'SAVED_ADAPTIVE_NOT_FOUND'});return fixture.page(0);},remove:async()=>{writes++;return {deleted:false};}}});
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(_,{afterSequence})=>{if(afterSequence===0&&++reads>1)throw Object.assign(Error('missing'),{code:'SAVED_ADAPTIVE_NOT_FOUND'});return fixture.page(afterSequence);},remove:async()=>{writes++;return {deleted:false};}}});
   await act(async()=>button(env,'Delete saved copy').props.onClick());await act(async()=>{button(env,'Confirm delete saved copy').props.onClick();});await act(async()=>button(env,'Check this saved trip').props.onClick());
   assert.equal(writes,1);assert.match(env.text(),/not available to your account/);assert.doesNotMatch(env.text(),/copy was deleted|A saved twelve-day journey/);assert.equal(button(env,'Delete saved copy'),undefined);
 }));
 test('delete aborts and ignores late success after token replacement or unmount',()=>mounted(async env=>{
   const fixture=archiveFixture();let finish,signal;
-  const client={get:async()=>fixture.page(0),remove:(_,__,options)=>{signal=options.signal;return new Promise(resolve=>finish=resolve);}};
+  const client={get:async(_,{afterSequence})=>fixture.page(afterSequence),remove:(_,__,options)=>{signal=options.signal;return new Promise(resolve=>finish=resolve);}};
   await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});await act(async()=>button(env,'Delete saved copy').props.onClick());await act(async()=>{button(env,'Confirm delete saved copy').props.onClick();});
   await act(async()=>env.setSession(owner('owner-a')));assert.equal(signal.aborted,true);await act(async()=>finish({id:archiveId,deleted:true,version:1}));assert.match(env.text(),/Sign in again/);assert.doesNotMatch(env.text(),/copy was deleted|A saved twelve-day journey/);
   await env.unmount();await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});await act(async()=>button(env,'Delete saved copy').props.onClick());await act(async()=>{button(env,'Confirm delete saved copy').props.onClick();});await env.unmount();assert.equal(signal.aborted,true);await act(async()=>finish({id:archiveId,deleted:true,version:1}));
+}));
+
+test('all seventeen saved days load continuously through validated GET pages without a Next button',()=>mounted(async env=>{
+  const fixture=savedFixture(),calls=[];
+  const {createSavedAdaptiveClient}=await import('../src/services/savedAdaptiveTrips.js');
+  const client=createSavedAdaptiveClient({fetchImpl:async(url,options)=>{
+    calls.push({url,method:options.method});assert.equal(options.method,'GET');
+    const cursor=Number(new URL(url,'https://example.test').searchParams.get('afterSequence'));
+    const page=structuredClone(fixture.page(cursor));Object.assign(page.saved,{title:'Seventeen saved days',endDate:'2028-01-17',totalDays:17,spentCents:255000});
+    page.preferences.endDate='2028-01-17';page.journeyStrategy.stays.at(-1).endDate='2028-01-17';
+    for(const section of page.sections){section.checkpoint.journeyStrategy=structuredClone(page.journeyStrategy);if(section.sequence===6){section.endDate='2028-01-17';section.checkpoint.itinerary.days.pop();section.checkpoint.spentCents=30000;section.checkpoint.itinerary.estimatedTotalGroupCost=300;section.checkpoint.itinerary.remainingBudget=4700;}}
+    return{status:200,json:async()=>page};
+  }});
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:savedId,client});
+  assert.equal(calls.length,2);assert.deepEqual(calls.map(call=>Number(new URL(call.url,'https://example.test').searchParams.get('afterSequence'))),[0,3]);
+  assert.match(env.text(),/Seventeen saved days/);assert.match(env.text(),/17 of 17 saved days shown/);assert.match(env.text(),/Day 01/);assert.match(env.text(),/Day 17/);
+  assert.equal(env.root().findAll(node=>node.type==='details'&&node.props.className==='card adaptive-day').length,17);assert.equal(button(env,'Next days'),undefined);assert.ok(button(env,'Download itinerary PDF'));
+}));
+
+test('later saved-page failures keep earlier days and same-version metadata is required before appending',()=>mounted(async env=>{
+  const fixture=archiveFixture(),calls=[];let repaired=false;
+  const client={get:async(id,{afterSequence})=>{calls.push(afterSequence);const page=structuredClone(fixture.page(afterSequence));if(afterSequence&&!repaired)page.saved.version=2;return page;}};
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});
+  assert.deepEqual(calls,[0,3]);assert.match(env.text(),/Day 01/);assert.doesNotMatch(env.text(),/Day 12|FINAL_PAGE_DINING/);assert.match(env.text(),/displayed days are kept/);assert.equal(button(env,'Check this saved trip').props.disabled,false);
+  repaired=true;await act(async()=>button(env,'Check this saved trip').props.onClick());assert.deepEqual(calls,[0,3,0,3]);assert.match(env.text(),/12 of 12 saved days shown/);assert.match(env.text(),/FINAL_PAGE_DINING/);
+}));
+
+test('owner changes abort a later automatic saved-page read and scrub already displayed days',()=>mounted(async env=>{
+  const fixture=archiveFixture();let finish,signal;
+  const client={get:async(_,{afterSequence,signal:requestSignal})=>{if(!afterSequence)return fixture.page(0);signal=requestSignal;return new Promise(resolve=>finish=resolve);}};
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});assert.match(env.text(),/Day 01/);assert.match(env.text(),/9 of 12 saved days shown/);
+  await act(async()=>env.setSession(owner('owner-b')));assert.equal(signal.aborted,true);await act(async()=>finish(fixture.page(3)));
+  assert.match(env.text(),/Sign in again/);assert.doesNotMatch(env.text(),/Day 01|Day 12|FINAL_PAGE_DINING|A saved twelve-day journey/);
+}));
+
+test('a repeated saved-page cursor stops automatic reads without hiding earlier days',()=>mounted(async env=>{
+  const fixture=archiveFixture(),calls=[];
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client:{get:async(_,{afterSequence})=>{calls.push(afterSequence);const page=structuredClone(fixture.page(afterSequence));if(afterSequence)page.nextCursor=afterSequence;return page;}}});
+  assert.deepEqual(calls,[0,3]);assert.match(env.text(),/Day 01/);assert.doesNotMatch(env.text(),/Day 12|FINAL_PAGE_DINING/);assert.match(env.text(),/Some planned days could not be loaded/);assert.equal(button(env,'Next days'),undefined);assert.equal(button(env,'Check this saved trip').props.disabled,false);
+}));
+
+
+test('explicit saved recheck preserves all previously loaded identical days if a later read fails',()=>mounted(async env=>{
+  const fixture=archiveFixture(),reads=[];let rechecking=false;
+  const client={get:async(_,{afterSequence})=>{reads.push(afterSequence);if(rechecking&&afterSequence)throw Error('temporary');return fixture.page(afterSequence);},remove:async()=>{throw Error('unknown');}};
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});assert.match(env.text(),/12 of 12 saved days shown/);
+  await act(async()=>button(env,'Delete saved copy').props.onClick());await act(async()=>button(env,'Confirm delete saved copy').props.onClick());
+  rechecking=true;await act(async()=>button(env,'Check this saved trip').props.onClick());
+  assert.deepEqual(reads,[0,3,0,3]);assert.match(env.text(),/12 of 12 saved days shown/);assert.match(env.text(),/Day 12|FINAL_PAGE_DINING/);assert.match(env.text(),/Some planned days could not be loaded/);
+}));
+
+test('saved recheck never retains later days against a changed same-version prefix',()=>mounted(async env=>{
+  const fixture=archiveFixture();let rechecking=false;
+  const client={get:async(_,{afterSequence})=>{if(rechecking&&afterSequence)throw Error('temporary');const page=structuredClone(fixture.page(afterSequence));if(rechecking)page.sections[0].checkpoint.itinerary.days[0].dining='Changed dining';return page;},remove:async()=>{throw Error('unknown');}};
+  await env.mount(env.SavedAdaptiveTripReader,{tripID:archiveId,client});assert.match(env.text(),/12 of 12 saved days shown/);
+  await act(async()=>button(env,'Delete saved copy').props.onClick());await act(async()=>button(env,'Confirm delete saved copy').props.onClick());
+  rechecking=true;await act(async()=>button(env,'Check this saved trip').props.onClick());
+  assert.match(env.text(),/9 of 12 saved days shown/);assert.match(env.text(),/Changed dining/);assert.doesNotMatch(env.text(),/Day 12|FINAL_PAGE_DINING/);
 }));
