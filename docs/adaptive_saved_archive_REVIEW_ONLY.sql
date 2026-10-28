@@ -3,11 +3,18 @@
 -- Dedicated NOLOGIN/NOBYPASSRLS function owner cannot bypass FORCE RLS.
 -- Completed archives have no working-plan TTL or FK. Staging expires after24h.
 begin;
+-- PostgreSQL16+: only temporary SET membership, never inherited privileges.
+set local createrole_self_grant='set';
 create role adaptive_archive_rpc nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
 create schema adaptive_archive;
 revoke all on schema adaptive_archive from public,anon,authenticated;
-grant usage on schema adaptive_archive,auth,public to adaptive_archive_rpc;
-grant execute on function auth.uid() to adaptive_archive_rpc;
+grant usage on schema adaptive_archive,public to adaptive_archive_rpc;
+-- Exact verified PostgREST JWT-sub semantics; no auth-schema grant escalation.
+create function adaptive_archive.request_owner() returns uuid
+language sql stable security invoker set search_path='' as $$
+ select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),
+ (nullif(current_setting('request.jwt.claims',true),'')::jsonb ->> 'sub'))::uuid
+$$;
 create table adaptive_archive.manifests (
  id uuid primary key default gen_random_uuid(), owner uuid not null references auth.users(id) on delete cascade,
  request_id uuid not null,title text not null check(length(btrim(title)) between 1 and 120 and title !~ '[[:cntrl:]]'),
@@ -33,9 +40,9 @@ alter table adaptive_archive.sections enable row level security;
 alter table adaptive_archive.sections force row level security;
 alter table adaptive_archive.sources enable row level security;
 alter table adaptive_archive.sources force row level security;
-create policy owned_manifest on adaptive_archive.manifests to adaptive_archive_rpc using(owner=(select auth.uid())) with check(owner=(select auth.uid()));
-create policy owned_sections on adaptive_archive.sections to adaptive_archive_rpc using(owner=(select auth.uid())) with check(owner=(select auth.uid()));
-create policy owned_sources on adaptive_archive.sources to adaptive_archive_rpc using(owner=(select auth.uid())) with check(owner=(select auth.uid()));
+create policy owned_manifest on adaptive_archive.manifests to adaptive_archive_rpc using(owner=(select adaptive_archive.request_owner())) with check(owner=(select adaptive_archive.request_owner()));
+create policy owned_sections on adaptive_archive.sections to adaptive_archive_rpc using(owner=(select adaptive_archive.request_owner())) with check(owner=(select adaptive_archive.request_owner()));
+create policy owned_sources on adaptive_archive.sources to adaptive_archive_rpc using(owner=(select adaptive_archive.request_owner())) with check(owner=(select adaptive_archive.request_owner()));
 revoke all on all tables in schema adaptive_archive from public,anon,authenticated;
 grant select,insert,update,delete on adaptive_archive.manifests to adaptive_archive_rpc;
 grant select,insert,delete on adaptive_archive.sections,adaptive_archive.sources to adaptive_archive_rpc;
@@ -76,7 +83,7 @@ create trigger immutable_source before insert on adaptive_archive.sources for ea
 create function public.adaptive_saved_archive(operation text,payload jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare
- u uuid:=auth.uid();m adaptive_archive.manifests;value jsonb;item jsonb;olddata jsonb;
+ u uuid:=adaptive_archive.request_owner();m adaptive_archive.manifests;value jsonb;item jsonb;olddata jsonb;
  canonical text;hash text;manifest jsonb;n integer;cursor integer;offset_n integer;
  used bigint;bytes_n bigint;count_n integer;expected_date date;next_date date;
  rolling bytea:=''::bytea;section_row record;items jsonb;source_items jsonb;prefix jsonb;request uuid;saved uuid;
@@ -208,7 +215,14 @@ begin
 end $$;
 revoke all on all functions in schema adaptive_archive from public,anon,authenticated;
 grant execute on all functions in schema adaptive_archive to adaptive_archive_rpc;
-alter function public.adaptive_saved_archive(text,jsonb) owner to adaptive_archive_rpc;
+-- Apply function ACL while the migration actor still owns it.
 revoke all on function public.adaptive_saved_archive(text,jsonb) from public,anon;
 grant execute on function public.adaptive_saved_archive(text,jsonb) to authenticated;
+-- OWNER transfer requires both SET membership and CREATE in its schema.
+grant create on schema public to adaptive_archive_rpc;
+alter function public.adaptive_saved_archive(text,jsonb) owner to adaptive_archive_rpc;
+revoke create on schema public from adaptive_archive_rpc;
+-- Removes the temporary SET edge. PostgreSQL retains the creator's automatic
+-- ADMIN-only edge (SET=false, INHERIT=false); this is not runtime access.
+revoke adaptive_archive_rpc from current_user;
 commit;

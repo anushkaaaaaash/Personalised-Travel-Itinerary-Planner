@@ -11,17 +11,6 @@ jobs:
   disposable-postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17.11
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: disposable-test-password
-          POSTGRES_DB: planning_queue_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres -d planning_queue_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,12 +26,5 @@ jobs:
       - run: python -m pip install -r backend-python/requirements.txt
       - name: Restricted gateway and PUBLIC privilege exploit regression
         run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_planning_postgres.py backend-python/tests/test_adaptive_postgres.py backend-python/tests/test_adaptive_integration.py
-      - name: Independent PostgreSQL connections and stale-CAS tests
-        run: python3 backend-python/tests/sql/planning_jobs_postgres.py
-        env:
-          PLANNING_SQL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/planning_queue_test
-
-      - name: Saved archive quota and idempotency concurrency
-        run: python -m pytest -q -c backend-python/pytest.ini backend-python/tests/test_adaptive_archive_postgres.py
-        env:
-          PLANNING_SQL_TEST_DATABASE_URL: postgresql://postgres:disposable-test-password@127.0.0.1:5432/planning_queue_test
+      - name: Disposable true-loopback native PostgreSQL checks
+        run: bash backend-python/tests/sql/run_native_ci.sh
