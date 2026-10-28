@@ -58,3 +58,9 @@ test('exhausted automatic recovery and unavailable response have honest fixed gu
   const html=renderToStaticMarkup(React.createElement(Status,{state:state(body),onRetry(){},onCheck(){}}));assert.match(html,/Planning is paused/);assert.match(html,code==='SECTION_RESPONSE_UNAVAILABLE'?/no longer available/:/Automatic recovery/);assert.doesNotMatch(html,/Reconnecting to your trip|increase your budget|shorten your trip/);
  }
 });
+
+test('a stale complete flag cannot claim that an incomplete visible prefix contains every planned day',()=>{
+ const body=groundedPage({status:'succeeded'});body.plan.completedDays=9;
+ const html=renderToStaticMarkup(React.createElement(Status,{state:{...state(body),needsCheck:true},dayFeed:{sections:body.sections,loading:false,complete:true,error:''},onCheck(){}}));
+ assert.match(html,/3 of 9 planned days loaded/);assert.doesNotMatch(html,/All planned days are shown/);
+});

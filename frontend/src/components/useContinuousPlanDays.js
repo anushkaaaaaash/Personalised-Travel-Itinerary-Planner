@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {getSession,subscribeSession} from '../services/session.js';
-import {readContinuousDays,continuousDaysMessage} from '../services/continuousTripDays.js';
+import {readContinuousDays,continuousDaysMessage,ContinuousDaysError} from '../services/continuousTripDays.js';
 
 const blank=()=>({sections:[],loadedDays:0,loading:false,error:'',complete:false});
 const identity=page=>JSON.stringify([page?.plan?.id,page?.plan?.requestId,page?.plan?.completedDays,page?.plan?.spentCents,page?.preferences]);
@@ -16,11 +16,10 @@ export default function useContinuousPlanDays({state,client,enabled}) {
   useEffect(()=>{
     const session=getSession(),source=latest.current,id=source.plan?.id;
     if(unavailable||!session?.user?.id){setOutput(blank());return;}
-    if(source.needsCheck){setOutput(previous=>({...previous,loading:false}));return;}
     const controller=new AbortController();let disposed=false;
     const current=()=>!disposed&&!controller.signal.aborted&&getSession()===session;
-    setOutput(previous=>({...((previous.planId===id&&previous.session===session)?previous:blank()),planId:id,session,loading:true,error:''}));
-    const readPage=(cursor,{signal})=>{if(!current())throw new DOMException('Aborted','AbortError');return client.get(id,{afterSequence:cursor,signal});};
+    setOutput(previous=>({...((previous.planId===id&&previous.session===session)?previous:blank()),planId:id,session,loading:!source.needsCheck,complete:false,error:''}));
+    const readPage=(cursor,{signal})=>{if(!current())throw new DOMException('Aborted','AbortError');if(source.needsCheck)throw new ContinuousDaysError('DAYS_CHECK_PENDING');return client.get(id,{afterSequence:cursor,signal});};
     void (async()=>{
       try{
         const firstPage=source.pageCursor===0?source:await readPage(0,{signal:controller.signal});
@@ -28,13 +27,13 @@ export default function useContinuousPlanDays({state,client,enabled}) {
           if(!current())return;
           setOutput(previous=>{
             const keep=previous.planId===id&&previous.session===session&&previous.loadedDays>value.loadedDays&&value.sections.every((s,i)=>JSON.stringify(s)===JSON.stringify(previous.sections[i]));
-            return{planId:id,session,sections:keep?previous.sections:value.sections,loadedDays:keep?previous.loadedDays:value.loadedDays,loading:!value.complete,complete:value.complete,error:''};
+            return{planId:id,session,frontier:key,sections:keep?previous.sections:value.sections,loadedDays:keep?previous.loadedDays:value.loadedDays,loading:!value.complete&&!source.needsCheck,complete:value.complete,error:''};
           });
         }});
-      }catch(error){if(current())setOutput(previous=>({...previous,loading:false,complete:false,error:continuousDaysMessage(error)}));}
+      }catch(error){if(current())setOutput(previous=>({...previous,loading:false,complete:false,error:error?.code==='DAYS_CHECK_PENDING'?'':continuousDaysMessage(error)}));}
     })();
     return()=>{disposed=true;controller.abort();};
   },[key,unavailable,state.needsCheck,client,revision,sessionRevision]);
   const visible=output.planId===state.plan?.id&&output.session===getSession()?output:blank();
-  return {...visible,retry:()=>setRevision(n=>n+1)};
+  return {...visible,complete:visible.complete&&visible.frontier===key&&visible.loadedDays===state.plan?.completedDays,retry:()=>setRevision(n=>n+1)};
 }

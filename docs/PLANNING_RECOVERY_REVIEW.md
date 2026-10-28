@@ -105,6 +105,24 @@ empty failed-row pages, expired/missing snapshot reads and owner-change races.
   `5cd4ec017286ca733ef5cbbd9ef3e0668488a3bf74f292b8d9f6f8017e96d214`,
   and the restored baseline tree exactly matched
   `1887bc6499e8c4313fd17cf32d6c6a602956475a`. Local Git ancestry is reconstructed.
-- This change is local and unreleased. Prior authorization for a different release
-  is not treated as permission to publish/merge/deploy this one. No production
+- At the initial local freeze this change was unreleased. Prior authorization for
+  a different release was not treated as permission to publish this one. No production
   database changes, paid test calls, retention expansion or quota increase occurred.
+
+## Exact-head visual review correction
+PR #35 visual review caught an uncertainty-state completeness label carried from
+an earlier three-day frontier into a nine-day frontier. The hook now synchronously
+checks accepted-frontier identity and actual loaded count before claiming complete;
+the rendered summary independently checks count equality. An already validated
+first-page snapshot can reveal its nine accepted days while reconciliation is
+pending, but no continuation GET is allowed then. A later-page snapshot cannot be
+used as the first prefix. Prior accepted content remains available.
+
+Fourteen focused regressions passed independently, including first-render safety,
+zero extra GETs under uncertainty and defensive rendered counts. The browser
+fixture now requires nine cards and a truthful 9-of-9 label before capture. Fresh
+exact-head CI/pixels must verify this correction; the older failed screenshot is
+not treated as acceptance. No backend, API, paid-request or quota behavior changed.
+The corrected integrated frontend suite passed **619/619**; production build,
+public-asset pattern check and whitespace checks passed. The backend source is
+unchanged from its reviewed 1,681-test local pass and exact-head PR #35 CI pass.

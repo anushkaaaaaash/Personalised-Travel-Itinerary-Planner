@@ -92,6 +92,7 @@ export async function checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflo
   assert.equal(await page.getByRole('button',{name:/Continue planning|Try this section again/}).count(),0);
   await page.getByRole('button',{name:'Check planning status',exact:true}).click();
   assert.equal(adaptive.requests.filter(request=>request.method==='POST').length,1);
+  await page.getByText(/9 of 9 planned days loaded/).waitFor();assert.equal(await page.locator('details.card.adaptive-day').count(),9);
   await settleTheme(page,'FR');await noOverflow(page,'adaptive-uncertain-390');await snapshot(page,'adaptive-uncertain-390');
   findings.adaptiveUncertainty=true;await context.close();
   const complete=createAdaptiveFixture();complete.phase='completed';complete.finalTravelDay=true;const final=await newPage({width:390,production:true,adaptive:complete});
