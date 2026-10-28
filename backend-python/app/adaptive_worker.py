@@ -41,7 +41,7 @@ def next_identity(plan):
 class AdaptivePlanningWorker:
     def __init__(self, repository, client, *, enabled=False, worker_id=None,
                  clock=lambda: datetime.now(timezone.utc), deadline_seconds=480, research_context=None, preview_store=None, research_request=None):
-        if enabled is not True or not 1 <= deadline_seconds <= 480:
+        if enabled is not True or not 1 <= deadline_seconds <= 1800:
             raise ValueError('Explicit adaptive activation and bounded deadline required.')
         self.repository, self.client = repository, client
         self.worker_id, self.clock = worker_id or str(uuid4()), clock
@@ -114,21 +114,22 @@ class AdaptivePlanningWorker:
         if section['status'] != 'running' or not section.get('provider_response_id'):
             raise JobRepositoryError('SECTION_INVALID_CLAIM')
         submitted = datetime.fromisoformat(section['submitted_at'].replace('Z', '+00:00'))
-        if (self.clock()-submitted).total_seconds() >= self.deadline_seconds:
-            failed = await self._transition(section, 'failed', error_code='SECTION_DEADLINE_REACHED')
-            try: await self.client.cancel(section['provider_response_id'])
-            except Exception as error: _provider_diagnostic('cancel', error=error)
-            return failed
         try:
             response = await self.client.retrieve(section['provider_response_id'])
         except Exception as error:
             _provider_diagnostic('retrieve', error=error)
+            if getattr(error, 'http_status', None) in {401, 403}:
+                return await self._transition(section, 'failed', error_code='SECTION_PROVIDER_REJECTED')
+            if getattr(error, 'http_status', None) == 404:
+                return await self._transition(section, 'failed', error_code='SECTION_RESPONSE_UNAVAILABLE')
+            if (self.clock()-submitted).total_seconds() >= self.deadline_seconds:
+                return await self._deadline(section)
             return await self._transition(section, 'running', error_code='SECTION_STREAM_FINAL_ONLY' if section.get('error_code')=='SECTION_STREAM_FINAL_ONLY' else 'SECTION_POLL_UNCONFIRMED')
-        if (self.clock()-submitted).total_seconds() >= self.deadline_seconds:
-            return await self._transition(section, 'failed', error_code='SECTION_DEADLINE_REACHED')
         if response.response_id != section['provider_response_id']:
             return await self._transition(section, 'failed', error_code='SECTION_RESPONSE_MISMATCH')
         if response.status in {'queued', 'in_progress'}:
+            if (self.clock()-submitted).total_seconds() >= self.deadline_seconds:
+                return await self._deadline(section)
             if self.preview_store is not None and section.get('error_code')!='SECTION_STREAM_FINAL_ONLY':
                 state = await self.preview_store.load(section['user_id'],section['plan_id'],section['id'],section['lease_token'],section['version'])
                 stream = self.client.resume_stream(section['provider_response_id'],starting_after=state.cursor,prior_text_bytes=len(state.output_text.encode()))
@@ -138,7 +139,15 @@ class AdaptivePlanningWorker:
         _timing('provider_wait', (self.clock()-submitted).total_seconds(), status=response.status)
         if response.status != 'completed' or response.refused:
             _provider_diagnostic('retrieve', status=response.status, refused=response.refused)
-            return await self._transition(section, 'failed', error_code='SECTION_PROVIDER_INCOMPLETE' if response.status == 'incomplete' else 'SECTION_PROVIDER_FAILED')
+            code = 'SECTION_PROVIDER_INCOMPLETE' if response.status == 'incomplete' else 'SECTION_PROVIDER_FAILED'
+            capable = getattr(getattr(self.repository, 'gateway', None), 'supports_auto_recovery', False) is True
+            reason = getattr(response, 'recovery_reason', None)
+            if capable and not response.refused:
+                if response.status == 'failed' and reason in {'server_error', 'rate_limit_exceeded'}:
+                    code = 'SECTION_AUTO_RETRYABLE_FAILURE'
+                elif response.status == 'incomplete' and reason == 'max_output_tokens':
+                    code = 'SECTION_AUTO_RETRYABLE_INCOMPLETE'
+            return await self._transition(section, 'failed', error_code=code)
         started = monotonic()
         try:
             checkpoint = contract.decode(response.output_text)
@@ -165,6 +174,13 @@ class AdaptivePlanningWorker:
         self.immediate_followup = successor is not None
         return result
 
+
+    async def _deadline(self, section):
+        # No new create: even an unconfirmed cancellation cannot authorize replay.
+        failed = await self._transition(section, 'failed', error_code='SECTION_DEADLINE_REACHED')
+        try: await self.client.cancel(section['provider_response_id'])
+        except Exception as error: _provider_diagnostic('cancel', error=error)
+        return failed
 
     async def _create_stream(self, section, system, user, schema):
         started = monotonic()

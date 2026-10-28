@@ -12,6 +12,9 @@ const money = (currency,value) => `${currency} ${(value/100).toLocaleString(unde
 const terminal = status => ['completed','cancelled','expired'].includes(status);
 const pauseCategory = plan => plan?.pauseReason==='SECTION_FAILED' ? ({SECTION_CONSTRAINT_CONFLICT:'CONSTRAINT_CONFLICT',SECTION_BUDGET_EXHAUSTED:'BUDGET_EXHAUSTED'}[plan.activeSection?.errorCode] || plan.pauseReason) : plan?.pauseReason;
 const sectionFailures = {
+  SECTION_AUTO_RETRYABLE_FAILURE: ['Automatic recovery couldn’t finish these days.', 'Automatic recovery could not complete these days within the available allowance. Your completed days are kept. Planning is paused rather than repeating requests indefinitely.'],
+  SECTION_AUTO_RETRYABLE_INCOMPLETE: ['Automatic recovery returned an incomplete plan.', 'The remaining days could not be completed within the current recovery limit. Your finished days are kept; no dates or preferences were changed.'],
+  SECTION_RESPONSE_UNAVAILABLE: ['The planning response is no longer available.', 'The service could not retrieve this response. No replacement request was started automatically. Your completed days are kept; you can decide whether to try again within the available allowance.'],
   SECTION_RESEARCH_REQUESTED: ['Checking details for this section.', 'The planner requested outside information before continuing. This is not a problem with your trip preferences.'],
   SECTION_RESEARCH_UNAVAILABLE: ['Current research is not available for this section.', 'The planner could not use up-to-date research notes, so this section was not added. Your dates and budget have not been identified as a problem.'],
   SECTION_PROVIDER_REJECTED: ['The planning service couldn’t start this section.', 'The service rejected this section request. This does not show that your trip preferences are invalid.'],
@@ -90,12 +93,12 @@ function ExistingPlanningRecovery({state,onResumeExisting,onCancelExisting,onChe
   return <section className="adaptive-planning" aria-label="Unfinished trip recovery">
     <article className="card adaptive-progress">
       <p className="eyebrow">{preferences.destination}</p><h2>{title}</h2>
-      <p role="status">{state.cancelling?'Stopping this unfinished trip…':stopUnconfirmed?'We couldn’t confirm that planning stopped. Check this trip’s status before trying again.':uncertain?'We couldn’t verify this trip’s latest status. Check it before continuing.':message}</p>
+      <p role="status">{state.cancelling?'Stopping this unfinished trip…':state.reconnecting?'Reconnecting automatically to this trip. No replacement is being started.':stopUnconfirmed?'We couldn’t confirm that planning stopped. Check this trip’s status before trying again.':uncertain?'We couldn’t verify this trip’s latest status. Check it before continuing.':message}</p>
       <p>Your trip · <time dateTime={preferences.startDate}>{preferences.startDate}</time> to <time dateTime={preferences.endDate}>{preferences.endDate}</time></p>
       {!expired&&<p><strong>{plan.completedDays} of {plan.totalDays} days planned</strong></p>}
       <p className="hint">This is a temporary plan kept for 24 hours, not an account-saved itinerary.{!expired&&Number.isFinite(Date.parse(plan.expiresAt))&&<> Available until <time dateTime={plan.expiresAt}>{new Date(plan.expiresAt).toLocaleString()}</time>.</>}</p>
       <div className="step-actions">
-        {uncertain&&onCheck?<button className="generate-btn" disabled={busy} onClick={onCheck}>Check existing trip</button>:onResumeExisting&&<button className="generate-btn" disabled={busy||uncertain} onClick={onResumeExisting}>{openLabel}</button>}
+        {uncertain?(onCheck&&!state.reconnecting?<button className="generate-btn" disabled={busy} onClick={onCheck}>Check existing trip</button>:null):onResumeExisting&&<button className="generate-btn" disabled={busy||uncertain} onClick={onResumeExisting}>{openLabel}</button>}
         {onCancelExisting&&!uncertain&&!finished&&<button className="preview-btn" disabled={busy} aria-expanded={confirmStop} aria-controls={confirmationId} onClick={()=>setConfirmStop(value=>!value)}>Stop existing trip</button>}
       </div>
       {confirmStop&&!uncertain&&!finished&&<section id={confirmationId} className="adaptive-export" aria-label="Confirm stopping this trip">
@@ -134,9 +137,11 @@ function ConfirmResearchRun({allowance,disabled,onContinue}) {
   </div>;
 }
 
-export default function AdaptivePlanningStatus({state,destination,onCheck,onCancel,onContinue,onRetry,onRetryResearch,onLoadPage,onNewPlan,onEditPreferences,onResumeExisting,onCancelExisting,onExport,researchEnabled=false,exporting=false,exportError=''}) {
+export default function AdaptivePlanningStatus({state,dayFeed,destination,onCheck,onCancel,onContinue,onRetry,onRetryResearch,onLoadPage,onNewPlan,onEditPreferences,onResumeExisting,onCancelExisting,onExport,researchEnabled=false,exporting=false,exportError=''}) {
   if(state.existingPlan)return <ExistingPlanningRecovery key={state.existingPlan.plan.id} state={state} onResumeExisting={onResumeExisting} onCancelExisting={onCancelExisting} onCheck={onCheck}/>;
   const plan=state.plan;
+  const shownSections=dayFeed?.sections.length?dayFeed.sections:state.sections || [];
+  const shownDays=shownSections.reduce((sum,section)=>sum+(section.checkpoint?.itinerary?.days?.length || 0),0);
   const withResearch=researchEnabled===true||Boolean(state.research);
   const uncertain=state.needsCheck || plan?.activeSection?.status==='submission_unknown' || plan?.pauseReason==='SUBMISSION_UNKNOWN';
   const busy=state.loading || state.cancelling;
@@ -161,6 +166,7 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
   if(plan?.status==='completed'){title='Your trip is ready.';message='Explore your day-by-day itinerary below.';}
   else if(plan?.status==='cancelled'){title='Planning has stopped.';message='Planning has stopped. Your finished days are still available below.';}
   else if(expired){title='This planning session has expired.';message='These checkpoints are no longer available here. Return to your trip details to decide what to do next.';}
+  else if(state.reconnecting){title='Reconnecting to your trip.';message='The connection was interrupted. We’re checking this same trip automatically. Your finished days are kept; no new plan is being started.';}
   else if(uncertain || state.error){title=requestRecovery.title;message=requestRecovery.message;}
   else if(allowancePause){title='Ready for the next part?';message=withResearch?'This run has reached a research or model-request allowance. Your full dates and completed days are kept. Continuing requires your confirmation of another bounded run.':`This run has reached its planning-request allowance. Your full trip dates are kept. ${Number.isSafeInteger(plan.runAllowance)&&plan.runAllowance>=1&&plan.runAllowance<=12?`Continue only when you want to allow up to ${plan.runAllowance} more planning requests.`:'Continue only when you want to allow another bounded run of planning requests.'}`;}
   else if(plan?.pauseReason==='STORAGE_LIMIT'){title=sharedStoragePause?'Planning storage is temporarily full.':'This plan has reached its storage allowance.';message=sharedStoragePause?'Shared planning storage is currently full. You can check capacity and resume this same session; if it is still full, no new section request will be started. Your existing request allowance and dates are unchanged.':'This plan has reached its temporary storage allowance. No further sections can be added in this session. Your dates and budget have not been changed.';}
@@ -183,7 +189,7 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
       {!uncertain&&canRetryResearch&&<p className="hint">Retrying research uses one model request and reserves 2 search/tool requests from this run’s remaining allowance. Completed sections are kept; no preferences are changed.</p>}
       <div className="step-actions">
         {!uncertain&&state.errorCode==='SECTION_OWNER_PLAN_EXISTS'&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Find my unfinished trip</button>}
-        {(uncertain||researchNeedsCheck)&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
+        {(uncertain||researchNeedsCheck)&&!state.reconnecting&&onCheck&&<button className="generate-btn" disabled={busy} onClick={onCheck}>Check planning status</button>}
         {!uncertain&&allowancePause&&onContinue&&(withResearch?<ConfirmResearchRun key={`${plan.id}-${plan.remainingCreates}-${state.research?.toolCallsReserved ?? 0}`} allowance={plan.runAllowance} disabled={busy||state.cancelRequested} onContinue={onContinue}/>:<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Continue planning</button>)}
         {!uncertain&&canRetryResearch&&onRetryResearch&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onRetryResearch}>Retry research</button>}
         {!uncertain&&sharedStoragePause&&onContinue&&<button className="generate-btn" disabled={busy||state.cancelRequested} onClick={onContinue}>Check capacity and continue</button>}
@@ -199,7 +205,8 @@ export default function AdaptivePlanningStatus({state,destination,onCheck,onCanc
         {exportError&&<p role="alert" className="field-error">{exportError}</p>}
       </section>}
     </article>
-    {(state.sections || []).slice(0,3).map(section=><CompletedSection key={section.id} section={section} currency={currency} tripStart={state.preferences?.startDate}/>)}
-    {onLoadPage&&(!!state.sections?.length||state.pageCursor>0||state.nextCursor!==null&&state.nextCursor!==undefined)&&<nav className="adaptive-pages" aria-label="Completed day pages"><span className="hint">{visibleDayRange(state.sections,state.preferences?.startDate)}</span>{state.pageCursor>0&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(0)}>Earlier days</button>}{state.nextCursor!==null&&state.nextCursor!==undefined&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(state.nextCursor)}>Next days</button>}</nav>}
+    {shownSections.map(section=><CompletedSection key={section.id} section={section} currency={currency} tripStart={state.preferences?.startDate}/>)}
+    {dayFeed&&<div className="adaptive-pages" aria-label="All planned trip days"><p className="hint">{shownDays} of {plan?.completedDays || 0} planned days loaded.{dayFeed.loading?' Loading the remaining days…':dayFeed.complete&&shownDays===plan?.completedDays?' All planned days are shown below the progress summary.':''}</p>{dayFeed.error&&<><p role="status">{dayFeed.error}</p><button className="preview-btn" disabled={dayFeed.loading||state.reconnecting} onClick={dayFeed.retry}>Check remaining days</button></>}</div>}
+    {!dayFeed&&onLoadPage&&(!!state.sections?.length||state.pageCursor>0||state.nextCursor!==null&&state.nextCursor!==undefined)&&<nav className="adaptive-pages" aria-label="Completed day pages"><span className="hint">{visibleDayRange(state.sections,state.preferences?.startDate)}</span>{state.pageCursor>0&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(0)}>Earlier days</button>}{state.nextCursor!==null&&state.nextCursor!==undefined&&<button className="preview-btn" disabled={state.loading} onClick={()=>onLoadPage(state.nextCursor)}>Next days</button>}</nav>}
   </section>;
 }

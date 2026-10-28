@@ -3,8 +3,9 @@ import { getSession, subscribeSession } from './session.js';
 import { adaptiveId, createAdaptivePlanningClient, hasProposedConstraintDetails } from './adaptivePlanning.js';
 export const ADAPTIVE_STORAGE_KEY='travel.adaptive-plan.v1';
 const submissionUnknown=value=>value.plan?.activeSection?.status==='submission_unknown'||value.research?.status==='submission_unknown';
+const reconnectDelays=[2000,5000,10000];
 const terminal=status=>['completed','cancelled','expired'].includes(status);
-const initial=()=>({research:null,draft:null,plan:null,preferences:null,attemptedPreferences:null,existingPlan:null,discoveryPending:false,retainedTerminalHandle:false,sections:[],nextCursor:null,pageCursor:0,loading:false,error:'',errorCode:null,needsCheck:false,resumable:false,checking:false,cancelling:false,cancelRequested:false,cancelUnconfirmed:false});
+const initial=()=>({reconnecting:false,reconnectAttempt:0,reconnectNextAt:null,research:null,draft:null,plan:null,preferences:null,attemptedPreferences:null,existingPlan:null,discoveryPending:false,retainedTerminalHandle:false,sections:[],nextCursor:null,pageCursor:0,loading:false,error:'',errorCode:null,needsCheck:false,resumable:false,checking:false,cancelling:false,cancelRequested:false,cancelUnconfirmed:false});
 const safeErrorCode=error=>['AUTH_REQUIRED','VALIDATION_ERROR','ADAPTIVE_REJECTED','ADAPTIVE_NOT_FOUND','ADAPTIVE_CONFLICT','ADAPTIVE_UNAVAILABLE','ADAPTIVE_INVALID_RESPONSE','ADAPTIVE_OUTCOME_UNCONFIRMED','SECTION_MONEY_INVALID','SECTION_OWNER_PLAN_EXISTS','SECTION_CAPACITY_LIMIT','ADAPTIVE_RATE_LIMITED','ADAPTIVE_CURRENT_NOT_FOUND','RESEARCH_RETRY_NOT_ALLOWED','RESEARCH_ALLOWANCE_REACHED','RESEARCH_PHASE_ALREADY_RESERVED'].includes(error?.code)?error.code:'ADAPTIVE_OUTCOME_UNCONFIRMED';
 const defaultStorage=()=>{try{return globalThis.sessionStorage;}catch{return null;}};
 function read(storage,owner) {
@@ -16,13 +17,21 @@ function read(storage,owner) {
 subscribeSession(session=>read(defaultStorage(),session?.user?.id || null));
 /** Sequential server checkpoints; polls are reads only. Every spend action is explicit. */
 export function createAdaptivePlanningController({client=createAdaptivePlanningClient(),onStateChange=()=>{},getOwner=()=>getSession()?.user?.id||null,storage=defaultStorage(),subscribe=subscribeSession,pollMs=2000,randomUUID=()=>crypto.randomUUID()}={}) {
-  let owner=getOwner(),handle=read(storage,owner),state={...initial(),resumable:Boolean(handle)},active=null,timer=null,epoch=0,disposed=false,wantsCancel=false,cancellingExisting=false,previousStart=null;
+  let owner=getOwner(),handle=read(storage,owner),state={...initial(),resumable:Boolean(handle)},active=null,timer=null,epoch=0,disposed=false,wantsCancel=false,cancellingExisting=false,previousStart=null,reconnectWanted=false,reconnectAttempts=0;
   const publish=patch=>{state={...state,...patch};if(!disposed)onStateChange(state);};
   const stop=()=>{clearTimeout(timer);timer=null;};
+  function resetReconnect(notify=true){reconnectWanted=false;reconnectAttempts=0;if(notify)publish({reconnecting:false,reconnectAttempt:0,reconnectNextAt:null});}
+  function scheduleReconnect(){
+    stop();
+    if(disposed||(!handle&&!state.discoveryPending)||!reconnectWanted||reconnectAttempts>=reconnectDelays.length){publish({reconnecting:false,reconnectNextAt:null});return;}
+    const delay=reconnectDelays[reconnectAttempts++];
+    publish({reconnecting:true,reconnectAttempt:reconnectAttempts,reconnectNextAt:Date.now()+delay});
+    timer=setTimeout(()=>{timer=null;if(disposed||resetOwner())return;publish({reconnectNextAt:null});void check();},delay);
+  }
   const persist=()=>{try{if(handle)storage?.setItem(ADAPTIVE_STORAGE_KEY,JSON.stringify(handle));else storage?.removeItem(ADAPTIVE_STORAGE_KEY);}catch{}};
-  function resetOwner(){if(owner===getOwner())return false;owner=getOwner();epoch++;active?.controller.abort();active=null;stop();handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish(initial());return true;}
+  function resetOwner(){if(owner===getOwner())return false;owner=getOwner();epoch++;active?.controller.abort();active=null;stop();resetReconnect(false);handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish(initial());return true;}
   const unsubscribe=subscribe(resetOwner);
-  function schedule(){stop();if(!disposed&&handle&&!state.existingPlan&&!state.discoveryPending&&!state.needsCheck&&state.plan?.status==='active')timer=setTimeout(()=>{timer=null;void check();},pollMs);}
+  function schedule(){stop();if(reconnectWanted){scheduleReconnect();return;}if(!disposed&&handle&&!state.existingPlan&&!state.discoveryPending&&!state.needsCheck&&state.plan?.status==='active')timer=setTimeout(()=>{timer=null;void check();},pollMs);}
   const current=op=>!disposed&&active===op&&epoch===op.epoch&&owner===getOwner()&&!op.controller.signal.aborted;
   function accept(value,cursor,kind){
     if(cancellingExisting){
@@ -41,10 +50,11 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
   async function run(kind,action,cursor=0,beforeAccept) {
     if(disposed||resetOwner()||!owner||active)return{ignored:true};stop();
     const op={kind,controller:new AbortController(),epoch};active=op;publish({loading:true,error:'',errorCode:null,checking:kind==='check',cancelling:kind==='cancel'||wantsCancel,cancelRequested:wantsCancel});
-    try{const value=await action(op.controller.signal);if(!current(op))return{ignored:true};beforeAccept?.(value);if(kind==='discover'){publish({existingPlan:value,discoveryPending:true,loading:false,checking:false,error:'',errorCode:'SECTION_OWNER_PLAN_EXISTS',resumable:true,needsCheck:false});}else accept(value,cursor,kind);return value;}
+    try{const value=await action(op.controller.signal);if(!current(op))return{ignored:true};if(submissionUnknown(value)){reconnectWanted=true;}else resetReconnect();beforeAccept?.(value);if(kind==='discover'){publish({existingPlan:value,discoveryPending:true,loading:false,checking:false,error:'',errorCode:'SECTION_OWNER_PLAN_EXISTS',resumable:true,needsCheck:false});}else accept(value,cursor,kind);return value;}
     catch(error){if(!current(op))return{ignored:true};
-      if(error?.code==='AUTH_REQUIRED'){handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish({...initial(),error:'Sign in again to check your trip.',errorCode:'AUTH_REQUIRED'});}
+      if(error?.code==='AUTH_REQUIRED'){resetReconnect(false);handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish({...initial(),error:'Sign in again to check your trip.',errorCode:'AUTH_REQUIRED'});}
       else if(kind==='discover'&&error?.confirmed&&error.code==='ADAPTIVE_CURRENT_NOT_FOUND'){
+        resetReconnect();
         publish({existingPlan:null,discoveryPending:false,loading:false,checking:false,error:'',errorCode:null,needsCheck:false,resumable:Boolean(handle)&&!state.retainedTerminalHandle});
       }
       // These are confirmed no-create admissions; retain the attempted draft and prior handle.
@@ -56,11 +66,11 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
       else if(['check','page'].includes(kind)&&handle?.planId&&error?.confirmed&&error.code==='ADAPTIVE_PLAN_UNAVAILABLE'){
         // Keep the opaque identity until the user acknowledges this terminal state.
         // In particular, request-ID-only ambiguity must never take this branch.
-        wantsCancel=false;
+        resetReconnect();wantsCancel=false;
         if(cancellingExisting){const draft=state.attemptedPreferences || state.preferences;handle=null;cancellingExisting=false;persist();publish({...initial(),preferences:draft});return{unavailable:true};}
         publish({...initial(),plan:{id:handle.planId,requestId:handle.requestId,status:'expired',activeSection:null},preferences:state.preferences,resumable:true,errorCode:'ADAPTIVE_PLAN_UNAVAILABLE'});
       }
-      else publish({draft:null,errorCode:safeErrorCode(error),loading:false,checking:false,cancelling:false,cancelRequested:false,needsCheck:true,resumable:Boolean(handle)||state.discoveryPending||Boolean(state.existingPlan),cancelUnconfirmed:kind==='cancel'||state.cancelUnconfirmed,error:kind==='cancel'?'The stop could not be confirmed. Check this trip before trying again.':kind==='check'||kind==='page'?'This trip could not be checked. Your saved checkpoints have not been replaced.':'The change could not be confirmed. Check this trip before continuing; no automatic retry was made.'});
+      else {reconnectWanted=['check','page','discover','start','continue','retry','retryResearch','cancel'].includes(kind)&&!(error?.confirmed&&['VALIDATION_ERROR','ADAPTIVE_REJECTED'].includes(error.code));publish({reconnecting:false,reconnectNextAt:null,draft:null,errorCode:safeErrorCode(error),loading:false,checking:false,cancelling:false,cancelRequested:false,needsCheck:true,resumable:Boolean(handle)||state.discoveryPending||Boolean(state.existingPlan),cancelUnconfirmed:kind==='cancel'||state.cancelUnconfirmed,error:kind==='cancel'?'The stop could not be confirmed. Check this trip before trying again.':kind==='check'||kind==='page'?'This trip could not be checked. Your saved checkpoints have not been replaced.':'The change could not be confirmed. Check this trip before continuing; no automatic retry was made.'});}
       return{error:true};
     }finally{if(active===op){active=null;if(!disposed){if(kind==='start'&&state.errorCode==='SECTION_OWNER_PLAN_EXISTS')void discoverCurrent();else if(wantsCancel&&handle?.planId&&!terminal(state.plan?.status)&&(!state.needsCheck||(submissionUnknown(state)&&!state.cancelUnconfirmed)))void cancelKnown();else schedule();}}}
   }
@@ -74,7 +84,7 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
       if(disposed||resetOwner()||!owner||active||state.existingPlan||state.discoveryPending||(handle&&!terminal(state.plan?.status)&&!state.retainedTerminalHandle))return{ignored:true};
       const checked=validateTripPreferences(preferences);if(!checked.valid){publish({...initial(),error:'Check your trip details.'});return{rejected:true};}
       const requestId=randomUUID();if(!adaptiveId(requestId))throw Error('Invalid request identifier');
-      previousStart={handle:handle?{...handle}:null,state};handle={owner,requestId,planId:null};wantsCancel=false;persist();publish({...initial(),preferences:checked.value,resumable:true});
+      resetReconnect();previousStart={handle:handle?{...handle}:null,state};handle={owner,requestId,planId:null};wantsCancel=false;persist();publish({...initial(),preferences:checked.value,resumable:true});
       return run('start',signal=>client.start(checked.value,requestId,{signal}));
     },
     check,resume:check,
@@ -88,13 +98,13 @@ export function createAdaptivePlanningController({client=createAdaptivePlanningC
     loadPage(afterSequence=0){if(active||!handle?.planId||!Number.isSafeInteger(afterSequence)||afterSequence<0)return Promise.resolve({ignored:true});return run('page',signal=>client.get(handle.planId,{signal,afterSequence}),afterSequence);},
     async cancel(){
       if(disposed||resetOwner()||!handle||terminal(state.plan?.status))return{ignored:true};
-      wantsCancel=true;publish({cancelRequested:true,cancelling:true});stop();
+      reconnectWanted=false;publish({reconnecting:false,reconnectNextAt:null});wantsCancel=true;publish({cancelRequested:true,cancelling:true});stop();
       if(active&& !['check','page'].includes(active.kind))return{pending:true};
       if(active){epoch++;active.controller.abort();active=null;}
       if(handle.planId&&(!state.needsCheck||(submissionUnknown(state)&&!state.cancelUnconfirmed)))return cancelKnown();
       return check();
     },
-    clear(){if(active||state.existingPlan||state.discoveryPending||(handle&&!terminal(state.plan?.status)&&!state.retainedTerminalHandle))return false;stop();handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish(initial());return true;},
+    clear(){if(active||state.existingPlan||state.discoveryPending||(handle&&!terminal(state.plan?.status)&&!state.retainedTerminalHandle))return false;stop();resetReconnect();handle=null;wantsCancel=false;cancellingExisting=false;previousStart=null;persist();publish(initial());return true;},
     dispose(){disposed=true;epoch++;active?.controller.abort();active=null;stop();unsubscribe?.();},
   };
   publish({});return controller;

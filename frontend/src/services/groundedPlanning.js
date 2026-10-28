@@ -75,4 +75,4 @@ export function readPublicDraft(value,plan,preferences) {
   return{status:'draft',accepted:false,sectionStart:value.sectionStart,sectionEnd:value.sectionEnd,currency:value.currency,days};
 }
 
-export const validGroundedPolicy=value=>value?.researchEnabled===true&&value.maxWebSearchCalls===6&&value.researchMode==='on_demand'&&typeof value.provisionalDayPreviews==='boolean'&&value.responseDeadlineMinutes===8;
+export const validGroundedPolicy=value=>value?.researchEnabled===true&&value.maxWebSearchCalls===6&&value.researchMode==='on_demand'&&typeof value.provisionalDayPreviews==='boolean'&&[8,30].includes(value.responseDeadlineMinutes);

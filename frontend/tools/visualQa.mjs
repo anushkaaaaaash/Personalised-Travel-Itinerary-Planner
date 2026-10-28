@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {checkContinuousDayVisuals} from './continuousVisualFixtures.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -228,6 +229,7 @@ try {
   const motion=await page.locator('.journey-artwork__route').evaluate(element=>({animation:getComputedStyle(element).animationName,transition:getComputedStyle(element).transitionDuration}));
   assert.equal(motion.animation,'none');assert.equal(motion.transition,'0s');findings.reducedMotion=true;await snapshot(page,'reduced-motion-390');await context.close();
   await checkAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
+  await checkContinuousDayVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   await checkGroundedVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   await checkRevisionVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});
   await checkSavedAdaptiveVisuals({newPage,origin,settleTheme,noOverflow,snapshot,findings});

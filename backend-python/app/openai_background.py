@@ -84,6 +84,8 @@ class BackgroundResponse:
     output_text: str | None = field(default=None, repr=False)
     usage: dict = field(default_factory=dict)
     refused: bool = False
+    # Server-only fixed enum; never raw error messages or arbitrary provider fields.
+    recovery_reason: str | None = None
 
     def safe_metadata(self):
         return {'response_id': self.response_id, 'status': self.status,
@@ -186,9 +188,15 @@ def _parse(body, expected_id=None, *, discard_output=False):
             if type(details) is not dict or details.get('reason') not in {'max_output_tokens', 'max_messages', 'content_filter', 'steered', None}:
                 raise ValueError()
             refused = refused or details.get('reason') == 'content_filter'
+        recovery_reason = None
+        if not refused:
+            if status == 'failed' and type(error) is dict and error.get('code') in {'server_error', 'rate_limit_exceeded'}:
+                recovery_reason = error['code']
+            elif status == 'incomplete' and details.get('reason') == 'max_output_tokens':
+                recovery_reason = 'max_output_tokens'
         return BackgroundResponse(rid, status,
             text if status == 'completed' and not refused and not discard_output else None,
-            safe_usage, refused)
+            safe_usage, refused, recovery_reason)
     except (ValueError, TypeError, UnicodeError, RecursionError, BackgroundError):
         raise BackgroundError('BACKGROUND_INVALID_RESPONSE', parse_reason=reason) from None
 
