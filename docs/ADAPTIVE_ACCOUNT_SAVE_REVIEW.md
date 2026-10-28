@@ -82,7 +82,7 @@ default-grant change must not determine this feature's security boundary.
   a database name other than `planning_queue_test`.
 - Frontend: all 567 tests passed; 27 shared-validation and 81 legacy backend
   tests passed; production build and public-asset check passed.
-- Deployment tooling: 26 checkpoint/CI-runner tests passed with mocked operations.
+- Deployment tooling: 35 checkpoint/CI-runner/activation tests passed with mocked operations.
 - All three disposable PGlite SQL suites passed (planning, adaptive, archive).
 - Independent security review re-ran the archive Python/frontend/SQL tests and
   found no blocker in the current source.
@@ -127,7 +127,11 @@ PostgreSQL 17.11 with host networking but listens only on `127.0.0.1:55432`, use
 tmpfs data, and always removes its run-scoped container. It checks the actual
 database/address before test DDL and strips service-file libpq overrides. The
 standalone legacy harness now pins and checks the address too. Local shell and
-mocked cleanup tests pass; actual Docker execution still requires fresh CI.
+mocked cleanup tests pass. Actual Docker execution subsequently passed in
+PR33 run `40632717976`, job `122632587993`, at exact head
+`8dc079b820ab54e43f39424af0a51f1e7f444831`: all queue concurrency checks and
+four archive/restricted-migration cases passed. All four workflows were green
+for that head; later changes still require their own exact-commit CI.
 
 The hosted read-only privilege preflight also exposed the non-superuser and
 auth-schema grant limitations addressed above. A separate native regression
@@ -141,3 +145,19 @@ restricted-migration tests passed together. The SQL proposal SHA256 is
 `15a3762db3abe42bdb0533dc06063c9a89befbe1f6c262235f0cb072a7e9985a`.
 Independent security review approved this exact SQL. The migration regression
 also verifies an injected precommit failure rolls back role/schema/grant changes.
+
+## Explicit deployment activation
+
+Checked-in Fly configuration and the `stage` deployment action explicitly keep
+both archive flags false. The `activate` action sets both true only after an
+offline dispatch gate passes: `saved_archive_schema_verified` must be explicitly
+true and `verified_saved_archive_sql_sha256` must match the exact checked-in SQL.
+The confirmation defaults false. Missing/mismatched values stop before any Fly
+operation. Stage and checkpoint-upgrade actions do not require this attestation.
+
+This is an operator attestation, not automated proof of hosted database state.
+The release owner must separately apply the authorized migration and verify its
+catalog, ownership, RLS, grants, and owner isolation before supplying the inputs.
+No deployment action runs the Supabase migration. The name-only Fly secret guard
+rejects both archive flag names so secrets cannot override the reviewed state.
+Existing exact-main-SHA, one-Machine, volume, and quiescence checks are unchanged.
